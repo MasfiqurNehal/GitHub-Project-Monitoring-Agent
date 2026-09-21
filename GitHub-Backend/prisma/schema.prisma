@@ -1,0 +1,324 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+  PAUSED
+}
+
+enum PullRequestState {
+  OPEN
+  CLOSED
+  MERGED
+}
+
+enum ReviewState {
+  APPROVED
+  CHANGES_REQUESTED
+  COMMENTED
+  DISMISSED
+}
+
+enum IssueState {
+  OPEN
+  CLOSED
+}
+
+enum SyncJobStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum SyncJobType {
+  HISTORICAL_FULL
+  INCREMENTAL
+  WEBHOOK
+}
+
+model Project {
+  id          String        @id @default(uuid())
+  name        String
+  description String?
+  status      ProjectStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  repositories Repository[]
+  dailyMetrics DailyMetric[]
+
+  @@map("projects")
+}
+
+model Repository {
+  id            String    @id @default(uuid())
+  projectId     String?
+  githubId      BigInt    @unique
+  owner         String
+  name          String
+  fullName      String    @unique
+  url           String
+  defaultBranch String    @default("main")
+  language      String?
+  isActive      Boolean   @default(true)
+  lastSyncedAt  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  project     Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  members     RepositoryMember[]
+  commits     Commit[]
+  pullRequests PullRequest[]
+  issues      Issue[]
+  activities  ActivityEvent[]
+  dailyMetrics DailyMetric[]
+  syncJobs    SyncJob[]
+
+  @@map("repositories")
+}
+
+model Developer {
+  id           String   @id @default(uuid())
+  githubUserId BigInt?  @unique
+  login        String   @unique
+  name         String?
+  email        String?
+  avatarUrl    String?
+  profileUrl   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  repoMemberships RepositoryMember[]
+  commits         Commit[]
+  pullRequests    PullRequest[]
+  reviews         PullRequestReview[]
+  issues          Issue[]
+  issueComments   IssueComment[]
+  activities      ActivityEvent[]
+  metrics         DeveloperMetric[]
+
+  @@map("developers")
+}
+
+model RepositoryMember {
+  id           String   @id @default(uuid())
+  repositoryId String
+  developerId  String
+  role         String   @default("contributor")
+  createdAt    DateTime @default(now())
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  developer  Developer  @relation(fields: [developerId], references: [id], onDelete: Cascade)
+
+  @@unique([repositoryId, developerId])
+  @@map("repository_members")
+}
+
+model Commit {
+  id           String   @id @default(uuid())
+  repositoryId String
+  githubSha    String   @unique
+  authorId     String?
+  message      String
+  commitUrl    String
+  committedAt  DateTime
+  additions    Int      @default(0)
+  deletions    Int      @default(0)
+  changedFiles Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  repository Repository   @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  author     Developer?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  files      CommitFile[]
+
+  @@map("commits")
+}
+
+model CommitFile {
+  id        String @id @default(uuid())
+  commitId  String
+  filename  String
+  status    String
+  additions Int    @default(0)
+  deletions Int    @default(0)
+  changes   Int    @default(0)
+  patch     String?
+
+  commit Commit @relation(fields: [commitId], references: [id], onDelete: Cascade)
+
+  @@map("commit_files")
+}
+
+model PullRequest {
+  id           String           @id @default(uuid())
+  repositoryId String
+  githubPrId   BigInt           @unique
+  number       Int
+  authorId     String?
+  title        String
+  body         String?
+  state        PullRequestState @default(OPEN)
+  createdAt    DateTime
+  updatedAt    DateTime
+  closedAt     DateTime?
+  mergedAt     DateTime?
+  additions    Int              @default(0)
+  deletions    Int              @default(0)
+  changedFiles Int              @default(0)
+
+  repository Repository          @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  author     Developer?          @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  reviews    PullRequestReview[]
+
+  @@map("pull_requests")
+}
+
+model PullRequestReview {
+  id            String      @id @default(uuid())
+  pullRequestId String
+  reviewerId    String?
+  state         ReviewState
+  body          String?
+  submittedAt   DateTime
+
+  pullRequest PullRequest @relation(fields: [pullRequestId], references: [id], onDelete: Cascade)
+  reviewer    Developer?   @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@map("pull_request_reviews")
+}
+
+model Issue {
+  id            String     @id @default(uuid())
+  repositoryId  String
+  githubIssueId BigInt     @unique
+  number        Int
+  authorId      String?
+  title         String
+  body          String?
+  state         IssueState @default(OPEN)
+  createdAt     DateTime
+  updatedAt     DateTime
+  closedAt      DateTime?
+
+  repository Repository     @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  author     Developer?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  comments   IssueComment[]
+
+  @@map("issues")
+}
+
+model IssueComment {
+  id        String   @id @default(uuid())
+  issueId   String
+  authorId  String?
+  body      String
+  createdAt DateTime
+
+  issue  Issue      @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  author Developer? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@map("issue_comments")
+}
+
+model ActivityEvent {
+  id           String   @id @default(uuid())
+  repositoryId String
+  developerId  String?
+  eventType    String   // commit, push, pr_opened, pr_merged, pr_closed, pr_reviewed, issue_opened, issue_closed
+  sourceId     String
+  occurredAt   DateTime
+  metadataJson Json?
+  createdAt    DateTime @default(now())
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  developer  Developer?  @relation(fields: [developerId], references: [id], onDelete: SetNull)
+
+  @@map("activity_events")
+}
+
+model DailyMetric {
+  id                    String   @id @default(uuid())
+  date                  DateTime
+  projectId             String?
+  repositoryId          String?
+  commitCount           Int      @default(0)
+  prCount               Int      @default(0)
+  mergedPrCount         Int      @default(0)
+  reviewCount           Int      @default(0)
+  issueClosedCount      Int      @default(0)
+  linesAdded            Int      @default(0)
+  linesDeleted          Int      @default(0)
+  activeDevelopersCount Int      @default(0)
+  createdAt             DateTime @default(now())
+
+  project    Project?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  repository Repository? @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([date, projectId, repositoryId])
+  @@map("daily_metrics")
+}
+
+model DeveloperMetric {
+  id            String   @id @default(uuid())
+  date          DateTime
+  developerId   String
+  commitCount   Int      @default(0)
+  prCount       Int      @default(0)
+  mergedPrCount Int      @default(0)
+  reviewCount   Int      @default(0)
+  linesAdded    Int      @default(0)
+  linesDeleted  Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  developer Developer @relation(fields: [developerId], references: [id], onDelete: Cascade)
+
+  @@unique([date, developerId])
+  @@map("developer_metrics")
+}
+
+model AIConversation {
+  id        String      @id @default(uuid())
+  title     String      @default("New Conversation")
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  messages  AIMessage[]
+
+  @@map("ai_conversations")
+}
+
+model AIMessage {
+  id             String         @id @default(uuid())
+  conversationId String
+  role           String         // user, assistant, system, tool
+  content        String
+  metadataJson   Json?
+  createdAt      DateTime       @default(now())
+
+  conversation AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("ai_messages")
+}
+
+model SyncJob {
+  id           String        @id @default(uuid())
+  repositoryId String
+  type         SyncJobType
+  status       SyncJobStatus @default(PENDING)
+  progress     Int           @default(0)
+  error        String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime      @default(now())
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@map("sync_jobs")
+}
