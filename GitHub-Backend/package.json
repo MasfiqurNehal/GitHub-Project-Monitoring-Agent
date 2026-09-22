@@ -7,14 +7,15 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev --name init",
-    "prisma:studio": "prisma studio"
+    "migrate": "tsx database/migrate.ts",
+    "db:clean": "tsx database/clean.ts",
+    "db:reset": "tsx database/reset.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.11.4",
     "@octokit/rest": "^20.1.0",
     "@prisma/client": "^5.14.0",
+    "@types/pg": "^8.23.1",
     "bullmq": "^5.7.12",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -22,6 +23,7 @@
     "helmet": "^7.1.0",
     "ioredis": "^5.4.1",
     "morgan": "^1.10.0",
+    "pg": "^8.23.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

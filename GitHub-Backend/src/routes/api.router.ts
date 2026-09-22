@@ -1,203 +1,75 @@
-import crypto from 'crypto';
 import { Router } from 'express';
-import { analyticsService } from '../analytics/analytics.service.js';
-import { config } from '../config/index.js';
-import { prisma } from '../db/prisma.js';
-import { orchestratorService } from '../agents/orchestrator/orchestrator.service.js';
-import { syncRepositoryHistoricalData } from '../workers/sync-worker.js';
+import { checkDatabaseHealth } from '../db/connection.js';
+import * as dashboardController from '../controllers/dashboard.controller.js';
+import * as projectController from '../controllers/project.controller.js';
+import * as repositoryController from '../controllers/repository.controller.js';
+import * as developerController from '../controllers/developer.controller.js';
+import * as activityController from '../controllers/activity.controller.js';
+import * as reportController from '../controllers/report.controller.js';
+import * as githubController from '../controllers/github.controller.js';
+import * as webhookController from '../controllers/webhook.controller.js';
 
 export const apiRouter = Router();
 
-// Health Check
+// 1. Health Checks
 apiRouter.get('/health', (req, res) => {
   res.json({
-    status: 'ok',
-    service: 'github-monitoring-backend',
+    success: true,
+    service: 'github-project-monitoring-backend',
+    status: 'healthy',
     timestamp: new Date().toISOString(),
   });
 });
 
-// Dashboard Overview Metrics
-apiRouter.get('/dashboard/overview', async (req, res, next) => {
-  try {
-    const { projectId, repositoryId, developerId, from, to } = req.query;
-    const filters = {
-      projectId: projectId as string,
-      repositoryId: repositoryId as string,
-      developerId: developerId as string,
-      from: from ? new Date(from as string) : undefined,
-      to: to ? new Date(to as string) : undefined,
-    };
-    const data = await analyticsService.getDashboardOverview(filters);
-    res.json({ success: true, data });
-  } catch (err) {
-    next(err);
+apiRouter.get('/health/database', async (req, res) => {
+  const health = await checkDatabaseHealth();
+  if (health.isHealthy) {
+    res.json({ success: true, database: 'connected', timestamp: health.timestamp });
+  } else {
+    res.status(500).json({ success: false, database: 'disconnected', error: health.error });
   }
 });
 
-// Engineering Signals & Alerts
-apiRouter.get('/dashboard/signals', async (req, res, next) => {
-  try {
-    const data = await analyticsService.getEngineeringSignals();
-    res.json({ success: true, data });
-  } catch (err) {
-    next(err);
-  }
-});
+// 2. Dashboard Endpoints
+apiRouter.get('/dashboard/overview', dashboardController.getDashboardOverview);
+apiRouter.get('/dashboard/signals', dashboardController.getEngineeringSignals);
 
-// List Projects
-apiRouter.get('/projects', async (req, res, next) => {
-  try {
-    const projects = await prisma.project.findMany({
-      include: {
-        repositories: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json({ success: true, data: projects });
-  } catch (err) {
-    next(err);
-  }
-});
+// 3. Projects Endpoints
+apiRouter.get('/projects', projectController.listProjects);
+apiRouter.post('/projects', projectController.createProject);
+apiRouter.get('/projects/:id', projectController.getProjectDetail);
 
-// Create Project
-apiRouter.post('/projects', async (req, res, next) => {
-  try {
-    const { name, description } = req.body;
-    if (!name) {
-      return res.status(400).json({ success: false, error: 'Project name is required' });
-    }
-    const project = await prisma.project.create({
-      data: { name, description },
-    });
-    res.json({ success: true, data: project });
-  } catch (err) {
-    next(err);
-  }
-});
+// 4. Repositories Endpoints
+apiRouter.get('/repositories', repositoryController.listRepositories);
+apiRouter.post('/repositories', repositoryController.addRepository);
+apiRouter.get('/repositories/:id', repositoryController.getRepositoryDetail);
+apiRouter.post('/repositories/:id/sync', repositoryController.triggerRepositorySync);
+apiRouter.delete('/repositories/:id', repositoryController.removeRepository);
 
-// Connect Repository to Project
-apiRouter.post('/projects/:id/repositories', async (req, res, next) => {
-  try {
-    const { id: projectId } = req.params;
-    const { owner, name } = req.body;
+// 5. Developers Endpoints
+apiRouter.get('/developers', developerController.listDevelopers);
+apiRouter.get('/developers/:id', developerController.getDeveloperDetail);
 
-    if (!owner || !name) {
-      return res.status(400).json({ success: false, error: 'Repository owner and name are required' });
-    }
+// 6. Engineering Activity Stream
+apiRouter.get('/activity', activityController.getActivityStream);
 
-    const fullName = `${owner}/${name}`;
-    let repository = await prisma.repository.findUnique({ where: { fullName } });
+// 7. Pull Requests Endpoints
+apiRouter.get('/pull-requests', (req, res) => res.json({ success: true, data: [] }));
+apiRouter.get('/pull-requests/:id', (req, res) => res.json({ success: true, data: null }));
 
-    if (!repository) {
-      repository = await prisma.repository.create({
-        data: {
-          projectId,
-          githubId: BigInt(Date.now()), // Temporary placeholder until sync updates with exact GitHub ID
-          owner,
-          name,
-          fullName,
-          url: `https://github.com/${owner}/${name}`,
-        },
-      });
-    } else {
-      repository = await prisma.repository.update({
-        where: { id: repository.id },
-        data: { projectId },
-      });
-    }
+// 8. Issues Endpoints
+apiRouter.get('/issues', (req, res) => res.json({ success: true, data: [] }));
+apiRouter.get('/issues/:id', (req, res) => res.json({ success: true, data: null }));
 
-    // Trigger async sync in background
-    syncRepositoryHistoricalData(repository.id, owner, name).catch((err) => {
-      console.error(`Async sync error for ${fullName}:`, err.message);
-    });
+// 9. Reports Endpoints
+apiRouter.get('/reports', reportController.generateReport);
+apiRouter.post('/reports/generate', reportController.generateReport);
+apiRouter.get('/reports/:id', reportController.getReportDetail);
 
-    res.json({ success: true, data: repository });
-  } catch (err) {
-    next(err);
-  }
-});
+// 10. Settings & GitHub Integration Endpoints
+apiRouter.get('/settings/github/status', githubController.getGitHubStatus);
+apiRouter.post('/settings/github/validate-repo', githubController.validateRepository);
+apiRouter.get('/settings/github/monitored-repos', repositoryController.listRepositories);
 
-// Trigger Manual Sync for Repository
-apiRouter.post('/repositories/:id/sync', async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const repo = await prisma.repository.findUnique({ where: { id } });
-    if (!repo) {
-      return res.status(404).json({ success: false, error: 'Repository not found' });
-    }
-
-    // Run sync asynchronously
-    syncRepositoryHistoricalData(repo.id, repo.owner, repo.name).catch((err) => {
-      console.error(`Manual sync error for ${repo.fullName}:`, err.message);
-    });
-
-    res.json({ success: true, message: `Sync initiated for ${repo.fullName}` });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// List Developers
-apiRouter.get('/developers', async (req, res, next) => {
-  try {
-    const developers = await prisma.developer.findMany({
-      include: {
-        _count: {
-          select: { commits: true, pullRequests: true, reviews: true },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json({ success: true, data: developers });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// Get Developer Detail Breakdown
-apiRouter.get('/developers/:id', async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const data = await analyticsService.getDeveloperMetrics(id);
-    if (!data) {
-      return res.status(404).json({ success: false, error: 'Developer not found' });
-    }
-    res.json({ success: true, data });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// AI Chatbot Endpoint
-apiRouter.post('/ai/chat', async (req, res, next) => {
-  try {
-    const { conversationId, message } = req.body;
-    if (!message) {
-      return res.status(400).json({ success: false, error: 'Message content is required' });
-    }
-
-    const convId = conversationId || `conv-${Date.now()}`;
-    const result = await orchestratorService.processUserMessage(convId, message);
-    res.json({ success: true, data: result });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// Webhook Receiver (GitHub Events)
-apiRouter.post('/webhooks/github', async (req, res) => {
-  const signature = req.headers['x-hub-signature-256'] as string;
-  const event = req.headers['x-github-event'] as string;
-
-  if (config.githubWebhookSecret && signature) {
-    const hmac = crypto.createHmac('sha256', config.githubWebhookSecret);
-    const digest = 'sha256=' + hmac.update(JSON.stringify(req.body)).digest('hex');
-    if (signature !== digest) {
-      return res.status(401).json({ success: false, error: 'Invalid webhook signature' });
-    }
-  }
-
-  console.log(`[Webhook] Received GitHub Event: ${event}`);
-  res.status(200).json({ success: true, received: true });
-});
+// 11. GitHub Webhooks Ingestion
+apiRouter.post('/webhooks/github', webhookController.handleGitHubWebhook);

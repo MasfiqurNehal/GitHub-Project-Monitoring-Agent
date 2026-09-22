@@ -1,18 +1,27 @@
+import dotenv from 'dotenv';
 import { app } from './app.js';
-import { config } from './config/index.js';
-import { prisma } from './db/prisma.js';
+import { checkDatabaseHealth } from './db/connection.js';
 
-async function main() {
-  try {
-    await prisma.$connect();
-    console.log('[Database] Connected to PostgreSQL successfully.');
+dotenv.config();
 
-    app.listen(config.port, () => {
-      console.log(`[Server] GitHub Monitoring Backend running on http://localhost:${config.port}`);
-    });
-  } catch (error: any) {
-    console.error('[Server] Failed to initialize server:', error.message);
+const PORT = parseInt(process.env.PORT || '5000', 10);
+
+async function startServer() {
+  console.log('[Server] Checking Neon PostgreSQL database connection...');
+  const dbHealth = await checkDatabaseHealth();
+  if (dbHealth.isHealthy) {
+    console.log('[Server] Successfully connected to Neon PostgreSQL Database.');
+  } else {
+    console.warn('[Server] Neon PostgreSQL Connection Error:', dbHealth.error);
   }
+
+  app.listen(PORT, () => {
+    console.log(`=======================================================`);
+    console.log(`🚀 GitHub Project Monitoring Backend Engine Running!`);
+    console.log(`📡 Base API URL: http://localhost:${PORT}/api`);
+    console.log(`💚 Health Check: http://localhost:${PORT}/api/health`);
+    console.log(`=======================================================`);
+  });
 }
 
-main();
+startServer();
