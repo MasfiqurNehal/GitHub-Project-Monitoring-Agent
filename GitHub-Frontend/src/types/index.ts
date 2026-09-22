@@ -101,6 +101,106 @@ export interface ProjectIssue {
   updatedAt: string;
 }
 
+export interface IssueLabel {
+  id: string;
+  name: string;
+  color?: string; // e.g. '#d73a4a' or badge color class
+  description?: string;
+}
+
+export interface IssueAssignee {
+  id: string;
+  login: string;
+  name?: string;
+  avatarUrl?: string;
+}
+
+export interface IssueWithMetrics {
+  id: string;
+  repositoryId: string;
+  githubIssueId: number | string;
+  number: number;
+  title: string;
+  body?: string | null;
+  state: IssueState;
+  author: {
+    id: string;
+    login: string;
+    name?: string;
+    avatarUrl?: string;
+  };
+  repository: {
+    id: string;
+    name: string;
+    fullName: string;
+  };
+  project?: {
+    id: string;
+    name: string;
+  };
+  labels: IssueLabel[];
+  assignees: IssueAssignee[];
+  commentsCount: number;
+  createdAt: string;
+  updatedAt: string;
+  closedAt?: string | null;
+}
+
+export interface IssueCommentItem {
+  id: string;
+  author: {
+    id: string;
+    login: string;
+    name?: string;
+    avatarUrl?: string;
+  };
+  body: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface IssueTimelineStep {
+  id: string;
+  type: 'opened' | 'commented' | 'labeled' | 'assigned' | 'closed' | 'reopened' | 'referenced';
+  title: string;
+  actor: {
+    id: string;
+    login: string;
+    name?: string;
+    avatarUrl?: string;
+  };
+  timestamp: string;
+  details?: string;
+}
+
+export interface IssueDetailData {
+  issue: IssueWithMetrics;
+  comments: IssueCommentItem[];
+  timeline: IssueTimelineStep[];
+  relatedPullRequests?: {
+    id: string;
+    number: number;
+    title: string;
+    state: PullRequestState;
+    repositoryName: string;
+  }[];
+}
+
+export interface IssueFilters {
+  projectId?: string;
+  repositoryId?: string;
+  developerId?: string;
+  state?: 'ALL' | 'OPEN' | 'CLOSED';
+  label?: string;
+  preset?: DateRangePreset;
+  from?: string;
+  to?: string;
+  search?: string;
+  sortBy?: 'newest' | 'oldest' | 'comments';
+  page?: number;
+  pageSize?: number;
+}
+
 export interface FileChangeItem {
   name: string;
   repoName: string;
@@ -545,3 +645,120 @@ export interface MonitoredRepository {
   status: 'ACTIVE' | 'SYNCING' | 'PAUSED';
   lastSyncedAt?: string;
 }
+
+// Reports Typed Interfaces
+export type ReportPeriodType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
+
+export interface EngineeringReportMeta {
+  id: string;
+  title: string;
+  periodType: ReportPeriodType;
+  fromDate: string;
+  toDate: string;
+  generatedAt: string;
+  generatedBy: {
+    name: string;
+    role: string;
+  };
+  projectId?: string;
+  repositoryId?: string;
+  developerId?: string;
+  projectName?: string;
+  repositoryName?: string;
+  developerName?: string;
+  status: 'COMPLETED' | 'GENERATING' | 'FAILED';
+}
+
+export interface ReportExecutiveSummary {
+  headline: string;
+  keyTakeaways: string[];
+  totalCommits: number;
+  totalPRs: number;
+  mergedPRs: number;
+  issuesClosed: number;
+  netCodeChanges: number;
+  activeDevelopersCount: number;
+}
+
+export interface ReportProjectActivityItem {
+  id: string;
+  name: string;
+  repositoriesCount: number;
+  commitsCount: number;
+  prsCount: number;
+  issuesCount: number;
+  linesChanged: number;
+}
+
+export interface ReportRepositoryActivityItem {
+  id: string;
+  fullName: string;
+  commitsCount: number;
+  prsCount: number;
+  issuesCount: number;
+  linesAdded: number;
+  linesDeleted: number;
+}
+
+export interface ReportDeveloperActivityItem {
+  id: string;
+  name: string;
+  login: string;
+  avatarUrl?: string;
+  commits: number;
+  prs: number;
+  reviews: number;
+  linesAdded: number;
+  linesDeleted: number;
+}
+
+export interface ReportCommitSummary {
+  totalCommits: number;
+  topCommitters: { login: string; count: number }[];
+  avgCommitsPerDay: number;
+}
+
+export interface ReportPRSummary {
+  totalOpened: number;
+  totalMerged: number;
+  totalClosed: number;
+  avgMergeTimeHours: number;
+}
+
+export interface ReportIssueSummary {
+  totalOpened: number;
+  totalClosed: number;
+  resolutionRatePercent: number;
+}
+
+export interface ReportCodeChangeSummary {
+  totalAdditions: number;
+  totalDeletions: number;
+  netChanges: number;
+}
+
+export interface ReportDetailData {
+  meta: EngineeringReportMeta;
+  executiveSummary: ReportExecutiveSummary;
+  projectActivity: ReportProjectActivityItem[];
+  repositoryActivity: ReportRepositoryActivityItem[];
+  developerActivity: ReportDeveloperActivityItem[];
+  commitSummary: ReportCommitSummary;
+  prSummary: ReportPRSummary;
+  issueSummary: ReportIssueSummary;
+  codeChangeSummary: ReportCodeChangeSummary;
+  activityTrend: ActivityTrendItem[];
+  codeChangeTrend: CodeChangeTrendItem[];
+  activityTimeline: TimelineEvent[];
+}
+
+export interface ReportFilters {
+  periodType?: ReportPeriodType;
+  projectId?: string;
+  repositoryId?: string;
+  developerId?: string;
+  from?: string;
+  to?: string;
+  search?: string;
+}
+

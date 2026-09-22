@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { ProjectIssue } from '../../types';
 import { AlertCircle, Clock, CheckCircle2 } from 'lucide-react';
 
@@ -68,7 +69,9 @@ export function ProjectIssuesTab({ issues }: ProjectIssuesTabProps) {
                       </span>
                     </td>
                     <td className="py-3 px-4 font-bold text-slate-100 max-w-md truncate">
-                      {issue.title}
+                      <Link href={`/issues/${issue.id}`} className="hover:text-blue-400 transition-colors">
+                        {issue.title}
+                      </Link>
                     </td>
                     <td className="py-3 px-4">{getIssueBadge(issue.state)}</td>
                     <td className="py-3 px-4 font-mono text-slate-400 text-[11px]">
