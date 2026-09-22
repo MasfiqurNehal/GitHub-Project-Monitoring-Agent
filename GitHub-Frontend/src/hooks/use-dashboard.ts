@@ -1,16 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchDashboardOverview, fetchEngineeringSignals } from '../lib/api/dashboard';
+import { getDashboardOverview } from '../features/dashboard/api';
+import { fetchEngineeringSignals } from '../lib/api/dashboard';
 import { DashboardFilters } from '../types';
 
-export function useDashboard(filters: DashboardFilters = {}) {
+export function useDashboardOverview(filters: DashboardFilters = {}) {
   const overviewQuery = useQuery({
-    queryKey: ['dashboard-overview', filters.projectId, filters.repositoryId, filters.developerId, filters.from, filters.to],
-    queryFn: () => fetchDashboardOverview(filters),
+    queryKey: ['dashboard-overview', filters],
+    queryFn: () => getDashboardOverview(filters),
   });
 
   const signalsQuery = useQuery({
     queryKey: ['engineering-signals'],
-    queryFn: fetchEngineeringSignals,
+    queryFn: () => fetchEngineeringSignals(),
   });
 
   return {
@@ -24,3 +25,6 @@ export function useDashboard(filters: DashboardFilters = {}) {
     },
   };
 }
+
+// Alias for backward compatibility
+export const useDashboard = useDashboardOverview;

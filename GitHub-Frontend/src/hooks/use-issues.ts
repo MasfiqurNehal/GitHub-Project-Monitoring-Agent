@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchIssues, fetchIssueDetails } from '../lib/api/issues';
+import { getIssues, getIssueDetail } from '../features/issues/api';
 import { IssueFilters } from '../types';
 
 export function useIssues(filters: IssueFilters = {}) {
   const query = useQuery({
     queryKey: ['issues-list', filters],
-    queryFn: () => fetchIssues(filters),
+    queryFn: () => getIssues(filters),
   });
 
   return {
@@ -16,19 +16,23 @@ export function useIssues(filters: IssueFilters = {}) {
   };
 }
 
-export function useIssueDetail(issueId: string) {
+export function useIssue(issueId: string) {
   const detailQuery = useQuery({
     queryKey: ['issue-detail', issueId],
-    queryFn: () => fetchIssueDetails(issueId),
+    queryFn: () => getIssueDetail(issueId),
     enabled: !!issueId,
   });
 
   return {
     ...detailQuery,
     issueDetail: detailQuery.data?.data,
+    issue: detailQuery.data?.data?.issue,
     data: detailQuery.data,
     isLoading: detailQuery.isLoading,
     isError: detailQuery.isError,
     refetch: detailQuery.refetch,
   };
 }
+
+// Alias for backward compatibility
+export const useIssueDetail = useIssue;

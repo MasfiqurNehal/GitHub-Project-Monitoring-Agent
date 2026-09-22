@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchReports, fetchReportDetails } from '../lib/api/reports';
+import { getReports, getReportDetail } from '../features/reports/api';
 import { ReportFilters } from '../types';
 
 export function useReports(filters: ReportFilters = {}) {
   const query = useQuery({
     queryKey: ['reports-list', filters],
-    queryFn: () => fetchReports(filters),
+    queryFn: () => getReports(filters),
   });
 
   return {
@@ -16,19 +16,23 @@ export function useReports(filters: ReportFilters = {}) {
   };
 }
 
-export function useReportDetail(reportId: string) {
+export function useReport(reportId: string) {
   const detailQuery = useQuery({
     queryKey: ['report-detail', reportId],
-    queryFn: () => fetchReportDetails(reportId),
+    queryFn: () => getReportDetail(reportId),
     enabled: !!reportId,
   });
 
   return {
     ...detailQuery,
     reportDetail: detailQuery.data?.data,
+    report: detailQuery.data?.data,
     data: detailQuery.data,
     isLoading: detailQuery.isLoading,
     isError: detailQuery.isError,
     refetch: detailQuery.refetch,
   };
 }
+
+// Alias for backward compatibility
+export const useReportDetail = useReport;

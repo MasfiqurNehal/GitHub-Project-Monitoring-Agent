@@ -1,12 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchRepositories, fetchRepositoryDetails, triggerRepositorySync } from '../lib/api/repositories';
+import { getRepositories, getRepositoryDetail } from '../features/repositories/api';
+import { triggerRepositorySync } from '../lib/api/repositories';
 
-export function useRepositories() {
+export function useRepositories(filters: {
+  projectId?: string;
+  search?: string;
+  status?: string;
+  visibility?: 'public' | 'private' | 'all';
+} = {}) {
   const queryClient = useQueryClient();
 
   const reposQuery = useQuery({
-    queryKey: ['repositories-list'],
-    queryFn: () => fetchRepositories(),
+    queryKey: ['repositories-list', filters],
+    queryFn: () => getRepositories(filters),
   });
 
   const syncMutation = useMutation({
@@ -26,19 +32,23 @@ export function useRepositories() {
   };
 }
 
-export function useRepositoryDetail(repositoryId: string) {
+export function useRepository(repositoryId: string) {
   const detailQuery = useQuery({
     queryKey: ['repository-detail', repositoryId],
-    queryFn: () => fetchRepositoryDetails(repositoryId),
+    queryFn: () => getRepositoryDetail(repositoryId),
     enabled: !!repositoryId,
   });
 
   return {
     ...detailQuery,
     repositoryDetail: detailQuery.data?.data,
+    repository: detailQuery.data?.data?.repository,
     data: detailQuery.data,
     isLoading: detailQuery.isLoading,
     isError: detailQuery.isError,
     refetch: detailQuery.refetch,
   };
 }
+
+// Alias for backward compatibility
+export const useRepositoryDetail = useRepository;

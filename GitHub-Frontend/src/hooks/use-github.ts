@@ -1,38 +1,24 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  fetchGitHubConnectionStatus,
-  connectGitHubAccount,
-  disconnectGitHubAccount,
+  getGitHubConnection,
+  getMonitoredRepositories,
   validateGitHubRepository,
   addMonitoredRepository,
-  fetchMonitoredRepositories,
   syncMonitoredRepository,
   removeMonitoredRepository,
-} from '../lib/api/github';
+} from '../features/github/api';
+import { connectGitHubAccount, disconnectGitHubAccount } from '../lib/api/github';
 import { ValidatedRepositoryInfo } from '../types';
 
-export function useGitHub() {
+export function useGithubConnection() {
   const queryClient = useQueryClient();
 
-  // State for validate repository draft
-  const [repoUrlInput, setRepoUrlInput] = useState('');
-  const [validationError, setValidationError] = useState<string | null>(null);
-  const [validatedRepo, setValidatedRepo] = useState<ValidatedRepositoryInfo | null>(null);
-
-  // Connection status query
   const statusQuery = useQuery({
     queryKey: ['github-connection-status'],
-    queryFn: fetchGitHubConnectionStatus,
+    queryFn: () => getGitHubConnection(),
   });
 
-  // Monitored repositories query
-  const monitoredReposQuery = useQuery({
-    queryKey: ['monitored-repositories'],
-    queryFn: fetchMonitoredRepositories,
-  });
-
-  // Connect mutation
   const connectMutation = useMutation({
     mutationFn: connectGitHubAccount,
     onSuccess: () => {
@@ -40,7 +26,6 @@ export function useGitHub() {
     },
   });
 
-  // Disconnect mutation
   const disconnectMutation = useMutation({
     mutationFn: disconnectGitHubAccount,
     onSuccess: () => {
@@ -48,7 +33,62 @@ export function useGitHub() {
     },
   });
 
-  // Validate repo mutation
+  return {
+    accountInfo: statusQuery.data?.data || { isConnected: false },
+    isLoading: statusQuery.isLoading,
+    isError: statusQuery.isError,
+    refetch: statusQuery.refetch,
+    connectAccount: connectMutation.mutateAsync,
+    isConnecting: connectMutation.isPending,
+    disconnectAccount: disconnectMutation.mutateAsync,
+    isDisconnecting: disconnectMutation.isPending,
+  };
+}
+
+export function useGithubRepositories() {
+  const queryClient = useQueryClient();
+
+  const monitoredReposQuery = useQuery({
+    queryKey: ['monitored-repositories'],
+    queryFn: () => getMonitoredRepositories(),
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: (repoId: string) => syncMonitoredRepository(repoId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['monitored-repositories'] });
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (repoId: string) => removeMonitoredRepository(repoId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['monitored-repositories'] });
+    },
+  });
+
+  return {
+    monitoredRepos: monitoredReposQuery.data?.data || [],
+    isLoading: monitoredReposQuery.isLoading,
+    isError: monitoredReposQuery.isError,
+    refetch: monitoredReposQuery.refetch,
+    syncRepo: syncMutation.mutateAsync,
+    isSyncingRepo: syncMutation.isPending,
+    removeRepo: removeMutation.mutateAsync,
+    isRemovingRepo: removeMutation.isPending,
+  };
+}
+
+export function useGitHub() {
+  const queryClient = useQueryClient();
+
+  const [repoUrlInput, setRepoUrlInput] = useState('');
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [validatedRepo, setValidatedRepo] = useState<ValidatedRepositoryInfo | null>(null);
+
+  const connection = useGithubConnection();
+  const repos = useGithubRepositories();
+
   const validateMutation = useMutation({
     mutationFn: (url: string) => validateGitHubRepository(url),
     onSuccess: (res) => {
@@ -61,30 +101,13 @@ export function useGitHub() {
     },
   });
 
-  // Add repo to monitoring mutation
   const addRepoMutation = useMutation({
-    mutationFn: (repo: ValidatedRepositoryInfo) => addMonitoredRepository(repo),
+    mutationFn: (repo: ValidatedRepositoryInfo) => addMonitoredRepository({ url: repo.url }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['monitored-repositories'] });
       setValidatedRepo(null);
       setRepoUrlInput('');
       setValidationError(null);
-    },
-  });
-
-  // Sync repo mutation
-  const syncMutation = useMutation({
-    mutationFn: (repoId: string) => syncMonitoredRepository(repoId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['monitored-repositories'] });
-    },
-  });
-
-  // Remove repo mutation
-  const removeMutation = useMutation({
-    mutationFn: (repoId: string) => removeMonitoredRepository(repoId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['monitored-repositories'] });
     },
   });
 
@@ -96,12 +119,12 @@ export function useGitHub() {
   };
 
   return {
-    accountInfo: statusQuery.data?.data || { isConnected: false },
-    isStatusLoading: statusQuery.isLoading,
-    connectAccount: connectMutation.mutateAsync,
-    isConnecting: connectMutation.isPending,
-    disconnectAccount: disconnectMutation.mutateAsync,
-    isDisconnecting: disconnectMutation.isPending,
+    accountInfo: connection.accountInfo,
+    isStatusLoading: connection.isLoading,
+    connectAccount: connection.connectAccount,
+    isConnecting: connection.isConnecting,
+    disconnectAccount: connection.disconnectAccount,
+    isDisconnecting: connection.isDisconnecting,
 
     // Validate Repo state
     repoUrlInput,
@@ -113,13 +136,13 @@ export function useGitHub() {
     clearValidatedRepo: () => setValidatedRepo(null),
 
     // Monitored Repos state
-    monitoredRepos: monitoredReposQuery.data?.data || [],
-    isMonitoredLoading: monitoredReposQuery.isLoading,
+    monitoredRepos: repos.monitoredRepos,
+    isMonitoredLoading: repos.isLoading,
     addRepoToMonitoring: addRepoMutation.mutateAsync,
     isAddingRepo: addRepoMutation.isPending,
-    syncRepo: syncMutation.mutateAsync,
-    isSyncingRepo: syncMutation.isPending,
-    removeRepo: removeMutation.mutateAsync,
-    isRemovingRepo: removeMutation.isPending,
+    syncRepo: repos.syncRepo,
+    isSyncingRepo: repos.isSyncingRepo,
+    removeRepo: repos.removeRepo,
+    isRemovingRepo: repos.isRemovingRepo,
   };
 }

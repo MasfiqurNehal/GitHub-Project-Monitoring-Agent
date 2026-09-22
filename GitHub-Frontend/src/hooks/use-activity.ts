@@ -1,19 +1,22 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchActivityStream } from '../lib/api/activity';
+import { getActivityStream } from '../features/activity/api';
 import { ActivityFilters } from '../types';
 
-export function useActivityStream(filters: ActivityFilters = {}) {
+export function useActivity(filters: ActivityFilters = {}) {
   const query = useQuery({
     queryKey: ['activity-stream', filters],
-    queryFn: () => fetchActivityStream(filters),
+    queryFn: () => getActivityStream(filters),
   });
 
   return {
     activities: query.data?.data || [],
-    total: query.data?.total || 0,
+    total: query.data?.data?.length || 0,
     isLoading: query.isLoading,
     isError: query.isError,
     error: query.error,
     refetch: query.refetch,
   };
 }
+
+// Alias for backward compatibility
+export const useActivityStream = useActivity;

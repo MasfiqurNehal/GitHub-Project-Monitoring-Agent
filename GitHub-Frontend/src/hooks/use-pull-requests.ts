@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchPullRequests, fetchPullRequestDetails } from '../lib/api/pull-requests';
+import { getPullRequests, getPullRequestDetail } from '../features/pull-requests/api';
 
 export function usePullRequests(filters: {
   projectId?: string;
@@ -11,7 +11,7 @@ export function usePullRequests(filters: {
 } = {}) {
   const query = useQuery({
     queryKey: ['pull-requests-list', filters],
-    queryFn: () => fetchPullRequests(filters),
+    queryFn: () => getPullRequests(filters),
   });
 
   return {
@@ -22,19 +22,23 @@ export function usePullRequests(filters: {
   };
 }
 
-export function usePullRequestDetail(pullRequestId: string) {
+export function usePullRequest(pullRequestId: string) {
   const detailQuery = useQuery({
     queryKey: ['pull-request-detail', pullRequestId],
-    queryFn: () => fetchPullRequestDetails(pullRequestId),
+    queryFn: () => getPullRequestDetail(pullRequestId),
     enabled: !!pullRequestId,
   });
 
   return {
     ...detailQuery,
     pullRequestDetail: detailQuery.data?.data,
+    pullRequest: detailQuery.data?.data?.pullRequest,
     data: detailQuery.data,
     isLoading: detailQuery.isLoading,
     isError: detailQuery.isError,
     refetch: detailQuery.refetch,
   };
 }
+
+// Alias for backward compatibility
+export const usePullRequestDetail = usePullRequest;
