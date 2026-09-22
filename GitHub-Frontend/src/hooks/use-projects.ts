@@ -36,9 +36,18 @@ export function useProjects() {
 }
 
 export function useProjectDetail(projectId: string) {
-  return useQuery({
+  const detailQuery = useQuery({
     queryKey: ['project-detail', projectId],
     queryFn: () => fetchProjectDetails(projectId),
     enabled: !!projectId,
   });
+
+  return {
+    ...detailQuery,
+    projectDetail: detailQuery.data?.data,
+    data: detailQuery.data,
+    isLoading: detailQuery.isLoading,
+    isError: detailQuery.isError,
+    refetch: detailQuery.refetch,
+  };
 }

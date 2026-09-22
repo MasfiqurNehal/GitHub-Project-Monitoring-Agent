@@ -20,6 +20,17 @@ export interface Repository {
   project?: Project | null;
 }
 
+export interface ProjectMetrics {
+  repositoriesCount: number;
+  developersCount: number;
+  commitsCount: number;
+  prsCount: number;
+  issuesCount: number;
+  linesAdded: number;
+  linesDeleted: number;
+  lastActivityAt: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -27,7 +38,48 @@ export interface Project {
   status: ProjectStatus;
   createdAt: string;
   updatedAt: string;
+  metrics?: ProjectMetrics;
   repositories?: Repository[];
+}
+
+export interface ProjectWithMetrics extends Project {
+  metrics: ProjectMetrics;
+}
+
+export interface ProjectIssue {
+  id: string;
+  number: number;
+  title: string;
+  repoName: string;
+  author: string;
+  authorAvatar?: string;
+  state: IssueState;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FileChangeItem {
+  name: string;
+  repoName: string;
+  additions: number;
+  deletions: number;
+}
+
+export interface ProjectDetailData {
+  project: ProjectWithMetrics;
+  repositories: Repository[];
+  developers: DeveloperContributionItem[];
+  recentActivity: RecentActivityItem[];
+  commits: Commit[];
+  pullRequests: PullRequest[];
+  issues: ProjectIssue[];
+  codeChanges: {
+    trend: CodeChangeTrendItem[];
+    totalAdditions: number;
+    totalDeletions: number;
+    netChanges: number;
+    topFilesChanged: FileChangeItem[];
+  };
 }
 
 export interface Developer {
