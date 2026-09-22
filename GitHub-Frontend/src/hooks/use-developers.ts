@@ -15,9 +15,18 @@ export function useDevelopers() {
 }
 
 export function useDeveloperDetail(developerId: string) {
-  return useQuery({
+  const detailQuery = useQuery({
     queryKey: ['developer-detail', developerId],
     queryFn: () => fetchDeveloperDetails(developerId),
     enabled: !!developerId,
   });
+
+  return {
+    ...detailQuery,
+    developerDetail: detailQuery.data?.data,
+    data: detailQuery.data,
+    isLoading: detailQuery.isLoading,
+    isError: detailQuery.isError,
+    refetch: detailQuery.refetch,
+  };
 }

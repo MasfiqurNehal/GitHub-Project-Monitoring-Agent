@@ -125,6 +125,18 @@ export interface ProjectDetailData {
   };
 }
 
+export interface DeveloperMetrics {
+  projectsCount: number;
+  repositoriesCount: number;
+  commitsCount: number;
+  prsCount: number;
+  reviewsCount: number;
+  issuesCount: number;
+  linesAdded: number;
+  linesDeleted: number;
+  lastActivityAt: string;
+}
+
 export interface Developer {
   id: string;
   githubUserId?: number | string | null;
@@ -140,6 +152,72 @@ export interface Developer {
     pullRequests: number;
     reviews: number;
   };
+}
+
+export interface DeveloperWithMetrics extends Developer {
+  projects: { id: string; name: string }[];
+  repositories: { id: string; name: string; fullName: string }[];
+  metrics: DeveloperMetrics;
+}
+
+export interface TimelineEvent {
+  id: string;
+  date: string; // e.g. "2026-09-22"
+  displayDate: string; // e.g. "16 Aug"
+  time: string; // e.g. "10:42"
+  type: 'commit' | 'pull_request' | 'review' | 'issue';
+  title: string;
+  repoName: string;
+  additions?: number;
+  deletions?: number;
+  prNumber?: number;
+  issueNumber?: number;
+  status?: string;
+  url?: string;
+}
+
+export interface ActivityDistributionItem {
+  date: string;
+  label: string;
+  commits: number;
+  prs: number;
+  reviews: number;
+  issues: number;
+}
+
+export interface DeveloperDetailData {
+  developer: DeveloperWithMetrics;
+  commitStats: {
+    totalCommits: number;
+    avgAdditionsPerCommit: number;
+    topRepo: string;
+    commitsByDay: { date: string; count: number }[];
+  };
+  prStats: {
+    totalPRs: number;
+    openPRs: number;
+    mergedPRs: number;
+    closedPRs: number;
+  };
+  reviewStats: {
+    totalReviews: number;
+    approved: number;
+    changesRequested: number;
+    commented: number;
+  };
+  issueStats: {
+    totalIssues: number;
+    opened: number;
+    closed: number;
+  };
+  codeChangeStats: {
+    totalAdditions: number;
+    totalDeletions: number;
+    netChanges: number;
+    trend: CodeChangeTrendItem[];
+  };
+  activityTimeline: TimelineEvent[];
+  activityDistribution: ActivityDistributionItem[];
 }
 
 export interface Commit {
