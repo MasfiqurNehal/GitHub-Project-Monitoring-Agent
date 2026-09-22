@@ -1,29 +1,41 @@
-import { AlertCircle, RefreshCw } from 'lucide-react';
+'use client';
+
+import React from 'react';
+import { AlertCircle, LucideIcon } from 'lucide-react';
+import { RetryButton } from './RetryButton';
 
 interface ErrorStateProps {
   title?: string;
   message?: string;
+  icon?: LucideIcon;
   onRetry?: () => void;
+  isRetrying?: boolean;
+  className?: string;
 }
 
 export function ErrorState({
   title = 'Unable to Load Data',
-  message = 'Failed to fetch analytics from backend service.',
+  message = 'Failed to fetch telemetry metrics from backend service.',
+  icon: Icon = AlertCircle,
   onRetry,
+  isRetrying = false,
+  className = '',
 }: ErrorStateProps) {
   return (
-    <div className="p-8 text-center bg-rose-500/5 border border-rose-500/20 rounded-2xl text-slate-300 space-y-3">
-      <AlertCircle className="w-10 h-10 text-rose-400 mx-auto" />
-      <h3 className="font-semibold text-rose-200 text-sm">{title}</h3>
-      <p className="text-xs text-slate-400 max-w-md mx-auto">{message}</p>
+    <div className={`p-8 text-center bg-rose-500/5 border border-rose-500/20 rounded-2xl text-slate-300 space-y-4 shadow-xl ${className}`}>
+      <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-2xl w-fit mx-auto">
+        <Icon className="w-8 h-8 text-rose-400" />
+      </div>
+
+      <div className="space-y-1">
+        <h3 className="font-bold text-rose-200 text-sm tracking-tight">{title}</h3>
+        <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">{message}</p>
+      </div>
+
       {onRetry && (
-        <button
-          onClick={onRetry}
-          className="inline-flex items-center space-x-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-medium border border-slate-700 transition-colors"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          <span>Retry Loading</span>
-        </button>
+        <div className="pt-2">
+          <RetryButton onRetry={onRetry} isRetrying={isRetrying} />
+        </div>
       )}
     </div>
   );
