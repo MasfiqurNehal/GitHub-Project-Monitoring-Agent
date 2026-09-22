@@ -27,9 +27,18 @@ export function useRepositories() {
 }
 
 export function useRepositoryDetail(repositoryId: string) {
-  return useQuery({
+  const detailQuery = useQuery({
     queryKey: ['repository-detail', repositoryId],
     queryFn: () => fetchRepositoryDetails(repositoryId),
     enabled: !!repositoryId,
   });
+
+  return {
+    ...detailQuery,
+    repositoryDetail: detailQuery.data?.data,
+    data: detailQuery.data,
+    isLoading: detailQuery.isLoading,
+    isError: detailQuery.isError,
+    refetch: detailQuery.refetch,
+  };
 }

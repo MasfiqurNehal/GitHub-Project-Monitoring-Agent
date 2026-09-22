@@ -3,6 +3,16 @@ export type PullRequestState = 'OPEN' | 'CLOSED' | 'MERGED';
 export type ReviewState = 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED';
 export type IssueState = 'OPEN' | 'CLOSED';
 
+export interface RepositoryMetrics {
+  developersCount: number;
+  commitsCount: number;
+  prsCount: number;
+  issuesCount: number;
+  linesAdded: number;
+  linesDeleted: number;
+  lastActivityAt: string;
+}
+
 export interface Repository {
   id: string;
   projectId?: string | null;
@@ -14,10 +24,43 @@ export interface Repository {
   defaultBranch: string;
   language?: string | null;
   isActive: boolean;
+  isPrivate?: boolean;
+  status?: 'ACTIVE' | 'SYNCING' | 'PAUSED';
   lastSyncedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  metrics?: RepositoryMetrics;
   project?: Project | null;
+}
+
+export interface RepositoryWithMetrics extends Repository {
+  isPrivate: boolean;
+  status: 'ACTIVE' | 'SYNCING' | 'PAUSED';
+  metrics: RepositoryMetrics;
+}
+
+export interface RepositoryDetailData {
+  repository: RepositoryWithMetrics;
+  overview: {
+    openPRsCount: number;
+    mergedPRsCount: number;
+    openIssuesCount: number;
+    closedIssuesCount: number;
+    activeBranch: string;
+    readOnlyStatus: boolean;
+  };
+  developers: DeveloperContributionItem[];
+  recentActivity: RecentActivityItem[];
+  commits: Commit[];
+  pullRequests: PullRequest[];
+  issues: ProjectIssue[];
+  codeChanges: {
+    trend: CodeChangeTrendItem[];
+    totalAdditions: number;
+    totalDeletions: number;
+    netChanges: number;
+    topFilesChanged: FileChangeItem[];
+  };
 }
 
 export interface ProjectMetrics {
