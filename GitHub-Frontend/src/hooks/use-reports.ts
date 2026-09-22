@@ -9,7 +9,7 @@ export function useReports(filters: ReportFilters = {}) {
   });
 
   return {
-    reports: query.data?.data || [],
+    reports: Array.isArray(query.data?.data) ? query.data.data : [],
     isLoading: query.isLoading,
     isError: query.isError,
     refetch: query.refetch,

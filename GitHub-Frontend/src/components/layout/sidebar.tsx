@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLayout } from '../../providers/layout-provider';
+import { sendTelemetryLog } from '../../lib/telemetry';
 import {
   LayoutDashboard,
   FolderKanban,
@@ -119,6 +120,7 @@ export default function Sidebar() {
                     key={item.href}
                     href={item.href}
                     title={isSidebarCollapsed ? item.name : undefined}
+                    onClick={() => sendTelemetryLog(`Clicked sidebar menu item '${item.name}'`, 'PAGE_NAVIGATION', { href: item.href })}
                     className={`flex items-center space-x-3 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                       isSidebarCollapsed ? 'justify-center px-2' : ''
                     } ${

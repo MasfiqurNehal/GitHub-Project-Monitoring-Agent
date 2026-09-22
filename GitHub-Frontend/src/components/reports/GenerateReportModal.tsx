@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Loader2
 } from 'lucide-react';
+import { sendTelemetryLog } from '../../lib/telemetry';
 
 interface GenerateReportModalProps {
   isOpen: boolean;
@@ -53,6 +54,12 @@ export function GenerateReportModal({
   if (!isOpen) return null;
 
   const handleGenerate = () => {
+    sendTelemetryLog(`Submitted report generation form (Period: ${periodType})`, 'REPORT_GENERATE', {
+      periodType,
+      selectedProjectId,
+      selectedRepositoryId,
+      selectedDeveloperId,
+    });
     setIsGenerating(true);
     setTimeout(() => {
       setIsGenerating(false);

@@ -1,5 +1,6 @@
 import pg from 'pg';
 import dotenv from 'dotenv';
+import { logger } from '../utils/logger.js';
 
 dotenv.config();
 
@@ -8,7 +9,7 @@ const { Pool } = pg;
 const connectionString = process.env.DATABASE_URL;
 
 if (!connectionString) {
-  console.warn('[Database] WARNING: DATABASE_URL is not set in environment variables.');
+  logger.warn('DATABASE', 'DATABASE_URL is not set in environment variables.');
 }
 
 export const pool = new Pool({
@@ -22,18 +23,19 @@ export const pool = new Pool({
 });
 
 pool.on('error', (err) => {
-  console.error('[Database Pool Error]', err.message);
+  logger.error('DATABASE', `Neon PostgreSQL pool error: ${err.message}`, err);
 });
 
 export async function checkDatabaseHealth(): Promise<{ isHealthy: boolean; timestamp?: string; error?: string }> {
   try {
     const res = await pool.query('SELECT NOW() as current_time');
+    logger.db('Neon PostgreSQL database health check passed successfully.');
     return {
       isHealthy: true,
       timestamp: res.rows[0].current_time,
     };
   } catch (err: any) {
-    console.error('[Database Health Error]', err.message);
+    logger.error('DATABASE', `Neon PostgreSQL database health check failed: ${err.message}`, err);
     return {
       isHealthy: false,
       error: err.message,

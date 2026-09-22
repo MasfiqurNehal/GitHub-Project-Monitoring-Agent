@@ -1,8 +1,8 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import morgan from 'morgan';
 import { apiRouter } from './routes/api.router.js';
+import { logger } from './utils/logger.js';
 
 export const app = express();
 
@@ -12,7 +12,19 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
-app.use(morgan('dev'));
+
+// Descriptive HTTP Request Logger Middleware
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const isSuccess = res.statusCode >= 200 && res.statusCode < 400;
+    const statusLabel = isSuccess ? `${res.statusCode} OK` : `${res.statusCode} ERROR`;
+    
+    logger.http(`${req.method} ${req.originalUrl} -> ${statusLabel} (${duration}ms) [Client IP: ${req.ip}]`);
+  });
+  next();
+});
 
 // Mount API Router
 app.use('/api', apiRouter);
@@ -29,7 +41,7 @@ app.get('/', (req: Request, res: Response) => {
 
 // Central Error Handling Middleware
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  console.error('[Unhandled Server Error]', err);
+  logger.error('EXPRESS_SERVER', `Unhandled Error handling request ${req.method} ${req.url}: ${err.message}`, err);
   res.status(err.status || 500).json({
     success: false,
     error: {

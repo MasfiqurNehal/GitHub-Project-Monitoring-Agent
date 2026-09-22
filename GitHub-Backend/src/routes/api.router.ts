@@ -8,6 +8,7 @@ import * as activityController from '../controllers/activity.controller.js';
 import * as reportController from '../controllers/report.controller.js';
 import * as githubController from '../controllers/github.controller.js';
 import * as webhookController from '../controllers/webhook.controller.js';
+import * as telemetryController from '../controllers/telemetry.controller.js';
 
 export const apiRouter = Router();
 
@@ -62,7 +63,7 @@ apiRouter.get('/issues', (req, res) => res.json({ success: true, data: [] }));
 apiRouter.get('/issues/:id', (req, res) => res.json({ success: true, data: null }));
 
 // 9. Reports Endpoints
-apiRouter.get('/reports', reportController.generateReport);
+apiRouter.get('/reports', reportController.listReports);
 apiRouter.post('/reports/generate', reportController.generateReport);
 apiRouter.get('/reports/:id', reportController.getReportDetail);
 
@@ -73,3 +74,6 @@ apiRouter.get('/settings/github/monitored-repos', repositoryController.listRepos
 
 // 11. GitHub Webhooks Ingestion
 apiRouter.post('/webhooks/github', webhookController.handleGitHubWebhook);
+
+// 12. Frontend Telemetry & UI Logging
+apiRouter.post('/telemetry/log', telemetryController.logTelemetry);

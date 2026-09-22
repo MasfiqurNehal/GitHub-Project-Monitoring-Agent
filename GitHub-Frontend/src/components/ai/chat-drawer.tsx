@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, Bot, User, Send, Sparkles, Filter, ExternalLink, Loader2 } from 'lucide-react';
 import { sendEngineeringAgentMessage } from '../../lib/api/ai';
+import { sendTelemetryLog } from '../../lib/telemetry';
 
 interface ChatDrawerProps {
   isOpen: boolean;
@@ -46,6 +47,8 @@ I can analyze activity across your monitored projects, repositories, and develop
   const handleSend = async (textToSend?: string) => {
     const text = textToSend || inputMessage;
     if (!text.trim() || isLoading) return;
+
+    sendTelemetryLog(`User sent AI Chat query: "${text}"`, 'AI_CHAT_QUERY', { query: text });
 
     const userMsg: Message = {
       id: `usr-${Date.now()}`,
