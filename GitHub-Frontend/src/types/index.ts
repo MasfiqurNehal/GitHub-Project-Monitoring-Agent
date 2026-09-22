@@ -235,6 +235,8 @@ export interface Commit {
   author?: Developer | null;
 }
 
+export type ReviewStatusType = 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'PENDING';
+
 export interface PullRequest {
   id: string;
   repositoryId: string;
@@ -253,6 +255,53 @@ export interface PullRequest {
   changedFiles: number;
   repository?: Repository;
   author?: Developer | null;
+}
+
+export interface PullRequestWithMetrics extends PullRequest {
+  reviewStatus: ReviewStatusType;
+  commitsCount: number;
+  targetBranch: string;
+  sourceBranch: string;
+  project?: {
+    id: string;
+    name: string;
+  };
+}
+
+export interface PRReviewerItem {
+  id: string;
+  login: string;
+  name?: string;
+  avatarUrl?: string;
+  state: ReviewState;
+  submittedAt: string;
+  body?: string;
+}
+
+export interface PRFileItem {
+  filename: string;
+  status: 'added' | 'modified' | 'deleted' | 'renamed';
+  additions: number;
+  deletions: number;
+  changes: number;
+}
+
+export interface PRTimelineStep {
+  id: string;
+  type: 'opened' | 'reviewed' | 'committed' | 'merged' | 'closed';
+  title: string;
+  actor: string;
+  actorAvatar?: string;
+  timestamp: string;
+  details?: string;
+}
+
+export interface PullRequestDetailData {
+  pullRequest: PullRequestWithMetrics;
+  reviewers: PRReviewerItem[];
+  commits: Commit[];
+  files: PRFileItem[];
+  timeline: PRTimelineStep[];
 }
 
 export interface PullRequestReview {
