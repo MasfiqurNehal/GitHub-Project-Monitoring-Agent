@@ -39,7 +39,7 @@ export default function SettingsPage() {
               <h3 className="font-bold text-white text-sm">GitHub Webhook URL</h3>
             </div>
             <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/60 text-xs font-mono text-slate-300 select-all">
-              http://your-server-ip:5000/api/webhooks/github
+              {process.env.NEXT_PUBLIC_GITHUB_WEBHOOK_URL || 'http://localhost:5000/api/webhooks/github'}
             </div>
           </div>
         </div>

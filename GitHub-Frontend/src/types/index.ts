@@ -1,0 +1,201 @@
+export type ProjectStatus = 'ACTIVE' | 'ARCHIVED' | 'PAUSED';
+export type PullRequestState = 'OPEN' | 'CLOSED' | 'MERGED';
+export type ReviewState = 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED';
+export type IssueState = 'OPEN' | 'CLOSED';
+
+export interface Repository {
+  id: string;
+  projectId?: string | null;
+  githubId: number | string;
+  owner: string;
+  name: string;
+  fullName: string;
+  url: string;
+  defaultBranch: string;
+  language?: string | null;
+  isActive: boolean;
+  lastSyncedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  project?: Project | null;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description?: string | null;
+  status: ProjectStatus;
+  createdAt: string;
+  updatedAt: string;
+  repositories?: Repository[];
+}
+
+export interface Developer {
+  id: string;
+  githubUserId?: number | string | null;
+  login: string;
+  name?: string | null;
+  email?: string | null;
+  avatarUrl?: string | null;
+  profileUrl?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    commits: number;
+    pullRequests: number;
+    reviews: number;
+  };
+}
+
+export interface Commit {
+  id: string;
+  repositoryId: string;
+  githubSha: string;
+  authorId?: string | null;
+  message: string;
+  commitUrl: string;
+  committedAt: string;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  repository?: Repository;
+  author?: Developer | null;
+}
+
+export interface PullRequest {
+  id: string;
+  repositoryId: string;
+  githubPrId: number | string;
+  number: number;
+  authorId?: string | null;
+  title: string;
+  body?: string | null;
+  state: PullRequestState;
+  createdAt: string;
+  updatedAt: string;
+  closedAt?: string | null;
+  mergedAt?: string | null;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  repository?: Repository;
+  author?: Developer | null;
+}
+
+export interface PullRequestReview {
+  id: string;
+  pullRequestId: string;
+  reviewerId?: string | null;
+  state: ReviewState;
+  body?: string | null;
+  submittedAt: string;
+  reviewer?: Developer | null;
+}
+
+export interface ActivityEvent {
+  id: string;
+  repositoryId: string;
+  developerId?: string | null;
+  eventType: string; // commit, push, pr_opened, pr_merged, pr_closed, pr_reviewed, issue_opened
+  sourceId: string;
+  occurredAt: string;
+  metadataJson?: any;
+  repository?: Repository;
+  developer?: Developer | null;
+}
+
+export type DateRangePreset = '1d' | '7d' | '30d' | 'all' | 'custom';
+export type ActivityTypeOption = 'all' | 'commit' | 'push' | 'pull_request' | 'review' | 'issue';
+
+export interface DashboardFilters {
+  projectId?: string;
+  repositoryId?: string;
+  developerId?: string;
+  activityType?: ActivityTypeOption;
+  preset?: DateRangePreset;
+  from?: string;
+  to?: string;
+}
+
+export interface DashboardKPI {
+  totalProjects: number;
+  totalRepositories: number;
+  totalCommits: number;
+  totalPRs: number;
+  mergedPRs: number;
+  openPRs: number;
+  totalReviews: number;
+  activeDevelopers: number;
+  linesAdded: number;
+  linesDeleted: number;
+}
+
+export interface ActivityTrendItem {
+  date: string;
+  commits: number;
+  prs: number;
+  reviews: number;
+}
+
+export interface DashboardOverview {
+  kpi: DashboardKPI;
+  activityTrend: ActivityTrendItem[];
+}
+
+export interface EngineeringSignals {
+  inactiveRepositories: Repository[];
+  stalePullRequests: PullRequest[];
+}
+
+export interface UIAction {
+  type: 'APPLY_FILTERS' | 'OPEN_PROJECT' | 'OPEN_REPOSITORY' | 'OPEN_DEVELOPER' | 'OPEN_REPORT';
+  projectId?: string;
+  projectName?: string;
+  repositoryId?: string;
+  developerId?: string;
+  from?: string;
+  to?: string;
+}
+
+export interface AIResponseData {
+  messageId?: string;
+  conversationId: string;
+  answer: string;
+  uiActions?: UIAction[];
+  contextSummary?: any;
+}
+
+// GitHub Connection Settings Interfaces
+export interface GitHubAccountInfo {
+  isConnected: boolean;
+  username?: string;
+  name?: string;
+  avatarUrl?: string;
+  organization?: string;
+  connectedAt?: string;
+  scopes?: string[];
+}
+
+export interface ValidatedRepositoryInfo {
+  url: string;
+  owner: string;
+  name: string;
+  fullName: string;
+  isPrivate: boolean;
+  defaultBranch: string;
+  hasReadAccess: boolean;
+  language?: string;
+  starsCount?: number;
+}
+
+export interface MonitoredRepository {
+  id: string;
+  name: string;
+  owner: string;
+  fullName: string;
+  url: string;
+  isPrivate: boolean;
+  defaultBranch: string;
+  status: 'ACTIVE' | 'SYNCING' | 'PAUSED';
+  lastSyncedAt?: string;
+}

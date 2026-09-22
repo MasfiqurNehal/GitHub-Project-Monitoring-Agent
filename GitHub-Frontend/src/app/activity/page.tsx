@@ -1,12 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import Header from '../../components/navigation/header';
+import Header from '../../components/layout/header';
 import ChatDrawer from '../../components/ai/chat-drawer';
-import { Activity, GitCommit, GitPullRequest, ShieldCheck } from 'lucide-react';
+import { FilterBar } from '../../components/filters/FilterBar';
+import { useProjects } from '../../hooks/use-projects';
+import { useRepositories } from '../../hooks/use-repositories';
+import { useDevelopers } from '../../hooks/use-developers';
+import { Activity, ShieldCheck } from 'lucide-react';
 
 export default function ActivityPage() {
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
+
+  const { projects } = useProjects();
+  const { repositories } = useRepositories();
+  const { developers } = useDevelopers();
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-slate-950 text-slate-100 min-h-screen">
@@ -22,9 +30,19 @@ export default function ActivityPage() {
           </p>
         </div>
 
-        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 text-slate-400 text-xs text-center">
-          <ShieldCheck className="w-8 h-8 text-blue-400 mx-auto mb-2" />
-          Live stream is active. All events are logged continuously from webhooks.
+        {/* Global Filter Bar */}
+        <FilterBar
+          projects={projects}
+          repositories={repositories}
+          developers={developers}
+        />
+
+        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 text-slate-400 text-xs text-center space-y-2">
+          <ShieldCheck className="w-8 h-8 text-blue-400 mx-auto" />
+          <p className="font-semibold text-slate-200">Live Webhook Event Ingestion Stream</p>
+          <p className="text-[11px] text-slate-400 max-w-lg mx-auto">
+            Activity stream filters respond automatically to selected projects, repositories, contributors, event types, and custom date ranges.
+          </p>
         </div>
       </main>
 
