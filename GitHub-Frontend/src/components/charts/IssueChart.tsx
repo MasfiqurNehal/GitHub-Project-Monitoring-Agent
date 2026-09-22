@@ -18,7 +18,7 @@ export function IssueChart({ data }: IssueChartProps) {
         </div>
       </div>
 
-      <div className="h-60 w-full">
+      <div role="img" aria-label="Issue activity chart showing opened vs resolved issue volume" className="h-60 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />

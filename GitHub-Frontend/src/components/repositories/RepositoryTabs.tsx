@@ -49,10 +49,15 @@ export function RepositoryTabs({ detail }: RepositoryTabsProps) {
     <div className="space-y-6">
       {/* Navigation Tab Bar */}
       <div className="border-b border-slate-800 overflow-x-auto scrollbar-none">
-        <div className="flex items-center gap-1 min-w-max pb-1">
+        <div role="tablist" aria-label="Repository section tabs" className="flex items-center gap-1 min-w-max pb-1">
           {tabs.map((tab) => (
             <button
               key={tab.id}
+              role="tab"
+              id={`repo-tab-${tab.id}`}
+              aria-selected={activeTab === tab.id}
+              aria-controls={`repo-panel-${tab.id}`}
+              type="button"
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all relative ${
                 activeTab === tab.id
@@ -77,7 +82,12 @@ export function RepositoryTabs({ detail }: RepositoryTabsProps) {
       </div>
 
       {/* Tab Contents */}
-      <div className="pt-2">
+      <div
+        role="tabpanel"
+        id={`repo-panel-${activeTab}`}
+        aria-labelledby={`repo-tab-${activeTab}`}
+        className="pt-2"
+      >
         {activeTab === 'overview' && <RepositoryOverviewTab detail={detail} />}
         {activeTab === 'activity' && <ProjectActivityTab activity={detail.recentActivity} />}
         {activeTab === 'commits' && <ProjectCommitsTab commits={detail.commits} />}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Bot, User, Send, Sparkles, Filter, ExternalLink, Loader2 } from 'lucide-react';
 import { sendEngineeringAgentMessage } from '../../lib/api/ai';
 
@@ -30,6 +30,16 @@ I can analyze activity across your monitored projects, repositories, and develop
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId] = useState(() => `conv-${Date.now()}`);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -71,7 +81,12 @@ I can analyze activity across your monitored projects, repositories, and develop
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-slate-950/60 backdrop-blur-sm flex justify-end">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="chat-drawer-title"
+      className="fixed inset-0 z-50 overflow-hidden bg-slate-950/60 backdrop-blur-sm flex justify-end"
+    >
       <div className="w-full max-w-lg bg-slate-900 border-l border-slate-800 flex flex-col h-full shadow-2xl animate-in slide-in-from-right duration-300">
         {/* Drawer Header */}
         <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/80">
@@ -80,12 +95,14 @@ I can analyze activity across your monitored projects, repositories, and develop
               <Bot className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-semibold text-white text-sm">Monitoring Intelligence Agent</h3>
+              <h3 id="chat-drawer-title" className="font-semibold text-white text-sm">Monitoring Intelligence Agent</h3>
               <p className="text-[11px] text-slate-400">Powered by Gemini Multi-Agent System</p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Close assistant drawer"
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -148,6 +165,7 @@ I can analyze activity across your monitored projects, repositories, and develop
           {['Summary of today', 'Active developers', 'Stale PR alerts'].map((prompt, i) => (
             <button
               key={i}
+              type="button"
               onClick={() => handleSend(prompt)}
               className="px-2.5 py-1 bg-slate-800/80 hover:bg-slate-800 text-slate-300 rounded-md whitespace-nowrap border border-slate-700/50"
             >
@@ -165,11 +183,14 @@ I can analyze activity across your monitored projects, repositories, and develop
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               placeholder="Ask AI about commits, PRs, developers..."
+              aria-label="Ask AI assistant"
               className="flex-1 bg-transparent border-none outline-none text-xs text-slate-200 placeholder-slate-500 px-2"
             />
             <button
+              type="button"
               onClick={() => handleSend()}
               disabled={isLoading || !inputMessage.trim()}
+              aria-label="Send message"
               className="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg disabled:opacity-40 transition-all"
             >
               <Send className="w-4 h-4" />
@@ -180,3 +201,4 @@ I can analyze activity across your monitored projects, repositories, and develop
     </div>
   );
 }
+

@@ -39,10 +39,15 @@ export function PullRequestTabs({ detail }: PullRequestTabsProps) {
     <div className="space-y-6">
       {/* Tabs Header Bar */}
       <div className="border-b border-slate-800 overflow-x-auto scrollbar-none">
-        <div className="flex items-center gap-1 min-w-max pb-1">
+        <div role="tablist" aria-label="Pull request detail tabs" className="flex items-center gap-1 min-w-max pb-1">
           {tabs.map((tab) => (
             <button
               key={tab.id}
+              role="tab"
+              id={`pr-tab-${tab.id}`}
+              aria-selected={activeTab === tab.id}
+              aria-controls={`pr-panel-${tab.id}`}
+              type="button"
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all relative ${
                 activeTab === tab.id
@@ -67,7 +72,12 @@ export function PullRequestTabs({ detail }: PullRequestTabsProps) {
       </div>
 
       {/* Tab Contents */}
-      <div className="pt-2">
+      <div
+        role="tabpanel"
+        id={`pr-panel-${activeTab}`}
+        aria-labelledby={`pr-tab-${activeTab}`}
+        className="pt-2"
+      >
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
@@ -175,11 +185,11 @@ export function PullRequestTabs({ detail }: PullRequestTabsProps) {
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
                   <tr>
-                    <th className="py-3 px-4">SHA</th>
-                    <th className="py-3 px-4">Commit Message</th>
-                    <th className="py-3 px-4">Author</th>
-                    <th className="py-3 px-4 text-center">Changes</th>
-                    <th className="py-3 px-4">Committed At</th>
+                    <th scope="col" className="py-3 px-4">SHA</th>
+                    <th scope="col" className="py-3 px-4">Commit Message</th>
+                    <th scope="col" className="py-3 px-4">Author</th>
+                    <th scope="col" className="py-3 px-4 text-center">Changes</th>
+                    <th scope="col" className="py-3 px-4">Committed At</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 text-slate-300">

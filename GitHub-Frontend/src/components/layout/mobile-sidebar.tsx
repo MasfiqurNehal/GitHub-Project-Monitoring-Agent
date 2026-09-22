@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLayout } from '../../providers/layout-provider';
@@ -61,10 +62,25 @@ export function MobileSidebar() {
   const pathname = usePathname();
   const { isMobileMenuOpen, setMobileMenuOpen } = useLayout();
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isMobileMenuOpen) {
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isMobileMenuOpen, setMobileMenuOpen]);
+
   if (!isMobileMenuOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 lg:hidden">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Navigation Menu"
+      className="fixed inset-0 z-50 lg:hidden"
+    >
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity"
@@ -88,7 +104,9 @@ export function MobileSidebar() {
               </div>
             </div>
             <button
+              type="button"
               onClick={() => setMobileMenuOpen(false)}
+              aria-label="Close navigation menu"
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
             >
               <X className="w-5 h-5" />
@@ -96,7 +114,7 @@ export function MobileSidebar() {
           </div>
 
           {/* Navigation Links */}
-          <nav className="p-3 space-y-4">
+          <nav aria-label="Mobile Navigation" className="p-3 space-y-4">
             {navigationGroups.map((group) => (
               <div key={group.name} className="space-y-1">
                 <span className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
@@ -144,3 +162,4 @@ export function MobileSidebar() {
     </div>
   );
 }
+

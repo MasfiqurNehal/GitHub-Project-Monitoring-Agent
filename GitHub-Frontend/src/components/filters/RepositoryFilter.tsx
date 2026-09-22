@@ -18,6 +18,7 @@ export function RepositoryFilter({ repositories, value, onChange, disabled }: Re
         value={value || ''}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value || undefined)}
+        aria-label="Filter by repository"
         className="bg-slate-800/90 text-slate-200 text-xs rounded-xl pl-8 pr-8 py-2 border border-slate-700/80 outline-none focus:border-indigo-500 transition-colors cursor-pointer disabled:opacity-50 appearance-none font-medium max-w-[180px] truncate"
       >
         <option value="">All Repositories</option>

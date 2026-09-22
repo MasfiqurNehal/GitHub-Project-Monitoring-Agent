@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Plus, FolderKanban } from 'lucide-react';
 
 interface CreateProjectModalProps {
@@ -14,6 +14,16 @@ export function CreateProjectModal({ isOpen, onClose, onCreate, isCreating }: Cr
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -26,7 +36,12 @@ export function CreateProjectModal({ isOpen, onClose, onCreate, isCreating }: Cr
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="create-project-modal-title"
+      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+    >
       <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         <div className="p-5 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -34,12 +49,14 @@ export function CreateProjectModal({ isOpen, onClose, onCreate, isCreating }: Cr
               <FolderKanban className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">Create Project</h3>
+              <h3 id="create-project-modal-title" className="text-base font-bold text-white">Create Project</h3>
               <p className="text-[11px] text-slate-400">Add a new monitoring group</p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Close dialog"
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
           >
             <X className="w-4 h-4" />
@@ -48,8 +65,9 @@ export function CreateProjectModal({ isOpen, onClose, onCreate, isCreating }: Cr
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">Project Name *</label>
+            <label htmlFor="create-project-name" className="text-xs font-semibold text-slate-300">Project Name *</label>
             <input
+              id="create-project-name"
               type="text"
               required
               placeholder="e.g., BeyondAI Platform"
@@ -60,8 +78,9 @@ export function CreateProjectModal({ isOpen, onClose, onCreate, isCreating }: Cr
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">Description (Optional)</label>
+            <label htmlFor="create-project-description" className="text-xs font-semibold text-slate-300">Description (Optional)</label>
             <textarea
+              id="create-project-description"
               rows={3}
               placeholder="Describe the purpose or architecture of this monitoring group..."
               value={description}
@@ -92,3 +111,4 @@ export function CreateProjectModal({ isOpen, onClose, onCreate, isCreating }: Cr
     </div>
   );
 }
+

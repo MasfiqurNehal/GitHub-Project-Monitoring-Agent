@@ -49,15 +49,15 @@ export function IssueTable({ issues }: IssueTableProps) {
         <table className="w-full text-left text-xs">
           <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
             <tr>
-              <th className="py-3.5 px-4"># Issue & Title</th>
-              <th className="py-3.5 px-4">Repository / Project</th>
-              <th className="py-3.5 px-4">Author</th>
-              <th className="py-3.5 px-4">Status</th>
-              <th className="py-3.5 px-4">Labels</th>
-              <th className="py-3.5 px-4">Assignees</th>
-              <th className="py-3.5 px-4 text-center">Comments</th>
-              <th className="py-3.5 px-4">Created / Closed</th>
-              <th className="py-3.5 px-4 text-right">Action</th>
+              <th scope="col" className="py-3.5 px-4"># Issue & Title</th>
+              <th scope="col" className="py-3.5 px-4">Repository / Project</th>
+              <th scope="col" className="py-3.5 px-4">Author</th>
+              <th scope="col" className="py-3.5 px-4">Status</th>
+              <th scope="col" className="py-3.5 px-4">Labels</th>
+              <th scope="col" className="py-3.5 px-4">Assignees</th>
+              <th scope="col" className="py-3.5 px-4 text-center">Comments</th>
+              <th scope="col" className="py-3.5 px-4">Created / Closed</th>
+              <th scope="col" className="py-3.5 px-4 text-right">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 text-slate-300">
@@ -185,6 +185,7 @@ export function IssueTable({ issues }: IssueTableProps) {
                   <td className="py-3.5 px-4 text-right">
                     <Link
                       href={`/issues/${issue.id}`}
+                      aria-label={`View details for issue #${issue.number} ${issue.title}`}
                       className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white rounded-lg text-xs font-semibold border border-blue-500/30 transition-all"
                     >
                       <span>View</span>

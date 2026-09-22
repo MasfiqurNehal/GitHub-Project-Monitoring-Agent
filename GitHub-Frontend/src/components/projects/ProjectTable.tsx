@@ -57,15 +57,15 @@ export function ProjectTable({ projects }: ProjectTableProps) {
         <table className="w-full text-left text-xs">
           <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
             <tr>
-              <th className="py-3.5 px-4">Project Name</th>
-              <th className="py-3.5 px-4">Status</th>
-              <th className="py-3.5 px-4 text-center">Repositories</th>
-              <th className="py-3.5 px-4 text-center">Developers</th>
-              <th className="py-3.5 px-4 text-center">Commits</th>
-              <th className="py-3.5 px-4 text-center">PRs</th>
-              <th className="py-3.5 px-4 text-center">Issues</th>
-              <th className="py-3.5 px-4">Last Activity</th>
-              <th className="py-3.5 px-4 text-right">Action</th>
+              <th scope="col" className="py-3.5 px-4">Project Name</th>
+              <th scope="col" className="py-3.5 px-4">Status</th>
+              <th scope="col" className="py-3.5 px-4 text-center">Repositories</th>
+              <th scope="col" className="py-3.5 px-4 text-center">Developers</th>
+              <th scope="col" className="py-3.5 px-4 text-center">Commits</th>
+              <th scope="col" className="py-3.5 px-4 text-center">PRs</th>
+              <th scope="col" className="py-3.5 px-4 text-center">Issues</th>
+              <th scope="col" className="py-3.5 px-4">Last Activity</th>
+              <th scope="col" className="py-3.5 px-4 text-right">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 text-slate-300">
@@ -128,6 +128,7 @@ export function ProjectTable({ projects }: ProjectTableProps) {
                   <td className="py-3.5 px-4 text-right">
                     <Link
                       href={`/projects/${project.id}`}
+                      aria-label={`View details for ${project.name}`}
                       className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white rounded-lg text-xs font-semibold border border-blue-500/30 transition-all"
                     >
                       <span>View</span>

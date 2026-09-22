@@ -87,7 +87,9 @@ export default function Sidebar() {
 
           {/* Sidebar Collapse Toggle Button */}
           <button
+            type="button"
             onClick={toggleSidebarCollapsed}
+            aria-label={isSidebarCollapsed ? 'Expand sidebar navigation' : 'Collapse sidebar navigation'}
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
             title={isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
           >
@@ -96,7 +98,7 @@ export default function Sidebar() {
         </div>
 
         {/* Grouped Navigation List */}
-        <nav className="p-3 space-y-4">
+        <nav aria-label="Main sidebar navigation" className="p-3 space-y-4">
           {navigationGroups.map((group) => (
             <div key={group.name} className="space-y-1">
               {!isSidebarCollapsed ? (
@@ -152,3 +154,4 @@ export default function Sidebar() {
     </aside>
   );
 }
+

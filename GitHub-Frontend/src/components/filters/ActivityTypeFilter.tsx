@@ -29,6 +29,7 @@ export function ActivityTypeFilter({ value = 'all', onChange, disabled }: Activi
           const val = e.target.value as ActivityTypeOption;
           onChange(val === 'all' ? undefined : val);
         }}
+        aria-label="Filter by activity type"
         className="bg-slate-800/90 text-slate-200 text-xs rounded-xl pl-8 pr-8 py-2 border border-slate-700/80 outline-none focus:border-emerald-500 transition-colors cursor-pointer disabled:opacity-50 appearance-none font-medium"
       >
         {activityOptions.map((opt) => (

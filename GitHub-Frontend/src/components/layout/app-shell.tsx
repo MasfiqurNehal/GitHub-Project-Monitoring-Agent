@@ -10,6 +10,11 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-slate-950 text-slate-100 antialiased selection:bg-blue-600 selection:text-white">
+      {/* Skip to Main Content Link for Keyboard Accessibility */}
+      <a href="#main-content" className="skip-to-content">
+        Skip to main content
+      </a>
+
       {/* Desktop Persistent Sidebar */}
       <Sidebar />
 
@@ -17,7 +22,7 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
       <MobileSidebar />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+      <div id="main-content" className="flex-1 flex flex-col min-w-0 min-h-screen">
         {children}
       </div>
 

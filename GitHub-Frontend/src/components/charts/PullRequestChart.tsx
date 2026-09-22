@@ -17,7 +17,7 @@ export function PullRequestChart({ data }: PullRequestChartProps) {
         </div>
       </div>
 
-      <div className="h-60 w-full">
+      <div role="img" aria-label="Pull request velocity chart showing creations vs peer code reviews" className="h-60 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <defs>

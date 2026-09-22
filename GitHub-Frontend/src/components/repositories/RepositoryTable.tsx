@@ -62,16 +62,16 @@ export function RepositoryTable({ repositories, onSync, syncingId }: RepositoryT
         <table className="w-full text-left text-xs">
           <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
             <tr>
-              <th className="py-3.5 px-4">Repository</th>
-              <th className="py-3.5 px-4">Project</th>
-              <th className="py-3.5 px-4">Visibility</th>
-              <th className="py-3.5 px-4">Status</th>
-              <th className="py-3.5 px-4 text-center">Devs</th>
-              <th className="py-3.5 px-4 text-center">Commits</th>
-              <th className="py-3.5 px-4 text-center">PRs</th>
-              <th className="py-3.5 px-4 text-center">Issues</th>
-              <th className="py-3.5 px-4">Last Synced</th>
-              <th className="py-3.5 px-4 text-right">Actions</th>
+              <th scope="col" className="py-3.5 px-4">Repository</th>
+              <th scope="col" className="py-3.5 px-4">Project</th>
+              <th scope="col" className="py-3.5 px-4">Visibility</th>
+              <th scope="col" className="py-3.5 px-4">Status</th>
+              <th scope="col" className="py-3.5 px-4 text-center">Devs</th>
+              <th scope="col" className="py-3.5 px-4 text-center">Commits</th>
+              <th scope="col" className="py-3.5 px-4 text-center">PRs</th>
+              <th scope="col" className="py-3.5 px-4 text-center">Issues</th>
+              <th scope="col" className="py-3.5 px-4">Last Synced</th>
+              <th scope="col" className="py-3.5 px-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 text-slate-300">
@@ -145,8 +145,10 @@ export function RepositoryTable({ repositories, onSync, syncingId }: RepositoryT
                   <td className="py-3.5 px-4 text-right">
                     <div className="flex items-center justify-end gap-1.5">
                       <button
+                        type="button"
                         onClick={() => onSync(repo.id)}
                         disabled={syncingId === repo.id}
+                        aria-label={`Sync repository ${repo.name}`}
                         className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors disabled:opacity-40"
                         title="Sync Repository"
                       >
@@ -154,6 +156,7 @@ export function RepositoryTable({ repositories, onSync, syncingId }: RepositoryT
                       </button>
                       <Link
                         href={`/repositories/${repo.id}`}
+                        aria-label={`View details for repository ${repo.name}`}
                         className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white rounded-lg text-xs font-semibold border border-blue-500/30 transition-all"
                       >
                         <span>View</span>

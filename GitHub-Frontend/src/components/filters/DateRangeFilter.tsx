@@ -50,7 +50,7 @@ export function DateRangeFilter({
   return (
     <div className="flex flex-col sm:flex-row sm:items-center gap-2">
       {/* Preset Pills */}
-      <div className="flex items-center bg-slate-800/90 rounded-xl p-1 border border-slate-700/80 text-xs">
+      <div role="group" aria-label="Select date range filter" className="flex items-center bg-slate-800/90 rounded-xl p-1 border border-slate-700/80 text-xs">
         <CalendarIcon className="w-3.5 h-3.5 text-blue-400 ml-2 mr-1" />
         {presetsList.map((p) => (
           <button
@@ -58,6 +58,7 @@ export function DateRangeFilter({
             type="button"
             disabled={disabled}
             onClick={() => handlePresetSelect(p.id)}
+            aria-pressed={preset === p.id}
             className={`px-3 py-1 rounded-lg font-medium transition-all ${
               preset === p.id
                 ? 'bg-blue-600 text-white shadow-sm'
@@ -73,21 +74,25 @@ export function DateRangeFilter({
       {(preset === 'custom' || isCustomOpen) && (
         <div className="flex items-center space-x-2 bg-slate-900 border border-slate-800 p-1.5 rounded-xl text-xs animate-in fade-in duration-200">
           <div className="flex items-center space-x-1.5 px-2">
-            <span className="text-slate-500 text-[10px] uppercase font-semibold">From</span>
+            <label htmlFor="filter-from-date" className="text-slate-500 text-[10px] uppercase font-semibold">From</label>
             <input
+              id="filter-from-date"
               type="date"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
+              aria-label="Start date filter"
               className="bg-slate-800 text-slate-200 rounded-lg px-2 py-1 text-xs border border-slate-700 outline-none focus:border-blue-500"
             />
           </div>
 
           <div className="flex items-center space-x-1.5 px-2">
-            <span className="text-slate-500 text-[10px] uppercase font-semibold">To</span>
+            <label htmlFor="filter-to-date" className="text-slate-500 text-[10px] uppercase font-semibold">To</label>
             <input
+              id="filter-to-date"
               type="date"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
+              aria-label="End date filter"
               className="bg-slate-800 text-slate-200 rounded-lg px-2 py-1 text-xs border border-slate-700 outline-none focus:border-blue-500"
             />
           </div>

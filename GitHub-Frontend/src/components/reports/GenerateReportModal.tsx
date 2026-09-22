@@ -40,6 +40,16 @@ export function GenerateReportModal({
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
 
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   if (!isOpen) return null;
 
   const handleGenerate = () => {
@@ -57,7 +67,12 @@ export function GenerateReportModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="generate-report-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in"
+    >
       <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-6 relative overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -66,13 +81,16 @@ export function GenerateReportModal({
               <FileText className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white tracking-tight">Generate Engineering Report</h2>
+              <h2 id="generate-report-modal-title" className="text-base font-bold text-white tracking-tight">
+                Generate Engineering Report
+              </h2>
               <p className="text-slate-400 text-xs">Configure metrics telemetry scope & report period</p>
             </div>
           </div>
 
           <button
             onClick={onClose}
+            aria-label="Close generate report dialog"
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />

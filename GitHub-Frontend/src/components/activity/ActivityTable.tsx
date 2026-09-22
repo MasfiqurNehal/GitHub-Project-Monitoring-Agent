@@ -87,13 +87,13 @@ export function ActivityTable({ activities }: ActivityTableProps) {
         <table className="w-full text-left text-xs">
           <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
             <tr>
-              <th className="py-3.5 px-4">Time & Date</th>
-              <th className="py-3.5 px-4">Activity Type</th>
-              <th className="py-3.5 px-4">Developer</th>
-              <th className="py-3.5 px-4">Repository / Project</th>
-              <th className="py-3.5 px-4">Title & Description</th>
-              <th className="py-3.5 px-4 text-center">GitHub Item</th>
-              <th className="py-3.5 px-4 text-center">Code Impact</th>
+              <th scope="col" className="py-3.5 px-4">Time & Date</th>
+              <th scope="col" className="py-3.5 px-4">Activity Type</th>
+              <th scope="col" className="py-3.5 px-4">Developer</th>
+              <th scope="col" className="py-3.5 px-4">Repository / Project</th>
+              <th scope="col" className="py-3.5 px-4">Title & Description</th>
+              <th scope="col" className="py-3.5 px-4 text-center">GitHub Item</th>
+              <th scope="col" className="py-3.5 px-4 text-center">Code Impact</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 text-slate-300">
@@ -150,6 +150,7 @@ export function ActivityTable({ activities }: ActivityTableProps) {
                     href={act.githubItem.url}
                     target="_blank"
                     rel="noreferrer"
+                    aria-label={`Open GitHub item ${act.githubItem.label} in a new tab`}
                     className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-blue-400 hover:text-blue-300 rounded-lg text-xs font-mono border border-slate-700/80 transition-colors"
                   >
                     <span>{act.githubItem.label}</span>

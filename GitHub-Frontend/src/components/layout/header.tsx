@@ -32,7 +32,9 @@ export default function Header({ onOpenAIChat, onFilterChange }: HeaderProps) {
       {/* Left Navigation & Breadcrumbs */}
       <div className="flex items-center space-x-3 min-w-0">
         <button
+          type="button"
           onClick={toggleMobileMenu}
+          aria-label="Open mobile navigation menu"
           className="lg:hidden p-2 rounded-xl bg-slate-800/80 text-slate-300 hover:text-white border border-slate-700/60 transition-colors shrink-0"
           title="Open Mobile Navigation"
         >
@@ -50,7 +52,7 @@ export default function Header({ onOpenAIChat, onFilterChange }: HeaderProps) {
         <div className="hidden md:flex items-center space-x-2 text-slate-300 text-xs font-medium">
           <Calendar className="w-3.5 h-3.5 text-blue-400" />
           <span>Range:</span>
-          <div className="flex items-center bg-slate-800/80 rounded-lg p-1 border border-slate-700/60 text-xs">
+          <div role="group" aria-label="Select date range" className="flex items-center bg-slate-800/80 rounded-lg p-1 border border-slate-700/60 text-xs">
             {[
               { id: '1d', label: 'Today' },
               { id: '7d', label: '7D' },
@@ -59,7 +61,9 @@ export default function Header({ onOpenAIChat, onFilterChange }: HeaderProps) {
             ].map((preset) => (
               <button
                 key={preset.id}
+                type="button"
                 onClick={() => handleRangeSelect(preset.id)}
+                aria-pressed={selectedRange === preset.id}
                 className={`px-2.5 py-1 rounded-md font-medium transition-all ${
                   selectedRange === preset.id
                     ? 'bg-blue-600 text-white shadow-sm'
@@ -88,7 +92,9 @@ export default function Header({ onOpenAIChat, onFilterChange }: HeaderProps) {
 
         {/* AI Agent Trigger Button */}
         <button
+          type="button"
           onClick={handleOpenAIChat}
+          aria-label="Open AI Engineering Agent assistant"
           className="flex items-center space-x-2 px-3 sm:px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-medium text-xs rounded-lg shadow-md shadow-blue-500/20 transition-all active:scale-95"
         >
           <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
@@ -98,3 +104,4 @@ export default function Header({ onOpenAIChat, onFilterChange }: HeaderProps) {
     </header>
   );
 }
+
