@@ -4,7 +4,7 @@ import { fetchDevelopers, fetchDeveloperDetails } from '../lib/api/developers';
 export function useDevelopers() {
   const developersQuery = useQuery({
     queryKey: ['developers-list'],
-    queryFn: fetchDevelopers,
+    queryFn: () => fetchDevelopers(),
   });
 
   return {

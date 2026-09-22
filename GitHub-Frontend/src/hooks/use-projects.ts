@@ -6,7 +6,7 @@ export function useProjects() {
 
   const projectsQuery = useQuery({
     queryKey: ['projects-list'],
-    queryFn: fetchProjects,
+    queryFn: () => fetchProjects(),
   });
 
   const createMutation = useMutation({

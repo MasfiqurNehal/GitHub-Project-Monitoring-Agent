@@ -169,11 +169,35 @@ export const MOCK_REPOSITORIES: RepositoryWithMetrics[] = [
   },
 ];
 
-export async function fetchRepositories(): Promise<{ success: boolean; data: RepositoryWithMetrics[] }> {
+export async function fetchRepositories(filters: {
+  projectId?: string;
+  search?: string;
+  status?: string;
+  visibility?: 'public' | 'private' | 'all';
+} = {}): Promise<{ success: boolean; data: RepositoryWithMetrics[] }> {
   try {
-    return await fetchApi<RepositoryWithMetrics[]>('/repositories');
+    const query = new URLSearchParams();
+    if (filters.projectId) query.append('projectId', filters.projectId);
+    if (filters.search) query.append('search', filters.search);
+    if (filters.status) query.append('status', filters.status);
+    if (filters.visibility) query.append('visibility', filters.visibility);
+
+    const queryString = query.toString();
+    return await fetchApi<RepositoryWithMetrics[]>(`/repositories${queryString ? `?${queryString}` : ''}`);
   } catch (err) {
-    return { success: true, data: MOCK_REPOSITORIES };
+    let list = [...MOCK_REPOSITORIES];
+    if (filters.projectId) {
+      list = list.filter((r) => r.projectId === filters.projectId);
+    }
+    if (filters.visibility && filters.visibility !== 'all') {
+      const isPriv = filters.visibility === 'private';
+      list = list.filter((r) => r.isPrivate === isPriv);
+    }
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
+      list = list.filter((r) => r.name.toLowerCase().includes(q) || r.fullName.toLowerCase().includes(q));
+    }
+    return { success: true, data: list };
   }
 }
 

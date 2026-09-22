@@ -6,7 +6,7 @@ export function useRepositories() {
 
   const reposQuery = useQuery({
     queryKey: ['repositories-list'],
-    queryFn: fetchRepositories,
+    queryFn: () => fetchRepositories(),
   });
 
   const syncMutation = useMutation({

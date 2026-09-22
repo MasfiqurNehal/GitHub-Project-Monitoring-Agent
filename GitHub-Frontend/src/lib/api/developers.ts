@@ -138,11 +138,32 @@ export const MOCK_DEVELOPERS: DeveloperWithMetrics[] = [
   },
 ];
 
-export async function fetchDevelopers(): Promise<{ success: boolean; data: DeveloperWithMetrics[] }> {
+export async function fetchDevelopers(filters: {
+  projectId?: string;
+  repositoryId?: string;
+  search?: string;
+} = {}): Promise<{ success: boolean; data: DeveloperWithMetrics[] }> {
   try {
-    return await fetchApi<DeveloperWithMetrics[]>('/developers');
+    const query = new URLSearchParams();
+    if (filters.projectId) query.append('projectId', filters.projectId);
+    if (filters.repositoryId) query.append('repositoryId', filters.repositoryId);
+    if (filters.search) query.append('search', filters.search);
+
+    const queryString = query.toString();
+    return await fetchApi<DeveloperWithMetrics[]>(`/developers${queryString ? `?${queryString}` : ''}`);
   } catch (err) {
-    return { success: true, data: MOCK_DEVELOPERS };
+    let list = [...MOCK_DEVELOPERS];
+    if (filters.projectId) {
+      list = list.filter((d) => d.projects.some((p) => p.id === filters.projectId));
+    }
+    if (filters.repositoryId) {
+      list = list.filter((d) => d.repositories.some((r) => r.id === filters.repositoryId));
+    }
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
+      list = list.filter((d) => d.name?.toLowerCase().includes(q) || d.login.toLowerCase().includes(q));
+    }
+    return { success: true, data: list };
   }
 }
 

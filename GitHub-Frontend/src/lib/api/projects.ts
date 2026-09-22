@@ -142,14 +142,27 @@ export const MOCK_PROJECTS: ProjectWithMetrics[] = [
   },
 ];
 
-export async function fetchProjects(): Promise<{ success: boolean; data: ProjectWithMetrics[] }> {
+export async function fetchProjects(filters: {
+  search?: string;
+  status?: string;
+} = {}): Promise<{ success: boolean; data: ProjectWithMetrics[] }> {
   try {
-    return await fetchApi<ProjectWithMetrics[]>('/projects');
+    const query = new URLSearchParams();
+    if (filters.search) query.append('search', filters.search);
+    if (filters.status) query.append('status', filters.status);
+
+    const queryString = query.toString();
+    return await fetchApi<ProjectWithMetrics[]>(`/projects${queryString ? `?${queryString}` : ''}`);
   } catch (err) {
-    return {
-      success: true,
-      data: MOCK_PROJECTS,
-    };
+    let list = [...MOCK_PROJECTS];
+    if (filters.status && filters.status !== 'ALL') {
+      list = list.filter((p) => p.status === filters.status);
+    }
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
+      list = list.filter((p) => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)));
+    }
+    return { success: true, data: list };
   }
 }
 
