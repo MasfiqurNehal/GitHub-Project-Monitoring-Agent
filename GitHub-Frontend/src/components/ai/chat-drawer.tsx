@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { X, Bot, User, Send, Sparkles, Filter, ExternalLink, Loader2 } from 'lucide-react';
-import { sendAIChatMessage } from '../../lib/api-client';
+import { sendEngineeringAgentMessage } from '../../lib/api/ai';
 
 interface ChatDrawerProps {
   isOpen: boolean;
@@ -48,12 +48,11 @@ I can analyze activity across your monitored projects, repositories, and develop
     setIsLoading(true);
 
     try {
-      const res = await sendAIChatMessage(conversationId, text);
+      const res = await sendEngineeringAgentMessage(conversationId, text);
       const assistantMsg: Message = {
-        id: res.data.messageId || `ast-${Date.now()}`,
+        id: res.data.id || `ast-${Date.now()}`,
         role: 'assistant',
-        content: res.data.answer,
-        uiActions: res.data.uiActions,
+        content: res.data.content,
       };
 
       setMessages((prev) => [...prev, assistantMsg]);

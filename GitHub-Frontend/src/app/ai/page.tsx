@@ -1,113 +1,97 @@
 'use client';
 
-import { useState } from 'react';
-import Header from '../../components/navigation/header';
-import { Bot, Send, Sparkles, User, Loader2 } from 'lucide-react';
-import { sendAIChatMessage } from '../../lib/api-client';
+import React, { useRef, useEffect, useState } from 'react';
+import Header from '../../components/layout/header';
+import ChatDrawer from '../../components/ai/chat-drawer';
+import { useAIAgent } from '../../hooks/use-ai-agent';
+import { ChatHeader } from '../../components/ai/ChatHeader';
+import { ConversationList } from '../../components/ai/ConversationList';
+import { ChatMessage } from '../../components/ai/ChatMessage';
+import { SuggestedPrompts } from '../../components/ai/SuggestedPrompts';
+import { ThinkingState } from '../../components/ai/ThinkingState';
+import { ChatInput } from '../../components/ai/ChatInput';
 
 export default function AIWorkspacePage() {
-  const [messages, setMessages] = useState([
-    {
-      id: 'welcome',
-      role: 'assistant',
-      content: `Welcome to the **Multi-Agent AI Workspace**. I am connected to your database facts and GitHub activity services.
-      
-Ask me anything regarding your repositories, active developers, pull request bottlenecks, or date-based engineering trends.`,
-    },
-  ]);
-  const [inputMessage, setInputMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [conversationId] = useState(() => `conv-ws-${Date.now()}`);
+  const [isAIChatOpen, setIsAIChatOpen] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const handleSend = async (textToSend?: string) => {
-    const text = textToSend || inputMessage;
-    if (!text.trim() || isLoading) return;
+  const {
+    conversations,
+    activeConversation,
+    activeConversationId,
+    setActiveConversationId,
+    isLoading,
+    isSidebarOpen,
+    setIsSidebarOpen,
+    handleSendMessage,
+    createNewChat,
+    clearCurrentChat,
+    deleteConversation,
+  } = useAIAgent();
 
-    setMessages((prev) => [...prev, { id: `usr-${Date.now()}`, role: 'user', content: text }]);
-    setInputMessage('');
-    setIsLoading(true);
-
-    try {
-      const res = await sendAIChatMessage(conversationId, text);
-      setMessages((prev) => [
-        ...prev,
-        { id: res.data.messageId || `ast-${Date.now()}`, role: 'assistant', content: res.data.answer },
-      ]);
-    } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { id: `err-${Date.now()}`, role: 'assistant', content: 'Unable to connect to AI orchestrator backend.' },
-      ]);
-    } finally {
-      setIsLoading(false);
-    }
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [activeConversation.messages, isLoading]);
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-slate-950 text-slate-100 min-h-screen">
-      <Header />
+      <Header onOpenAIChat={() => setIsAIChatOpen(true)} />
 
-      <main className="flex-1 p-6 max-w-4xl w-full mx-auto flex flex-col h-[calc(100vh-4rem)]">
-        <div className="mb-4">
-          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-            <Bot className="w-6 h-6 text-blue-400" /> Executive AI Intelligence Workspace
-          </h1>
-          <p className="text-slate-400 text-xs mt-1">
-            Gemini Multi-Agent System with direct access to deterministic database analytics tools.
-          </p>
-        </div>
-
-        <div className="flex-1 bg-slate-900/70 border border-slate-800 rounded-2xl p-4 overflow-y-auto space-y-4 mb-4">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex items-start space-x-3 ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}
-            >
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                  msg.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                }`}
-              >
-                {msg.role === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-              </div>
-              <div
-                className={`max-w-[80%] p-4 rounded-2xl text-xs leading-relaxed ${
-                  msg.role === 'user'
-                    ? 'bg-blue-600 text-white rounded-tr-none'
-                    : 'bg-slate-800/80 text-slate-200 border border-slate-700/60 rounded-tl-none'
-                }`}
-              >
-                <div className="whitespace-pre-wrap">{msg.content}</div>
-              </div>
-            </div>
-          ))}
-
-          {isLoading && (
-            <div className="flex items-center space-x-3 text-slate-400 text-xs py-2">
-              <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
-              <span>Orchestrating agents and executing tools...</span>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center space-x-2 bg-slate-900 border border-slate-800 rounded-xl p-3">
-          <input
-            type="text"
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Ask about project activity, developers, pull requests..."
-            className="flex-1 bg-transparent border-none outline-none text-xs text-white placeholder-slate-500 px-2"
+      <main className="flex-1 flex min-h-[calc(100vh-4rem)] max-w-7xl w-full mx-auto p-4 md:p-6 gap-4">
+        {/* Chat Interface Main Box */}
+        <div className="flex-1 bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col h-[calc(100vh-6.5rem)]">
+          {/* Top Bar Header */}
+          <ChatHeader
+            onNewChat={createNewChat}
+            onClearChat={clearCurrentChat}
+            onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+            isSidebarOpen={isSidebarOpen}
           />
-          <button
-            onClick={() => handleSend()}
-            disabled={isLoading || !inputMessage.trim()}
-            className="p-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg disabled:opacity-40 transition-all"
-          >
-            <Send className="w-4 h-4" />
-          </button>
+
+          {/* Main Body Grid: Sidebar + Chat Messages */}
+          <div className="flex-1 flex min-h-0 overflow-hidden relative">
+            {/* Sidebar Conversation List */}
+            {isSidebarOpen && (
+              <ConversationList
+                conversations={conversations}
+                activeConversationId={activeConversationId}
+                onSelectConversation={(id) => setActiveConversationId(id)}
+                onNewChat={createNewChat}
+                onDeleteConversation={deleteConversation}
+              />
+            )}
+
+            {/* Chat Messages Workspace Area */}
+            <div className="flex-1 flex flex-col min-h-0 bg-slate-950/60">
+              {/* Messages Container */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+                {activeConversation.messages.map((msg) => (
+                  <ChatMessage key={msg.id} message={msg} />
+                ))}
+
+                {/* Thinking / Processing State Indicator */}
+                {isLoading && <ThinkingState />}
+
+                {/* Suggested Prompt Chips (rendered if conversation has <= 1 message) */}
+                {activeConversation.messages.length <= 1 && !isLoading && (
+                  <SuggestedPrompts onSelectPrompt={handleSendMessage} />
+                )}
+
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Chat Input Field */}
+              <ChatInput onSendMessage={handleSendMessage} isLoading={isLoading} />
+            </div>
+          </div>
         </div>
       </main>
+
+      <ChatDrawer isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} />
     </div>
   );
 }
