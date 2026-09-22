@@ -277,8 +277,65 @@ export interface ActivityEvent {
   developer?: Developer | null;
 }
 
+export type EngineeringActivityType = 
+  | 'commit'
+  | 'push'
+  | 'pull_request'
+  | 'review'
+  | 'issue'
+  | 'issue_comment'
+  | 'merge'
+  | 'branch';
+
+export interface EngineeringActivityItem {
+  id: string;
+  type: EngineeringActivityType;
+  developer: {
+    id: string;
+    name: string;
+    login: string;
+    avatarUrl?: string;
+  };
+  repository: {
+    id: string;
+    name: string;
+    fullName: string;
+  };
+  project?: {
+    id: string;
+    name: string;
+  };
+  title: string;
+  description?: string;
+  occurredAt: string;
+  formattedDate: string;
+  formattedTime: string;
+  githubItem: {
+    type: 'commit' | 'pr' | 'issue' | 'branch' | 'comment';
+    label: string;
+    url: string;
+  };
+  additions?: number;
+  deletions?: number;
+  status?: string;
+}
+
+export interface ActivityFilters {
+  projectId?: string;
+  repositoryId?: string;
+  developerId?: string;
+  activityType?: string;
+  preset?: DateRangePreset;
+  from?: string;
+  to?: string;
+  search?: string;
+  sortBy?: 'newest' | 'oldest';
+  page?: number;
+  pageSize?: number;
+}
+
 export type DateRangePreset = '1d' | '7d' | '30d' | 'all' | 'custom';
-export type ActivityTypeOption = 'all' | 'commit' | 'push' | 'pull_request' | 'review' | 'issue';
+export type ActivityTypeOption = 'all' | 'commit' | 'push' | 'pull_request' | 'review' | 'issue' | 'issue_comment' | 'merge' | 'branch';
 
 export interface DashboardFilters {
   projectId?: string;
