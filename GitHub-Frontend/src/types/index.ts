@@ -120,14 +120,16 @@ export interface DashboardFilters {
 export interface DashboardKPI {
   totalProjects: number;
   totalRepositories: number;
+  activeDevelopers: number;
   totalCommits: number;
   totalPRs: number;
   mergedPRs: number;
   openPRs: number;
-  totalReviews: number;
-  activeDevelopers: number;
+  issuesOpened: number;
+  issuesClosed: number;
   linesAdded: number;
   linesDeleted: number;
+  totalReviews: number;
 }
 
 export interface ActivityTrendItem {
@@ -137,9 +139,74 @@ export interface ActivityTrendItem {
   reviews: number;
 }
 
+export interface CodeChangeTrendItem {
+  date: string;
+  additions: number;
+  deletions: number;
+}
+
+export interface IssueTrendItem {
+  date: string;
+  opened: number;
+  closed: number;
+}
+
+export interface DeveloperContributionItem {
+  id: string;
+  name: string;
+  login: string;
+  avatarUrl?: string;
+  commits: number;
+  prs: number;
+  reviews: number;
+  linesAdded: number;
+  linesDeleted: number;
+}
+
+export interface ProjectOverviewItem {
+  id: string;
+  name: string;
+  repositoriesCount: number;
+  commitsCount: number;
+  prsCount: number;
+  issuesCount: number;
+  status: ProjectStatus;
+  updatedAt: string;
+}
+
+export interface RepositoryOverviewItem {
+  id: string;
+  name: string;
+  fullName: string;
+  language?: string | null;
+  commitsCount: number;
+  openPRsCount: number;
+  issuesCount: number;
+  lastSyncedAt?: string | null;
+}
+
+export interface RecentActivityItem {
+  id: string;
+  type: 'commit' | 'pull_request' | 'review' | 'issue';
+  title: string;
+  repoName: string;
+  author: string;
+  authorAvatar?: string;
+  timeAgo: string;
+  status?: string;
+  details?: string;
+  url?: string;
+}
+
 export interface DashboardOverview {
   kpi: DashboardKPI;
   activityTrend: ActivityTrendItem[];
+  codeChangesTrend: CodeChangeTrendItem[];
+  issueTrend: IssueTrendItem[];
+  developerActivity: DeveloperContributionItem[];
+  projectOverview: ProjectOverviewItem[];
+  repositoryOverview: RepositoryOverviewItem[];
+  recentActivity: RecentActivityItem[];
 }
 
 export interface EngineeringSignals {
