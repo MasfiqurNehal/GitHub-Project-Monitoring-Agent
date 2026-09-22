@@ -1,4 +1,4 @@
-# Python bytecode
+# Python bytecode & cache
 __pycache__/
 *.py[cod]
 *$py.class
@@ -13,7 +13,8 @@ venv.bak/
 
 # Environment variables
 .env
-.env.local
+.env.*
+!.env.example
 
 # pytest & coverage
 .pytest_cache/
@@ -23,6 +24,8 @@ htmlcov/
 # Logs
 *.log
 
-# OS metadata
+# OS metadata & Editors
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/

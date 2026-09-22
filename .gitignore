@@ -1,38 +1,66 @@
-# Dependency directories
-node_modules/
-.venv/
-env/
-venv/
-ENV/
+# ==============================================================================
+# ROOT GITIGNORE - GITHUB PROJECT MONITORING AGENT
+# ==============================================================================
 
-# Environment files
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# Node dependencies
+**/node_modules/
+.pnpm-store/
 
-# Build outputs
-dist/
-build/
-.next/
-out/
-__pycache__/
-*.pyc
+# Python virtual environments & bytecode
+**/__pycache__/
+*.py[cod]
+*$py.class
+**/.venv/
+**/venv/
+**/env/
+**/ENV/
 
-# Logs
-logs
+# Environment variable files (NEVER COMMIT SECRETS TO GIT)
+**/.env
+**/.env.*
+!**/.env.example
+
+# Next.js & Frontend Build Outputs
+**/.next/
+**/out/
+**/build/
+**/dist/
+.vercel/
+
+# TypeScript build outputs & caches
+*.tsbuildinfo
+.eslintcache
+
+# Logs & Debugging
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# OS metadata
+# Operating System Files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
-# IDE settings
+# IDE & Editor Directories
 .vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
 .idea/
 *.swp
 *.swo
+*~
+
+# Temporary & Local Files
+tmp/
+temp/
+*.tmp
+*.bak
+*.db
+*.db-journal
