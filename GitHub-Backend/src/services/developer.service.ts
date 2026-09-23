@@ -1,5 +1,6 @@
 import { pool } from '../db/connection.js';
 import { developerRepository } from '../repositories/developer.repository.js';
+import { activityRepository } from '../repositories/activity.repository.js';
 
 export class DeveloperService {
   async getDeveloperDetail(developerIdOrLogin: string, dateFrom?: string, dateTo?: string) {
@@ -132,6 +133,211 @@ export class DeveloperService {
       })),
     };
   }
+
+  // Factual Developer Analytics (Raw measurements only, no AI performance judgments)
+  async getFactualDeveloperAnalytics(
+    developerIdOrLogin: string,
+    filters: {
+      dateFrom?: string;
+      dateTo?: string;
+      repositoryId?: string;
+      projectId?: string;
+    }
+  ) {
+    let dev = await developerRepository.findById(developerIdOrLogin);
+    if (!dev) {
+      dev = await developerRepository.findByLogin(developerIdOrLogin);
+    }
+    if (!dev) return null;
+
+    const developerId = dev.id;
+
+    let dFrom: Date | undefined = filters.dateFrom ? new Date(filters.dateFrom) : undefined;
+    let dTo: Date | undefined = filters.dateTo ? new Date(filters.dateTo) : undefined;
+    if (typeof filters.dateFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(filters.dateFrom.trim())) {
+      dFrom = new Date(`${filters.dateFrom.trim()}T00:00:00.000Z`);
+    }
+    if (typeof filters.dateTo === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(filters.dateTo.trim())) {
+      dTo = new Date(`${filters.dateTo.trim()}T23:59:59.999Z`);
+    }
+
+    // 1. Commits metrics
+    const commitParams: any[] = [developerId];
+    let commitWhere = 'WHERE (c.developer_id = $1)';
+    let pIdx = 2;
+
+    if (filters.repositoryId) {
+      commitWhere += ` AND (c.repository_id = $${pIdx} OR r.full_name = $${pIdx} OR r.name = $${pIdx})`;
+      commitParams.push(filters.repositoryId);
+      pIdx++;
+    }
+    if (filters.projectId) {
+      commitWhere += ` AND r.project_id = $${pIdx}`;
+      commitParams.push(filters.projectId);
+      pIdx++;
+    }
+    if (dFrom) {
+      commitWhere += ` AND c.committed_at >= $${pIdx}`;
+      commitParams.push(dFrom);
+      pIdx++;
+    }
+    if (dTo) {
+      commitWhere += ` AND c.committed_at <= $${pIdx}`;
+      commitParams.push(dTo);
+      pIdx++;
+    }
+
+    const commitRes = await pool.query(
+      `SELECT 
+        COUNT(*) as commits,
+        COALESCE(SUM(c.additions), 0) as additions,
+        COALESCE(SUM(c.deletions), 0) as deletions,
+        COALESCE(SUM(c.changed_files), 0) as changed_files
+       FROM commits c
+       JOIN repositories r ON r.id = c.repository_id
+       ${commitWhere}`,
+      commitParams
+    );
+
+    // 2. PR metrics
+    const prParams: any[] = [developerId];
+    let prWhere = 'WHERE pr.author_developer_id = $1';
+    pIdx = 2;
+    if (filters.repositoryId) {
+      prWhere += ` AND (pr.repository_id = $${pIdx} OR r.full_name = $${pIdx} OR r.name = $${pIdx})`;
+      prParams.push(filters.repositoryId);
+      pIdx++;
+    }
+    if (filters.projectId) {
+      prWhere += ` AND r.project_id = $${pIdx}`;
+      prParams.push(filters.projectId);
+      pIdx++;
+    }
+    if (dFrom) {
+      prWhere += ` AND pr.created_at >= $${pIdx}`;
+      prParams.push(dFrom);
+      pIdx++;
+    }
+    if (dTo) {
+      prWhere += ` AND pr.created_at <= $${pIdx}`;
+      prParams.push(dTo);
+      pIdx++;
+    }
+
+    const prRes = await pool.query(
+      `SELECT 
+        COUNT(*) as pull_requests,
+        COUNT(*) FILTER (WHERE pr.merged = true OR UPPER(pr.state) = 'MERGED') as merged_prs
+       FROM pull_requests pr
+       JOIN repositories r ON r.id = pr.repository_id
+       ${prWhere}`,
+      prParams
+    );
+
+    // 3. Review metrics
+    const reviewParams: any[] = [developerId];
+    let reviewWhere = 'WHERE prr.reviewer_developer_id = $1';
+    pIdx = 2;
+    if (filters.repositoryId) {
+      reviewWhere += ` AND (pr.repository_id = $${pIdx} OR r.full_name = $${pIdx} OR r.name = $${pIdx})`;
+      reviewParams.push(filters.repositoryId);
+      pIdx++;
+    }
+    if (filters.projectId) {
+      reviewWhere += ` AND r.project_id = $${pIdx}`;
+      reviewParams.push(filters.projectId);
+      pIdx++;
+    }
+    if (dFrom) {
+      reviewWhere += ` AND prr.submitted_at >= $${pIdx}`;
+      reviewParams.push(dFrom);
+      pIdx++;
+    }
+    if (dTo) {
+      reviewWhere += ` AND prr.submitted_at <= $${pIdx}`;
+      reviewParams.push(dTo);
+      pIdx++;
+    }
+
+    const reviewRes = await pool.query(
+      `SELECT COUNT(*) as reviews
+       FROM pull_request_reviews prr
+       JOIN pull_requests pr ON pr.id = prr.pull_request_id
+       JOIN repositories r ON r.id = pr.repository_id
+       ${reviewWhere}`,
+      reviewParams
+    );
+
+    // 4. Issue metrics
+    const issueParams: any[] = [developerId];
+    let issueWhere = 'WHERE i.author_developer_id = $1';
+    pIdx = 2;
+    if (filters.repositoryId) {
+      issueWhere += ` AND (i.repository_id = $${pIdx} OR r.full_name = $${pIdx} OR r.name = $${pIdx})`;
+      issueParams.push(filters.repositoryId);
+      pIdx++;
+    }
+    if (filters.projectId) {
+      issueWhere += ` AND r.project_id = $${pIdx}`;
+      issueParams.push(filters.projectId);
+      pIdx++;
+    }
+    if (dFrom) {
+      issueWhere += ` AND i.created_at >= $${pIdx}`;
+      issueParams.push(dFrom);
+      pIdx++;
+    }
+    if (dTo) {
+      issueWhere += ` AND i.created_at <= $${pIdx}`;
+      issueParams.push(dTo);
+      pIdx++;
+    }
+
+    const issueRes = await pool.query(
+      `SELECT COUNT(*) as issues
+       FROM issues i
+       JOIN repositories r ON r.id = i.repository_id
+       ${issueWhere}`,
+      issueParams
+    );
+
+    // 5. Activity Timeline
+    const timelineResult = await activityRepository.findActivityFeed({
+      developerId,
+      repositoryId: filters.repositoryId,
+      projectId: filters.projectId,
+      from: dFrom,
+      to: dTo,
+      limit: 100,
+    });
+
+    const cRow = commitRes.rows[0] || {};
+    const prRow = prRes.rows[0] || {};
+    const rRow = reviewRes.rows[0] || {};
+    const iRow = issueRes.rows[0] || {};
+
+    return {
+      developer: {
+        id: dev.id,
+        login: dev.login,
+        name: dev.name || dev.login,
+        avatarUrl: dev.avatar_url || `https://github.com/${dev.login}.png`,
+        profileUrl: dev.html_url || `https://github.com/${dev.login}`,
+      },
+      metrics: {
+        commits: parseInt(cRow.commits || '0', 10),
+        additions: parseInt(cRow.additions || '0', 10),
+        deletions: parseInt(cRow.deletions || '0', 10),
+        changedFiles: parseInt(cRow.changed_files || '0', 10),
+        pullRequests: parseInt(prRow.pull_requests || '0', 10),
+        mergedPRs: parseInt(prRow.merged_prs || '0', 10),
+        reviews: parseInt(rRow.reviews || '0', 10),
+        issues: parseInt(iRow.issues || '0', 10),
+      },
+      activityTimeline: timelineResult.data,
+    };
+  }
 }
 
 export const developerService = new DeveloperService();
+

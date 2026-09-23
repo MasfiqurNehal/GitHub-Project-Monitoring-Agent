@@ -34,14 +34,22 @@ export class AnalyticsService {
     }
 
     if (filters.dateFrom) {
+      let dFrom = new Date(filters.dateFrom);
+      if (typeof filters.dateFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(filters.dateFrom.trim())) {
+        dFrom = new Date(`${filters.dateFrom.trim()}T00:00:00.000Z`);
+      }
       conditions.push(`c.committed_at >= $${pIdx}`);
-      params.push(new Date(filters.dateFrom));
+      params.push(dFrom);
       pIdx++;
     }
 
     if (filters.dateTo) {
+      let dTo = new Date(filters.dateTo);
+      if (typeof filters.dateTo === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(filters.dateTo.trim())) {
+        dTo = new Date(`${filters.dateTo.trim()}T23:59:59.999Z`);
+      }
       conditions.push(`c.committed_at <= $${pIdx}`);
-      params.push(new Date(filters.dateTo));
+      params.push(dTo);
       pIdx++;
     }
 
@@ -622,6 +630,196 @@ export class AnalyticsService {
       })),
     };
   }
+
+  // 8. Daily Analytics API (Today, Yesterday, This Week, Last Week, This Month, Custom Date Range)
+  private resolveDateRange(filters: DashboardFilters & { preset?: string }) {
+    let from: string | undefined = filters.dateFrom;
+    let to: string | undefined = filters.dateTo;
+
+    if (filters.preset) {
+      const now = new Date();
+      const p = filters.preset.toLowerCase().replace(/[\s_-]+/g, '');
+
+      if (p === 'today') {
+        const start = new Date(now);
+        start.setHours(0, 0, 0, 0);
+        from = start.toISOString();
+        to = now.toISOString();
+      } else if (p === 'yesterday') {
+        const start = new Date(now);
+        start.setDate(start.getDate() - 1);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start);
+        end.setHours(23, 59, 59, 999);
+        from = start.toISOString();
+        to = end.toISOString();
+      } else if (p === 'thisweek' || p === 'week' || p === '7d') {
+        const start = new Date(now);
+        start.setDate(start.getDate() - 6);
+        start.setHours(0, 0, 0, 0);
+        from = start.toISOString();
+        to = now.toISOString();
+      } else if (p === 'lastweek') {
+        const end = new Date(now);
+        end.setDate(end.getDate() - 7);
+        end.setHours(23, 59, 59, 999);
+        const start = new Date(end);
+        start.setDate(start.getDate() - 6);
+        start.setHours(0, 0, 0, 0);
+        from = start.toISOString();
+        to = end.toISOString();
+      } else if (p === 'thismonth' || p === 'month' || p === '30d') {
+        const start = new Date(now);
+        start.setDate(start.getDate() - 29);
+        start.setHours(0, 0, 0, 0);
+        from = start.toISOString();
+        to = now.toISOString();
+      }
+    }
+
+    return { from, to };
+  }
+
+  async getDailyAnalytics(filters: DashboardFilters & { preset?: string }) {
+    const { from, to } = this.resolveDateRange(filters);
+    const effectiveFilters: DashboardFilters = {
+      ...filters,
+      dateFrom: from,
+      dateTo: to,
+    };
+
+    const { whereSql: commitWhere, params: commitParams } = this.buildCommitWhere(effectiveFilters);
+    const prWhere = commitWhere.replace(/c\.committed_at/g, 'pr.created_at').replace(/c\./g, 'pr.');
+    const issueWhere = commitWhere.replace(/c\.committed_at/g, 'i.created_at').replace(/c\./g, 'i.');
+    const prrWhere = commitWhere.replace(/c\.committed_at/g, 'prr.submitted_at').replace(/c\./g, 'prr.');
+
+    // 1. Commits & Line Changes by Day
+    const commitsRes = await pool.query(
+      `SELECT 
+        TO_CHAR(c.committed_at, 'YYYY-MM-DD') as date,
+        COUNT(*) as commits,
+        COALESCE(SUM(c.additions), 0) as additions,
+        COALESCE(SUM(c.deletions), 0) as deletions
+       FROM commits c
+       JOIN repositories r ON r.id = c.repository_id
+       LEFT JOIN developers d ON d.id = c.developer_id
+       ${commitWhere}
+       GROUP BY TO_CHAR(c.committed_at, 'YYYY-MM-DD')
+       ORDER BY date ASC`,
+      commitParams
+    );
+
+    // 2. PRs by Day
+    const prsRes = await pool.query(
+      `SELECT 
+        TO_CHAR(pr.created_at, 'YYYY-MM-DD') as date,
+        COUNT(*) as prs
+       FROM pull_requests pr
+       JOIN repositories r ON r.id = pr.repository_id
+       LEFT JOIN developers d ON d.id = pr.author_developer_id
+       ${prWhere}
+       GROUP BY TO_CHAR(pr.created_at, 'YYYY-MM-DD')
+       ORDER BY date ASC`,
+      commitParams
+    );
+
+    // 3. Reviews by Day
+    const reviewsRes = await pool.query(
+      `SELECT 
+        TO_CHAR(prr.submitted_at, 'YYYY-MM-DD') as date,
+        COUNT(*) as reviews
+       FROM pull_request_reviews prr
+       JOIN pull_requests pr ON pr.id = prr.pull_request_id
+       JOIN repositories r ON r.id = pr.repository_id
+       LEFT JOIN developers d ON d.id = prr.reviewer_developer_id
+       ${prrWhere}
+       GROUP BY TO_CHAR(prr.submitted_at, 'YYYY-MM-DD')
+       ORDER BY date ASC`,
+      commitParams
+    );
+
+    // 4. Issues by Day
+    const issuesRes = await pool.query(
+      `SELECT 
+        TO_CHAR(i.created_at, 'YYYY-MM-DD') as date,
+        COUNT(*) as issues
+       FROM issues i
+       JOIN repositories r ON r.id = i.repository_id
+       LEFT JOIN developers d ON d.id = i.author_developer_id
+       ${issueWhere}
+       GROUP BY TO_CHAR(i.created_at, 'YYYY-MM-DD')
+       ORDER BY date ASC`,
+      commitParams
+    );
+
+    const map = new Map<string, {
+      date: string;
+      commits: number;
+      pullRequests: number;
+      reviews: number;
+      issues: number;
+      additions: number;
+      deletions: number;
+    }>();
+
+    for (const r of commitsRes.rows) {
+      map.set(r.date, {
+        date: r.date,
+        commits: parseInt(r.commits, 10),
+        pullRequests: 0,
+        reviews: 0,
+        issues: 0,
+        additions: parseInt(r.additions, 10),
+        deletions: parseInt(r.deletions, 10),
+      });
+    }
+
+    for (const r of prsRes.rows) {
+      const item = map.get(r.date) || {
+        date: r.date,
+        commits: 0,
+        pullRequests: 0,
+        reviews: 0,
+        issues: 0,
+        additions: 0,
+        deletions: 0,
+      };
+      item.pullRequests = parseInt(r.prs, 10);
+      map.set(r.date, item);
+    }
+
+    for (const r of reviewsRes.rows) {
+      const item = map.get(r.date) || {
+        date: r.date,
+        commits: 0,
+        pullRequests: 0,
+        reviews: 0,
+        issues: 0,
+        additions: 0,
+        deletions: 0,
+      };
+      item.reviews = parseInt(r.reviews, 10);
+      map.set(r.date, item);
+    }
+
+    for (const r of issuesRes.rows) {
+      const item = map.get(r.date) || {
+        date: r.date,
+        commits: 0,
+        pullRequests: 0,
+        reviews: 0,
+        issues: 0,
+        additions: 0,
+        deletions: 0,
+      };
+      item.issues = parseInt(r.issues, 10);
+      map.set(r.date, item);
+    }
+
+    const result = Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+    return result;
+  }
 }
 
 export const analyticsService = new AnalyticsService();
+

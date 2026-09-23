@@ -44,7 +44,7 @@ apiRouter.get('/health/database', async (req, res) => {
   }
 });
 
-// 2. Dashboard Endpoints
+// 2. Dashboard & Analytics Endpoints
 apiRouter.get('/dashboard/overview', dashboardController.getDashboardOverview);
 apiRouter.get('/dashboard/activity', dashboardController.getDashboardActivity);
 apiRouter.get('/dashboard/commits', dashboardController.getDashboardCommits);
@@ -52,6 +52,9 @@ apiRouter.get('/dashboard/pull-requests', dashboardController.getDashboardPullRe
 apiRouter.get('/dashboard/issues', dashboardController.getDashboardIssues);
 apiRouter.get('/dashboard/developers', dashboardController.getDashboardDevelopers);
 apiRouter.get('/dashboard/repositories', dashboardController.getDashboardRepositories);
+apiRouter.get('/dashboard/daily', dashboardController.getDailyAnalytics);
+apiRouter.get('/analytics/daily', dashboardController.getDailyAnalytics);
+
 
 // 3. Projects Endpoints
 apiRouter.get('/projects', projectController.listProjects);
@@ -72,12 +75,15 @@ apiRouter.delete('/repositories/:id', repositoryController.removeRepository);
 
 // 5. Developers Endpoints
 apiRouter.get('/developers', developerController.listDevelopers);
+apiRouter.get('/analytics/developers/:id', developerController.getFactualDeveloperAnalytics);
+apiRouter.get('/developers/:id/analytics', developerController.getFactualDeveloperAnalytics);
 apiRouter.get('/developers/:id', developerController.getDeveloperDetail);
 apiRouter.get('/developers/:id/activity', developerController.getDeveloperActivity);
 apiRouter.get('/developers/:id/commits', commitController.getDeveloperCommits);
 apiRouter.get('/developers/:id/pull-requests', developerController.getDeveloperPullRequests);
 apiRouter.get('/developers/:id/issues', developerController.getDeveloperIssues);
 apiRouter.get('/developers/:id/reviews', developerController.getDeveloperReviews);
+
 
 // Commits Endpoints
 apiRouter.get('/repositories/:id/commits', commitController.getRepositoryCommits);

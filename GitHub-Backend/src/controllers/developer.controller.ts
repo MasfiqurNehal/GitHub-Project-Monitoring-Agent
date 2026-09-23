@@ -197,3 +197,32 @@ export async function getDeveloperReviews(req: Request, res: Response, next: Nex
     next(err);
   }
 }
+
+// 7. GET /api/analytics/developers/:id
+export async function getFactualDeveloperAnalytics(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    const { date_from, from, dateFrom, date_to, to, dateTo, repository, repositoryId, project, projectId } = req.query;
+
+    const filters = {
+      dateFrom: (date_from || from || dateFrom) as string | undefined,
+      dateTo: (date_to || to || dateTo) as string | undefined,
+      repositoryId: (repository || repositoryId) as string | undefined,
+      projectId: (project || projectId) as string | undefined,
+    };
+
+    const analytics = await developerService.getFactualDeveloperAnalytics(id, filters);
+
+    if (!analytics) {
+      return res.status(404).json({ success: false, error: 'Developer not found' });
+    }
+
+    res.json({
+      success: true,
+      data: analytics,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+

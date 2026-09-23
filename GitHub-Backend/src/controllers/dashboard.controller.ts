@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { analyticsService, DashboardFilters } from '../services/analytics.service.js';
 
-function parseFilters(req: Request): DashboardFilters {
-  const { project, projectId, repository, repositoryId, developer, developerId, date_from, from, dateFrom, date_to, to, dateTo } = req.query;
+function parseFilters(req: Request): DashboardFilters & { preset?: string } {
+  const { project, projectId, repository, repositoryId, developer, developerId, date_from, from, dateFrom, date_to, to, dateTo, preset } = req.query;
 
   return {
     projectId: (project || projectId) as string | undefined,
@@ -10,6 +10,7 @@ function parseFilters(req: Request): DashboardFilters {
     developerId: (developer || developerId) as string | undefined,
     dateFrom: (date_from || from || dateFrom) as string | undefined,
     dateTo: (date_to || to || dateTo) as string | undefined,
+    preset: preset as string | undefined,
   };
 }
 
@@ -89,3 +90,15 @@ export async function getDashboardRepositories(req: Request, res: Response, next
     next(err);
   }
 }
+
+// 8. GET /api/analytics/daily
+export async function getDailyAnalytics(req: Request, res: Response, next: NextFunction) {
+  try {
+    const filters = parseFilters(req);
+    const data = await analyticsService.getDailyAnalytics(filters);
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
