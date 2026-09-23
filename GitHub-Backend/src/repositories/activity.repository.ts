@@ -112,6 +112,7 @@ export class ActivityRepository {
         r.id as repo_id,
         r.name as repo_name,
         r.full_name as repo_full_name,
+        r.html_url as repo_html_url,
         d.id as dev_id,
         d.login as dev_login,
         d.name as dev_name,
@@ -132,8 +133,51 @@ export class ActivityRepository {
     const countRes = await pool.query(countQuery, params.slice(0, paramIdx - 3));
     const dataRes = await pool.query(dataQuery, params);
 
+    const formattedData = dataRes.rows.map((row) => {
+      const occurredDate = new Date(row.occurred_at);
+      const metadata = row.metadata || {};
+
+      let label = 'View on GitHub';
+      if (metadata.prNumber) label = `PR #${metadata.prNumber}`;
+      else if (metadata.issueNumber) label = `Issue #${metadata.issueNumber}`;
+      else if (metadata.commitSha) label = `Commit ${metadata.commitSha.substring(0, 7)}`;
+      else if (row.event_type) label = `${row.event_type.replace(/_/g, ' ')}`;
+
+      const url = metadata.html_url || metadata.url || row.repo_html_url || 'https://github.com';
+
+      return {
+        id: row.id,
+        type: row.event_type,
+        occurredAt: row.occurred_at,
+        time: occurredDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        formattedTime: occurredDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        date: occurredDate.toISOString().split('T')[0],
+        developer: {
+          id: row.dev_id || 'dev-system',
+          login: row.dev_login || 'system',
+          name: row.dev_name || row.dev_login || 'System / Webhook',
+          avatarUrl: row.dev_avatar_url || 'https://github.com/github.png',
+        },
+        repository: {
+          id: row.repo_id || 'repo-1',
+          name: row.repo_name || 'Repository',
+          fullName: row.repo_full_name || 'Organization/Repository',
+        },
+        project: {
+          id: row.project_id || 'proj-1',
+          name: row.project_name || 'Default Project',
+        },
+        githubItem: {
+          label,
+          url,
+        },
+        title: metadata.message || metadata.title || `Activity: ${row.event_type}`,
+        details: metadata,
+      };
+    });
+
     return {
-      data: dataRes.rows,
+      data: formattedData,
       total: parseInt(countRes.rows[0].total, 10),
       page,
       limit,

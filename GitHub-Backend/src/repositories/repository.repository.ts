@@ -4,6 +4,7 @@ export interface RepositoryRow {
   id: string;
   project_id: string | null;
   github_repository_id: number | string;
+  github_installation_id?: number | string | null;
   owner: string;
   name: string;
   full_name: string;
@@ -50,6 +51,7 @@ export class RepositoryRepository {
     id: string;
     projectId?: string | null;
     githubRepositoryId: number | string;
+    githubInstallationId?: number | string | null;
     owner: string;
     name: string;
     fullName: string;
@@ -68,19 +70,20 @@ export class RepositoryRepository {
   }): Promise<RepositoryRow> {
     const query = `
       INSERT INTO repositories (
-        id, project_id, github_repository_id, owner, name, full_name,
+        id, project_id, github_repository_id, github_installation_id, owner, name, full_name,
         html_url, clone_url, default_branch, visibility, is_private,
         description, language, stars, forks, open_issues_count,
         github_created_at, github_updated_at, sync_status, created_at, updated_at
       ) VALUES (
-        $1, $2, $3, $4, $5, $6,
-        $7, $8, $9, $10, $11,
-        $12, $13, $14, $15, $16,
-        $17, $18, 'PENDING', NOW(), NOW()
+        $1, $2, $3, $4, $5, $6, $7,
+        $8, $9, $10, $11, $12,
+        $13, $14, $15, $16, $17,
+        $18, $19, 'PENDING', NOW(), NOW()
       )
       ON CONFLICT (full_name) DO UPDATE SET
         project_id = EXCLUDED.project_id,
         github_repository_id = EXCLUDED.github_repository_id,
+        github_installation_id = EXCLUDED.github_installation_id,
         default_branch = EXCLUDED.default_branch,
         description = EXCLUDED.description,
         language = EXCLUDED.language,
@@ -96,13 +99,14 @@ export class RepositoryRepository {
       data.id,
       data.projectId || null,
       data.githubRepositoryId,
+      data.githubInstallationId || null,
       data.owner,
       data.name,
       data.fullName,
       data.htmlUrl,
       data.cloneUrl || null,
       data.defaultBranch || 'main',
-      data.visibility || 'public',
+      data.visibility || (data.isPrivate ? 'private' : 'public'),
       data.isPrivate || false,
       data.description || null,
       data.language || null,

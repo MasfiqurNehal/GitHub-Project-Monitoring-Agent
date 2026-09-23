@@ -51,10 +51,14 @@ apiRouter.get('/dashboard/signals', dashboardController.getEngineeringSignals);
 apiRouter.get('/projects', projectController.listProjects);
 apiRouter.post('/projects', projectController.createProject);
 apiRouter.get('/projects/:id', projectController.getProjectDetail);
+apiRouter.patch('/projects/:id', projectController.updateProject);
+apiRouter.delete('/projects/:id', projectController.deleteProject);
+apiRouter.get('/projects/:id/repositories', projectController.getProjectRepositories);
 
 // 4. Repositories Endpoints
 apiRouter.get('/repositories', repositoryController.listRepositories);
 apiRouter.post('/repositories', repositoryController.addRepository);
+apiRouter.post('/repositories/validate', repositoryController.validateRepositoryUrl);
 apiRouter.get('/repositories/:id', repositoryController.getRepositoryDetail);
 apiRouter.post('/repositories/:id/sync', repositoryController.triggerRepositorySync);
 apiRouter.delete('/repositories/:id', repositoryController.removeRepository);

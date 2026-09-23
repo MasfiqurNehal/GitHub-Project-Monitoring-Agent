@@ -118,25 +118,27 @@ export function ActivityTimelineView({ activities }: ActivityTimelineViewProps) 
                       {getActivityBadge(item.type)}
                       <div className="flex items-center gap-1.5">
                         <img
-                          src={item.developer.avatarUrl || 'https://github.com/github.png'}
-                          alt={item.developer.login}
+                          src={item.developer?.avatarUrl || 'https://github.com/github.png'}
+                          alt={item.developer?.login || 'developer'}
                           className="w-5 h-5 rounded-full border border-slate-700 object-cover"
                         />
-                        <Link href={`/developers/${item.developer.id}`} className="font-bold text-xs text-slate-100 hover:text-blue-400 transition-colors">
-                          {item.developer.name || item.developer.login}
+                        <Link href={`/developers/${item.developer?.id || '#'}`} className="font-bold text-xs text-slate-100 hover:text-blue-400 transition-colors">
+                          {item.developer?.name || item.developer?.login || 'System'}
                         </Link>
                       </div>
                     </div>
 
-                    <a
-                      href={item.githubItem.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-xs font-mono text-blue-400 hover:text-blue-300 self-start sm:self-auto"
-                    >
-                      <span>{item.githubItem.label}</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
+                    {item.githubItem?.url && (
+                      <a
+                        href={item.githubItem.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-xs font-mono text-blue-400 hover:text-blue-300 self-start sm:self-auto"
+                      >
+                        <span>{item.githubItem.label || 'View on GitHub'}</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
                   </div>
 
                   {/* Title & Description */}
