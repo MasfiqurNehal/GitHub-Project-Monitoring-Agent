@@ -46,7 +46,12 @@ apiRouter.get('/health/database', async (req, res) => {
 
 // 2. Dashboard Endpoints
 apiRouter.get('/dashboard/overview', dashboardController.getDashboardOverview);
-apiRouter.get('/dashboard/signals', dashboardController.getEngineeringSignals);
+apiRouter.get('/dashboard/activity', dashboardController.getDashboardActivity);
+apiRouter.get('/dashboard/commits', dashboardController.getDashboardCommits);
+apiRouter.get('/dashboard/pull-requests', dashboardController.getDashboardPullRequests);
+apiRouter.get('/dashboard/issues', dashboardController.getDashboardIssues);
+apiRouter.get('/dashboard/developers', dashboardController.getDashboardDevelopers);
+apiRouter.get('/dashboard/repositories', dashboardController.getDashboardRepositories);
 
 // 3. Projects Endpoints
 apiRouter.get('/projects', projectController.listProjects);

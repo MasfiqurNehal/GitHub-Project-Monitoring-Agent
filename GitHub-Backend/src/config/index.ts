@@ -1,7 +1,36 @@
 import dotenv from 'dotenv';
 import { z } from 'zod';
+import fs from 'fs';
+import path from 'path';
 
 dotenv.config();
+
+function loadPrivateKey(): string {
+  if (process.env.GITHUB_PRIVATE_KEY && process.env.GITHUB_PRIVATE_KEY.trim() !== '') {
+    return process.env.GITHUB_PRIVATE_KEY.replace(/\\n/g, '\n');
+  }
+
+  const keyPath = process.env.GITHUB_PRIVATE_KEY_PATH;
+  if (keyPath) {
+    const candidatePaths = [
+      path.resolve(process.cwd(), keyPath),
+      path.resolve(process.cwd(), 'secrets', path.basename(keyPath)),
+      path.resolve(process.cwd(), 'src', 'secrets', path.basename(keyPath)),
+    ];
+
+    for (const cand of candidatePaths) {
+      if (fs.existsSync(cand)) {
+        try {
+          return fs.readFileSync(cand, 'utf8');
+        } catch (err) {
+          // continue checking
+        }
+      }
+    }
+  }
+
+  return '';
+}
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -34,7 +63,7 @@ export const config = {
   githubAppId: process.env.GITHUB_APP_ID || '',
   githubClientId: process.env.GITHUB_CLIENT_ID || '',
   githubClientSecret: process.env.GITHUB_CLIENT_SECRET || '',
-  githubPrivateKey: process.env.GITHUB_PRIVATE_KEY ? process.env.GITHUB_PRIVATE_KEY.replace(/\\n/g, '\n') : '',
+  githubPrivateKey: loadPrivateKey(),
   githubWebhookSecret: process.env.GITHUB_WEBHOOK_SECRET || '',
   githubApiUrl: process.env.GITHUB_API_URL || 'https://api.github.com',
   githubApiVersion: process.env.GITHUB_API_VERSION || '2022-11-28',
@@ -44,3 +73,4 @@ export const config = {
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
   fastapiUrl: process.env.FASTAPI_URL || 'http://localhost:8000',
 };
+

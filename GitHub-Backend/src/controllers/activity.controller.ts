@@ -3,17 +3,36 @@ import { activityRepository } from '../repositories/activity.repository.js';
 
 export async function getActivityStream(req: Request, res: Response, next: NextFunction) {
   try {
-    const { projectId, repositoryId, developerId, activityType, from, to, page, pageSize } = req.query;
+    const {
+      project,
+      projectId,
+      repository,
+      repositoryId,
+      developer,
+      developerId,
+      activity_type,
+      activityType,
+      eventType,
+      date_from,
+      from,
+      dateFrom,
+      date_to,
+      to,
+      dateTo,
+      page,
+      limit,
+      pageSize,
+    } = req.query;
 
     const filters = {
-      projectId: projectId as string,
-      repositoryId: repositoryId as string,
-      developerId: developerId as string,
-      eventType: activityType as string,
-      from: from ? new Date(from as string) : undefined,
-      to: to ? new Date(to as string) : undefined,
+      projectId: (project || projectId) as string | undefined,
+      repositoryId: (repository || repositoryId) as string | undefined,
+      developerId: (developer || developerId) as string | undefined,
+      activityType: (activity_type || activityType || eventType) as string | undefined,
+      from: (date_from || from || dateFrom) ? new Date((date_from || from || dateFrom) as string) : undefined,
+      to: (date_to || to || dateTo) ? new Date((date_to || to || dateTo) as string) : undefined,
       page: page ? parseInt(page as string, 10) : 1,
-      limit: pageSize ? parseInt(pageSize as string, 10) : 25,
+      limit: (limit || pageSize) ? parseInt((limit || pageSize) as string, 10) : 25,
     };
 
     const result = await activityRepository.findActivityFeed(filters);
@@ -31,3 +50,4 @@ export async function getActivityStream(req: Request, res: Response, next: NextF
     next(err);
   }
 }
+
