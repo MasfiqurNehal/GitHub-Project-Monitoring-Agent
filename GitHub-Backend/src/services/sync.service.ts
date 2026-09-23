@@ -296,6 +296,17 @@ export class SyncService {
               authorDevId = dev.id;
             }
 
+            let assigneeDevId: string | null = null;
+            if (issue.assignee?.login) {
+              const aDev = await developerRepository.upsert({
+                id: `dev-${issue.assignee.id || issue.assignee.login}`,
+                githubUserId: issue.assignee.id,
+                login: issue.assignee.login,
+                avatarUrl: issue.assignee.avatar_url,
+              });
+              assigneeDevId = aDev.id;
+            }
+
             const issueId = `iss-${repo.id}-${issue.number}`;
             await issueRepository.upsert({
               id: issueId,
@@ -303,9 +314,11 @@ export class SyncService {
               githubIssueId: issue.id,
               number: issue.number,
               authorDeveloperId: authorDevId,
+              assigneeDeveloperId: assigneeDevId,
               title: issue.title,
               body: issue.body || null,
               state: issue.state ? issue.state.toUpperCase() : 'OPEN',
+              labels: issue.labels ? issue.labels.map((l: any) => typeof l === 'string' ? l : l.name) : [],
               closedAt: issue.closed_at ? new Date(issue.closed_at) : null,
               createdAt: new Date(issue.created_at),
               updatedAt: new Date(issue.updated_at),

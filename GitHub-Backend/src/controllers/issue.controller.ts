@@ -1,127 +1,90 @@
 import { Request, Response, NextFunction } from 'express';
-import { pool } from '../db/connection.js';
+import { issueRepository } from '../repositories/issue.repository.js';
+import { repositoryRepository } from '../repositories/repository.repository.js';
 
+// 1. GET /api/issues
 export async function listIssues(req: Request, res: Response, next: NextFunction) {
   try {
-    const { repositoryId, projectId, developerId, state } = req.query;
-    const conditions: string[] = [];
-    const params: any[] = [];
-    let idx = 1;
+    const { repository, repositoryId, project, projectId, developer, developerId, state, date_from, date_to, page, limit, per_page } = req.query;
 
-    if (repositoryId) {
-      conditions.push(`i.repository_id = $${idx++}`);
-      params.push(repositoryId);
-    }
+    const result = await issueRepository.findIssues({
+      repositoryId: (repository || repositoryId) as string,
+      projectId: (project || projectId) as string,
+      developerId: (developer || developerId) as string,
+      state: state as string,
+      dateFrom: date_from as string,
+      dateTo: date_to as string,
+      page: Number(page) || 1,
+      limit: Number(limit || per_page || 20),
+    });
 
-    if (projectId) {
-      conditions.push(`r.project_id = $${idx++}`);
-      params.push(projectId);
-    }
-
-    if (developerId) {
-      conditions.push(`i.author_developer_id = $${idx++}`);
-      params.push(developerId);
-    }
-
-    if (state && state !== 'ALL') {
-      conditions.push(`i.state = $${idx++}`);
-      params.push(String(state).toUpperCase());
-    }
-
-    const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
-    const query = `
-      SELECT 
-        i.*,
-        r.name as repo_name,
-        r.full_name as repo_full_name,
-        d.id as author_id,
-        d.login as author_login,
-        d.name as author_name,
-        d.avatar_url as author_avatar
-      FROM issues i
-      LEFT JOIN repositories r ON i.repository_id = r.id
-      LEFT JOIN developers d ON i.author_developer_id = d.id
-      ${whereSql}
-      ORDER BY i.created_at DESC
-      LIMIT 100
-    `;
-
-    const resDb = await pool.query(query, params);
-    const data = resDb.rows.map((row) => ({
-      id: row.id,
-      repositoryId: row.repository_id,
-      githubIssueId: row.github_issue_id,
-      number: row.number,
-      title: row.title,
-      body: row.body,
-      state: row.state,
-      author: {
-        id: row.author_id || 'dev-unknown',
-        login: row.author_login || 'author',
-        name: row.author_name,
-        avatarUrl: row.author_avatar,
+    res.json({
+      success: true,
+      data: result.data,
+      pagination: {
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        totalPages: result.totalPages,
       },
-      repository: {
-        id: row.repository_id,
-        name: row.repo_name,
-        fullName: row.repo_full_name,
-      },
-      labels: [],
-      assignees: [],
-      commentsCount: row.comments_count || 0,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      closedAt: row.closed_at,
-    }));
-
-    res.json({ success: true, data });
+    });
   } catch (err) {
     next(err);
   }
 }
 
+// 2. GET /api/issues/:id
 export async function getIssueDetail(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const issueRes = await pool.query(
-      `SELECT i.*, r.name as repo_name, r.full_name as repo_full_name, d.id as author_id, d.login as author_login, d.avatar_url as author_avatar
-       FROM issues i
-       LEFT JOIN repositories r ON i.repository_id = r.id
-       LEFT JOIN developers d ON i.author_developer_id = d.id
-       WHERE i.id = $1`,
-      [id]
-    );
+    const detail = await issueRepository.findDetailById(id);
 
-    if (issueRes.rows.length === 0) {
+    if (!detail) {
       return res.status(404).json({ success: false, error: 'Issue not found' });
     }
 
-    const row = issueRes.rows[0];
+    res.json({
+      success: true,
+      data: detail,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// 3. GET /api/repositories/:id/issues
+export async function getRepositoryIssues(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    const { developer, state, date_from, date_to, page, limit, per_page } = req.query;
+
+    let repo = await repositoryRepository.findById(id);
+    if (!repo) {
+      repo = await repositoryRepository.findByFullName(id);
+    }
+
+    if (!repo) {
+      return res.status(404).json({ success: false, error: 'Repository not found' });
+    }
+
+    const result = await issueRepository.findIssues({
+      repositoryId: repo.id,
+      developerId: developer as string,
+      state: state as string,
+      dateFrom: date_from as string,
+      dateTo: date_to as string,
+      page: Number(page) || 1,
+      limit: Number(limit || per_page || 20),
+    });
 
     res.json({
       success: true,
-      data: {
-        issue: {
-          id: row.id,
-          repositoryId: row.repository_id,
-          githubIssueId: row.github_issue_id,
-          number: row.number,
-          title: row.title,
-          body: row.body,
-          state: row.state,
-          author: { id: row.author_id, login: row.author_login, avatarUrl: row.author_avatar },
-          repository: { id: row.repository_id, name: row.repo_name, fullName: row.repo_full_name },
-          labels: [],
-          assignees: [],
-          commentsCount: row.comments_count || 0,
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-          closedAt: row.closed_at,
-        },
-        comments: [],
-        timeline: [],
-        relatedPullRequests: [],
+      data: result.data,
+      pagination: {
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        totalPages: result.totalPages,
       },
     });
   } catch (err) {

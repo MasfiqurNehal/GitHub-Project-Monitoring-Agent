@@ -2,9 +2,14 @@ import { pool } from '../db/connection.js';
 import { developerRepository } from '../repositories/developer.repository.js';
 
 export class DeveloperService {
-  async getDeveloperDetail(developerId: string) {
-    const dev = await developerRepository.findById(developerId);
+  async getDeveloperDetail(developerIdOrLogin: string, dateFrom?: string, dateTo?: string) {
+    let dev = await developerRepository.findById(developerIdOrLogin);
+    if (!dev) {
+      dev = await developerRepository.findByLogin(developerIdOrLogin);
+    }
     if (!dev) return null;
+
+    const developerId = dev.id;
 
     // Fetch associated projects
     const projectsRes = await pool.query(
@@ -23,17 +28,14 @@ export class DeveloperService {
       [developerId]
     );
 
-    const commitStatsRes = await pool.query(
-      `SELECT COUNT(*) as total_commits, COALESCE(SUM(additions), 0) as additions, COALESCE(SUM(deletions), 0) as deletions FROM commits WHERE developer_id = $1`,
-      [developerId]
-    );
+    const metrics = await developerRepository.getMetricsForDeveloper(developerId, dateFrom, dateTo);
 
     const prStatsRes = await pool.query(
       `SELECT 
         COUNT(*) as total_prs,
-        COUNT(*) FILTER (WHERE state = 'OPEN') as open_prs,
-        COUNT(*) FILTER (WHERE state = 'MERGED' OR merged = true) as merged_prs,
-        COUNT(*) FILTER (WHERE state = 'CLOSED' AND merged = false) as closed_prs
+        COUNT(*) FILTER (WHERE UPPER(state) = 'OPEN') as open_prs,
+        COUNT(*) FILTER (WHERE UPPER(state) = 'MERGED' OR merged = true) as merged_prs,
+        COUNT(*) FILTER (WHERE UPPER(state) = 'CLOSED' AND merged = false) as closed_prs
        FROM pull_requests WHERE author_developer_id = $1`,
       [developerId]
     );
@@ -41,10 +43,19 @@ export class DeveloperService {
     const reviewStatsRes = await pool.query(
       `SELECT 
         COUNT(*) as total_reviews,
-        COUNT(*) FILTER (WHERE state = 'APPROVED') as approved,
-        COUNT(*) FILTER (WHERE state = 'CHANGES_REQUESTED') as changes_requested,
-        COUNT(*) FILTER (WHERE state = 'COMMENTED') as commented
+        COUNT(*) FILTER (WHERE UPPER(state) = 'APPROVED') as approved,
+        COUNT(*) FILTER (WHERE UPPER(state) = 'CHANGES_REQUESTED') as changes_requested,
+        COUNT(*) FILTER (WHERE UPPER(state) = 'COMMENTED') as commented
        FROM pull_request_reviews WHERE reviewer_developer_id = $1`,
+      [developerId]
+    );
+
+    const issueStatsRes = await pool.query(
+      `SELECT 
+        COUNT(*) as total_issues,
+        COUNT(*) FILTER (WHERE UPPER(state) = 'OPEN') as open_issues,
+        COUNT(*) FILTER (WHERE UPPER(state) = 'CLOSED') as closed_issues
+       FROM issues WHERE author_developer_id = $1`,
       [developerId]
     );
 
@@ -58,12 +69,6 @@ export class DeveloperService {
       [developerId]
     );
 
-    const totalCommits = parseInt(commitStatsRes.rows[0].total_commits, 10);
-    const totalPRs = parseInt(prStatsRes.rows[0].total_prs, 10);
-    const totalReviews = parseInt(reviewStatsRes.rows[0].total_reviews, 10);
-    const linesAdded = parseInt(commitStatsRes.rows[0].additions, 10);
-    const linesDeleted = parseInt(commitStatsRes.rows[0].deletions, 10);
-
     return {
       developer: {
         id: dev.id,
@@ -73,48 +78,48 @@ export class DeveloperService {
         avatarUrl: dev.avatar_url,
         profileUrl: dev.html_url,
         email: dev.email,
+        type: dev.type,
         projects: projectsRes.rows,
         repositories: reposRes.rows,
         metrics: {
           projectsCount: projectsRes.rows.length,
           repositoriesCount: reposRes.rows.length,
-          commitsCount: totalCommits,
-          prsCount: totalPRs,
-          reviewsCount: totalReviews,
-          issuesCount: 0,
-          linesAdded,
-          linesDeleted,
+          commitCount: metrics.commitCount,
+          prCount: metrics.prCount,
+          reviewCount: metrics.reviewCount,
+          issueCount: metrics.issueCount,
+          additions: metrics.additions,
+          deletions: metrics.deletions,
+          changedFiles: metrics.changedFiles,
           lastActivityAt: dev.updated_at,
         },
       },
       commitStats: {
-        totalCommits,
-        avgAdditionsPerCommit: Math.round(linesAdded / (totalCommits || 1)),
+        totalCommits: metrics.commitCount,
+        avgAdditionsPerCommit: Math.round(metrics.additions / (metrics.commitCount || 1)),
         topRepo: reposRes.rows[0]?.name || 'Main Repository',
-        commitsByDay: [],
       },
       prStats: {
-        totalPRs,
-        openPRs: parseInt(prStatsRes.rows[0].open_prs, 10),
-        mergedPRs: parseInt(prStatsRes.rows[0].merged_prs, 10),
-        closedPRs: parseInt(prStatsRes.rows[0].closed_prs, 10),
+        totalPRs: metrics.prCount,
+        openPRs: parseInt(prStatsRes.rows[0]?.open_prs || '0', 10),
+        mergedPRs: parseInt(prStatsRes.rows[0]?.merged_prs || '0', 10),
+        closedPRs: parseInt(prStatsRes.rows[0]?.closed_prs || '0', 10),
       },
       reviewStats: {
-        totalReviews,
-        approved: parseInt(reviewStatsRes.rows[0].approved, 10),
-        changesRequested: parseInt(reviewStatsRes.rows[0].changes_requested, 10),
-        commented: parseInt(reviewStatsRes.rows[0].commented, 10),
+        totalReviews: metrics.reviewCount,
+        approved: parseInt(reviewStatsRes.rows[0]?.approved || '0', 10),
+        changesRequested: parseInt(reviewStatsRes.rows[0]?.changes_requested || '0', 10),
+        commented: parseInt(reviewStatsRes.rows[0]?.commented || '0', 10),
       },
       issueStats: {
-        totalIssues: 0,
-        opened: 0,
-        closed: 0,
+        totalIssues: metrics.issueCount,
+        openIssues: parseInt(issueStatsRes.rows[0]?.open_issues || '0', 10),
+        closedIssues: parseInt(issueStatsRes.rows[0]?.closed_issues || '0', 10),
       },
       codeChangeStats: {
-        totalAdditions: linesAdded,
-        totalDeletions: linesDeleted,
-        netChanges: linesAdded - linesDeleted,
-        trend: [],
+        totalAdditions: metrics.additions,
+        totalDeletions: metrics.deletions,
+        netChanges: metrics.additions - metrics.deletions,
       },
       activityTimeline: timelineRes.rows.map((t) => ({
         id: t.id,
@@ -125,7 +130,6 @@ export class DeveloperService {
         title: t.metadata?.message || `Activity: ${t.event_type}`,
         repoName: t.repo_name || 'Repository',
       })),
-      activityDistribution: [],
     };
   }
 }

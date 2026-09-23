@@ -6,6 +6,7 @@ import * as repositoryController from '../controllers/repository.controller.js';
 import * as developerController from '../controllers/developer.controller.js';
 import * as activityController from '../controllers/activity.controller.js';
 import * as reportController from '../controllers/report.controller.js';
+import * as commitController from '../controllers/commit.controller.js';
 import * as pullRequestController from '../controllers/pullRequest.controller.js';
 import * as issueController from '../controllers/issue.controller.js';
 import * as githubController from '../controllers/github.controller.js';
@@ -67,6 +68,16 @@ apiRouter.delete('/repositories/:id', repositoryController.removeRepository);
 // 5. Developers Endpoints
 apiRouter.get('/developers', developerController.listDevelopers);
 apiRouter.get('/developers/:id', developerController.getDeveloperDetail);
+apiRouter.get('/developers/:id/activity', developerController.getDeveloperActivity);
+apiRouter.get('/developers/:id/commits', commitController.getDeveloperCommits);
+apiRouter.get('/developers/:id/pull-requests', developerController.getDeveloperPullRequests);
+apiRouter.get('/developers/:id/issues', developerController.getDeveloperIssues);
+apiRouter.get('/developers/:id/reviews', developerController.getDeveloperReviews);
+
+// Commits Endpoints
+apiRouter.get('/repositories/:id/commits', commitController.getRepositoryCommits);
+apiRouter.get('/commits/:id', commitController.getCommitDetail);
+apiRouter.get('/commits/:id/changes', commitController.getCommitChanges);
 
 // 6. Engineering Activity Stream
 apiRouter.get('/activity', activityController.getActivityStream);
@@ -74,10 +85,12 @@ apiRouter.get('/activity', activityController.getActivityStream);
 // 7. Pull Requests Endpoints
 apiRouter.get('/pull-requests', pullRequestController.listPullRequests);
 apiRouter.get('/pull-requests/:id', pullRequestController.getPullRequestDetail);
+apiRouter.get('/repositories/:id/pull-requests', pullRequestController.getRepositoryPullRequests);
 
 // 8. Issues Endpoints
 apiRouter.get('/issues', issueController.listIssues);
 apiRouter.get('/issues/:id', issueController.getIssueDetail);
+apiRouter.get('/repositories/:id/issues', issueController.getRepositoryIssues);
 
 // 9. Reports Endpoints
 apiRouter.get('/reports', reportController.listReports);
