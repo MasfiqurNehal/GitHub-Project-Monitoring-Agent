@@ -61,6 +61,7 @@ apiRouter.post('/repositories', repositoryController.addRepository);
 apiRouter.post('/repositories/validate', repositoryController.validateRepositoryUrl);
 apiRouter.get('/repositories/:id', repositoryController.getRepositoryDetail);
 apiRouter.post('/repositories/:id/sync', repositoryController.triggerRepositorySync);
+apiRouter.get('/repositories/:id/sync-status', repositoryController.getSyncStatus);
 apiRouter.delete('/repositories/:id', repositoryController.removeRepository);
 
 // 5. Developers Endpoints

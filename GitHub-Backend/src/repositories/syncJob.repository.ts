@@ -16,11 +16,19 @@ export class SyncJobRepository {
   async create(id: string, repositoryId: string, jobType: string): Promise<SyncJobRow> {
     const res = await pool.query(
       `INSERT INTO sync_jobs (id, repository_id, job_type, status, started_at, created_at)
-       VALUES ($1, $2, $3, 'IN_PROGRESS', NOW(), NOW())
+       VALUES ($1, $2, $3, 'running', NOW(), NOW())
        RETURNING *`,
       [id, repositoryId, jobType]
     );
     return res.rows[0];
+  }
+
+  async findLatestByRepositoryId(repositoryId: string): Promise<SyncJobRow | null> {
+    const res = await pool.query(
+      'SELECT * FROM sync_jobs WHERE repository_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [repositoryId]
+    );
+    return res.rows[0] || null;
   }
 
   async updateProgress(id: string, recordsProcessed: number): Promise<void> {
@@ -32,14 +40,14 @@ export class SyncJobRepository {
 
   async complete(id: string, recordsProcessed: number): Promise<void> {
     await pool.query(
-      `UPDATE sync_jobs SET status = 'COMPLETED', completed_at = NOW(), records_processed = $1 WHERE id = $2`,
+      `UPDATE sync_jobs SET status = 'completed', completed_at = NOW(), records_processed = $1 WHERE id = $2`,
       [recordsProcessed, id]
     );
   }
 
   async fail(id: string, errorMessage: string): Promise<void> {
     await pool.query(
-      `UPDATE sync_jobs SET status = 'FAILED', completed_at = NOW(), error_message = $1 WHERE id = $2`,
+      `UPDATE sync_jobs SET status = 'failed', completed_at = NOW(), error_message = $1 WHERE id = $2`,
       [errorMessage, id]
     );
   }

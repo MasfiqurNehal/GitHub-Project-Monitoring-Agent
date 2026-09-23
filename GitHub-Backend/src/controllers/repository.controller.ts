@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { repositoryRepository } from '../repositories/repository.repository.js';
 import { projectRepository } from '../repositories/project.repository.js';
+import { syncJobRepository } from '../repositories/syncJob.repository.js';
 import { githubService } from '../services/github.service.js';
 import { syncService } from '../services/sync.service.js';
 import { logger } from '../utils/logger.js';
@@ -145,7 +146,43 @@ export async function triggerRepositorySync(req: Request, res: Response, next: N
   }
 }
 
-// 6. DELETE /api/repositories/:id
+// 6. GET /api/repositories/:id/sync-status
+export async function getSyncStatus(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    const repo = await repositoryRepository.findById(id);
+    if (!repo) {
+      return res.status(404).json({ success: false, error: 'Repository not found' });
+    }
+
+    const latestJob = await syncJobRepository.findLatestByRepositoryId(repo.id);
+
+    res.json({
+      success: true,
+      data: {
+        repositoryId: repo.id,
+        repositoryName: repo.full_name,
+        syncStatus: repo.sync_status || 'not_started',
+        lastSyncedAt: repo.last_synced_at,
+        latestJob: latestJob
+          ? {
+              jobId: latestJob.id,
+              status: latestJob.status,
+              jobType: latestJob.job_type,
+              recordsProcessed: latestJob.records_processed,
+              startedAt: latestJob.started_at,
+              completedAt: latestJob.completed_at,
+              errorMessage: latestJob.error_message,
+            }
+          : null,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// 7. DELETE /api/repositories/:id
 export async function removeRepository(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;

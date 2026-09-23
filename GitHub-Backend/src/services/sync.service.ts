@@ -6,6 +6,7 @@ import { pullRequestRepository } from '../repositories/pullRequest.repository.js
 import { issueRepository } from '../repositories/issue.repository.js';
 import { activityRepository } from '../repositories/activity.repository.js';
 import { syncJobRepository } from '../repositories/syncJob.repository.js';
+import { logger } from '../utils/logger.js';
 import crypto from 'crypto';
 
 export class SyncService {
@@ -22,242 +23,314 @@ export class SyncService {
     }
 
     const jobId = `job-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
-    await syncJobRepository.create(jobId, repo.id, 'full_sync');
+    await syncJobRepository.create(jobId, repo.id, 'historical_sync');
     await repositoryRepository.updateSyncStatus(repo.id, 'SYNCING');
 
     let totalProcessed = 0;
+    const sinceDate = repo.last_synced_at ? repo.last_synced_at.toISOString() : undefined;
 
     try {
-      console.log(`[Sync] Starting historical synchronization for ${repo.full_name}...`);
+      logger.info('SYNC', `Starting historical sync for ${repo.full_name} [Incremental since: ${sinceDate || 'BEGINNING'}]...`);
 
-      // 1. Sync Contributors
-      const contributors = await this.githubClient.getContributors(repo.owner, repo.name);
-      for (const contrib of contributors) {
-        if (!contrib.login) continue;
-        const devId = `dev-${contrib.id || contrib.login}`;
-        const dev = await developerRepository.upsert({
-          id: devId,
-          githubUserId: contrib.id,
-          login: contrib.login,
-          avatarUrl: contrib.avatar_url,
-          htmlUrl: contrib.html_url,
-          type: contrib.type,
+      // 1. Sync Repository Metadata
+      const repoMeta = await this.githubClient.validateRepositoryAccess(repo.owner, repo.name);
+      if (repoMeta.success && repoMeta.data) {
+        await repositoryRepository.upsert({
+          id: repo.id,
+          githubRepositoryId: repoMeta.data.githubRepositoryId,
+          owner: repoMeta.data.owner,
+          name: repoMeta.data.name,
+          fullName: repoMeta.data.fullName,
+          htmlUrl: repoMeta.data.htmlUrl,
+          defaultBranch: repoMeta.data.defaultBranch,
+          isPrivate: repoMeta.data.isPrivate,
+          description: repoMeta.data.description || undefined,
+          language: repoMeta.data.language,
+          stars: repoMeta.data.starsCount,
+          forks: repoMeta.data.forks,
+          openIssuesCount: repoMeta.data.openIssuesCount,
         });
-
-        await developerRepository.linkToRepository(repo.id, dev.id);
         totalProcessed++;
       }
 
-      // 2. Sync Commits
-      const commits = await this.githubClient.getCommits(repo.owner, repo.name);
-      for (const c of commits) {
-        const authorLogin = c.author?.login || c.commit.author?.name || 'unknown';
-        let devId: string | null = null;
-
-        if (c.author?.login) {
+      // 2. Sync Contributors
+      try {
+        const contributors = await this.githubClient.getContributors(repo.owner, repo.name);
+        for (const contrib of contributors) {
+          if (!contrib.login) continue;
+          const devId = `dev-${contrib.id || contrib.login}`;
           const dev = await developerRepository.upsert({
-            id: `dev-${c.author.id || c.author.login}`,
-            githubUserId: c.author.id,
-            login: c.author.login,
-            avatarUrl: c.author.avatar_url,
-            htmlUrl: c.author.html_url,
+            id: devId,
+            githubUserId: contrib.id,
+            login: contrib.login,
+            avatarUrl: contrib.avatar_url,
+            htmlUrl: contrib.html_url,
+            type: contrib.type,
           });
+
           await developerRepository.linkToRepository(repo.id, dev.id);
-          devId = dev.id;
+          totalProcessed++;
         }
-
-        const commitId = `cmt-${c.sha}`;
-        const committedAt = new Date(c.commit.committer?.date || c.commit.author?.date || Date.now());
-
-        // Fetch detailed commit files & diff patches if available
-        let additions = 0;
-        let deletions = 0;
-        let changedFilesCount = 0;
-
-        try {
-          const detail = await this.githubClient.getCommitDetail(repo.owner, repo.name, c.sha);
-          additions = detail.stats?.additions || 0;
-          deletions = detail.stats?.deletions || 0;
-          changedFilesCount = detail.files?.length || 0;
-
-          if (detail.files && detail.files.length > 0) {
-            const commitFiles = detail.files.map((f) => ({
-              id: `cf-${crypto.randomUUID()}`,
-              filename: f.filename,
-              status: f.status,
-              additions: f.additions,
-              deletions: f.deletions,
-              changes: f.changes,
-              patch: f.patch || null,
-            }));
-            await commitRepository.saveCommitFiles(commitId, commitFiles);
-          }
-        } catch (err: any) {
-          // If individual commit detail fails, fallback to basic metadata
-        }
-
-        await commitRepository.upsert({
-          id: commitId,
-          repositoryId: repo.id,
-          githubCommitSha: c.sha,
-          developerId: devId,
-          message: c.commit.message,
-          commitUrl: c.html_url,
-          committedAt,
-          additions,
-          deletions,
-          changedFiles: changedFilesCount,
-          parentCount: c.parents?.length || 1,
-          isMergeCommit: (c.parents?.length || 1) > 1,
-        });
-
-        // Record Activity Event
-        await activityRepository.create({
-          id: `act-cmt-${c.sha}`,
-          repositoryId: repo.id,
-          developerId: devId,
-          eventType: 'commit',
-          entityType: 'commit',
-          entityId: c.sha,
-          occurredAt: committedAt,
-          metadata: {
-            sha: c.sha,
-            message: c.commit.message.split('\n')[0],
-            additions,
-            deletions,
-          },
-        });
-
-        totalProcessed++;
+      } catch (err: any) {
+        logger.warn('SYNC', `Contributors fetch warning for ${repo.full_name}: ${err.message}`);
       }
 
-      // 3. Sync Pull Requests
-      const prs = await this.githubClient.getPullRequests(repo.owner, repo.name, 'all');
-      for (const pr of prs) {
-        let authorDevId: string | null = null;
-        if (pr.user?.login) {
-          const dev = await developerRepository.upsert({
-            id: `dev-${pr.user.id || pr.user.login}`,
-            githubUserId: pr.user.id,
-            login: pr.user.login,
-            avatarUrl: pr.user.avatar_url,
-          });
-          authorDevId = dev.id;
-        }
+      // 3. Paginated Sync for Commits
+      let commitPage = 1;
+      let hasMoreCommits = true;
 
-        const prId = `pr-${pr.id}`;
-        const createdAt = new Date(pr.created_at);
-        const closedAt = pr.closed_at ? new Date(pr.closed_at) : null;
-        const mergedAt = pr.merged_at ? new Date(pr.merged_at) : null;
-
-        await pullRequestRepository.upsert({
-          id: prId,
-          repositoryId: repo.id,
-          githubPrId: pr.id,
-          number: pr.number,
-          authorDeveloperId: authorDevId,
-          title: pr.title,
-          body: pr.body || null,
-          state: pr.state,
-          draft: pr.draft || false,
-          merged: Boolean(pr.merged_at),
-          baseBranch: pr.base?.ref || null,
-          headBranch: pr.head?.ref || null,
-          createdAt,
-          updatedAt: new Date(pr.updated_at),
-          closedAt,
-          mergedAt,
-          htmlUrl: pr.html_url,
-        });
-
-        // Fetch reviews for PR
+      while (hasMoreCommits && commitPage <= 10) {
         try {
-          const reviews = await this.githubClient.getPullRequestReviews(repo.owner, repo.name, pr.number);
-          for (const r of reviews) {
-            let reviewerDevId: string | null = null;
-            if (r.user?.login) {
+          const commits = await this.githubClient.getCommits(repo.owner, repo.name, sinceDate, commitPage, 100);
+          if (!commits || commits.length === 0) {
+            hasMoreCommits = false;
+            break;
+          }
+
+          for (const c of commits) {
+            let devId: string | null = null;
+            if (c.author?.login) {
               const dev = await developerRepository.upsert({
-                id: `dev-${r.user.id || r.user.login}`,
-                githubUserId: r.user.id,
-                login: r.user.login,
-                avatarUrl: r.user.avatar_url,
+                id: `dev-${c.author.id || c.author.login}`,
+                githubUserId: c.author.id,
+                login: c.author.login,
+                avatarUrl: c.author.avatar_url,
+                htmlUrl: c.author.html_url,
               });
-              reviewerDevId = dev.id;
+              await developerRepository.linkToRepository(repo.id, dev.id);
+              devId = dev.id;
             }
 
-            await pullRequestRepository.saveReview({
-              id: `rev-${r.id}`,
-              pullRequestId: prId,
-              githubReviewId: r.id,
-              reviewerDeveloperId: reviewerDevId,
-              state: r.state,
-              body: r.body || null,
-              submittedAt: new Date(r.submitted_at || Date.now()),
-              htmlUrl: r.html_url,
+            const commitId = `cmt-${c.sha}`;
+            const committedAt = new Date(c.commit.committer?.date || c.commit.author?.date || Date.now());
+
+            let additions = 0;
+            let deletions = 0;
+            let changedFilesCount = 0;
+
+            try {
+              const detail = await this.githubClient.getCommitDetail(repo.owner, repo.name, c.sha);
+              additions = detail.stats?.additions || 0;
+              deletions = detail.stats?.deletions || 0;
+              changedFilesCount = detail.files?.length || 0;
+
+              if (detail.files && detail.files.length > 0) {
+                const commitFiles = detail.files.map((f: any) => ({
+                  id: `cf-${crypto.randomUUID()}`,
+                  filename: f.filename,
+                  status: f.status,
+                  additions: f.additions,
+                  deletions: f.deletions,
+                  changes: f.changes,
+                  patch: f.patch || null,
+                  previousFilename: f.previous_filename || f.previous_file_name || null,
+                }));
+                await commitRepository.saveCommitFiles(commitId, commitFiles);
+              }
+            } catch (err: any) {}
+
+            await commitRepository.upsert({
+              id: commitId,
+              repositoryId: repo.id,
+              githubCommitSha: c.sha,
+              developerId: devId,
+              message: c.commit.message,
+              commitUrl: c.html_url,
+              committedAt,
+              additions,
+              deletions,
+              changedFiles: changedFilesCount,
+              parentCount: c.parents?.length || 1,
+              isMergeCommit: (c.parents?.length || 1) > 1,
             });
+
+            await activityRepository.create({
+              id: `act-cmt-${c.sha}`,
+              repositoryId: repo.id,
+              developerId: devId,
+              eventType: 'COMMIT_PUSHED',
+              entityType: 'COMMIT',
+              entityId: c.sha,
+              occurredAt: committedAt,
+              metadata: {
+                sha: c.sha,
+                message: c.commit.message.split('\n')[0],
+                additions,
+                deletions,
+              },
+            });
+
+            totalProcessed++;
           }
-        } catch (err: any) {}
 
-        await activityRepository.create({
-          id: `act-pr-${pr.id}`,
-          repositoryId: repo.id,
-          developerId: authorDevId,
-          eventType: pr.merged_at ? 'pull_request_merged' : pr.state === 'closed' ? 'pull_request_closed' : 'pull_request_opened',
-          entityType: 'pull_request',
-          entityId: String(pr.number),
-          occurredAt: mergedAt || closedAt || createdAt,
-          metadata: {
-            number: pr.number,
-            title: pr.title,
-            state: pr.state,
-          },
-        });
-
-        totalProcessed++;
-      }
-
-      // 4. Sync Issues
-      const issues = await this.githubClient.getIssues(repo.owner, repo.name, 'all');
-      for (const issue of issues) {
-        let authorDevId: string | null = null;
-        if (issue.user?.login) {
-          const dev = await developerRepository.upsert({
-            id: `dev-${issue.user.id || issue.user.login}`,
-            githubUserId: issue.user.id,
-            login: issue.user.login,
-            avatarUrl: issue.user.avatar_url,
-          });
-          authorDevId = dev.id;
+          if (commits.length < 100) hasMoreCommits = false;
+          else commitPage++;
+        } catch (err: any) {
+          logger.warn('SYNC', `Commit pagination stopped at page ${commitPage} for ${repo.full_name}: ${err.message}`);
+          hasMoreCommits = false;
         }
-
-        const issueId = `iss-${issue.id}`;
-        await issueRepository.upsert({
-          id: issueId,
-          repositoryId: repo.id,
-          githubIssueId: issue.id,
-          number: issue.number,
-          authorDeveloperId: authorDevId,
-          title: issue.title,
-          body: issue.body || null,
-          state: issue.state,
-          closedAt: issue.closed_at ? new Date(issue.closed_at) : null,
-          createdAt: new Date(issue.created_at),
-          updatedAt: new Date(issue.updated_at),
-          commentsCount: issue.comments,
-          htmlUrl: issue.html_url,
-        });
-
-        totalProcessed++;
       }
 
-      // Mark Repository & Job COMPLETED
+      // 4. Paginated Sync for Pull Requests
+      let prPage = 1;
+      let hasMorePRs = true;
+
+      while (hasMorePRs && prPage <= 5) {
+        try {
+          const prs = await this.githubClient.getPullRequests(repo.owner, repo.name, 'all', prPage, 100);
+          if (!prs || prs.length === 0) {
+            hasMorePRs = false;
+            break;
+          }
+
+          for (const pr of prs) {
+            let authorDevId: string | null = null;
+            if (pr.user?.login) {
+              const dev = await developerRepository.upsert({
+                id: `dev-${pr.user.id || pr.user.login}`,
+                githubUserId: pr.user.id,
+                login: pr.user.login,
+                avatarUrl: pr.user.avatar_url,
+              });
+              authorDevId = dev.id;
+            }
+
+            const prId = `pr-${repo.id}-${pr.number}`;
+            const createdAt = new Date(pr.created_at);
+            const closedAt = pr.closed_at ? new Date(pr.closed_at) : null;
+            const mergedAt = pr.merged_at ? new Date(pr.merged_at) : null;
+
+            await pullRequestRepository.upsert({
+              id: prId,
+              repositoryId: repo.id,
+              githubPrId: pr.id,
+              number: pr.number,
+              authorDeveloperId: authorDevId,
+              title: pr.title,
+              body: pr.body || null,
+              state: pr.state ? pr.state.toUpperCase() : 'OPEN',
+              draft: pr.draft || false,
+              merged: Boolean(pr.merged_at),
+              baseBranch: pr.base?.ref || null,
+              headBranch: pr.head?.ref || null,
+              createdAt,
+              updatedAt: new Date(pr.updated_at),
+              closedAt,
+              mergedAt,
+              htmlUrl: pr.html_url,
+            });
+
+            try {
+              const reviews = await this.githubClient.getPullRequestReviews(repo.owner, repo.name, pr.number);
+              for (const r of reviews) {
+                let reviewerDevId: string | null = null;
+                if (r.user?.login) {
+                  const dev = await developerRepository.upsert({
+                    id: `dev-${r.user.id || r.user.login}`,
+                    githubUserId: r.user.id,
+                    login: r.user.login,
+                    avatarUrl: r.user.avatar_url,
+                  });
+                  reviewerDevId = dev.id;
+                }
+
+                await pullRequestRepository.saveReview({
+                  id: `rev-${r.id}`,
+                  pullRequestId: prId,
+                  githubReviewId: r.id,
+                  reviewerDeveloperId: reviewerDevId,
+                  state: r.state,
+                  body: r.body || null,
+                  submittedAt: new Date(r.submitted_at || Date.now()),
+                  htmlUrl: r.html_url,
+                });
+              }
+            } catch (err: any) {}
+
+            await activityRepository.create({
+              id: `act-pr-${pr.id}`,
+              repositoryId: repo.id,
+              developerId: authorDevId,
+              eventType: pr.merged_at ? 'PULL_REQUEST_MERGED' : pr.state === 'closed' ? 'PULL_REQUEST_CLOSED' : 'PULL_REQUEST_OPENED',
+              entityType: 'PULL_REQUEST',
+              entityId: String(pr.number),
+              occurredAt: mergedAt || closedAt || createdAt,
+              metadata: {
+                prNumber: pr.number,
+                title: pr.title,
+                state: pr.state,
+              },
+            });
+
+            totalProcessed++;
+          }
+
+          if (prs.length < 100) hasMorePRs = false;
+          else prPage++;
+        } catch (err: any) {
+          hasMorePRs = false;
+        }
+      }
+
+      // 5. Paginated Sync for Issues
+      let issuePage = 1;
+      let hasMoreIssues = true;
+
+      while (hasMoreIssues && issuePage <= 5) {
+        try {
+          const issues = await this.githubClient.getIssues(repo.owner, repo.name, 'all', issuePage, 100);
+          if (!issues || issues.length === 0) {
+            hasMoreIssues = false;
+            break;
+          }
+
+          for (const issue of issues) {
+            let authorDevId: string | null = null;
+            if (issue.user?.login) {
+              const dev = await developerRepository.upsert({
+                id: `dev-${issue.user.id || issue.user.login}`,
+                githubUserId: issue.user.id,
+                login: issue.user.login,
+                avatarUrl: issue.user.avatar_url,
+              });
+              authorDevId = dev.id;
+            }
+
+            const issueId = `iss-${repo.id}-${issue.number}`;
+            await issueRepository.upsert({
+              id: issueId,
+              repositoryId: repo.id,
+              githubIssueId: issue.id,
+              number: issue.number,
+              authorDeveloperId: authorDevId,
+              title: issue.title,
+              body: issue.body || null,
+              state: issue.state ? issue.state.toUpperCase() : 'OPEN',
+              closedAt: issue.closed_at ? new Date(issue.closed_at) : null,
+              createdAt: new Date(issue.created_at),
+              updatedAt: new Date(issue.updated_at),
+              commentsCount: issue.comments,
+              htmlUrl: issue.html_url,
+            });
+
+            totalProcessed++;
+          }
+
+          if (issues.length < 100) hasMoreIssues = false;
+          else issuePage++;
+        } catch (err: any) {
+          hasMoreIssues = false;
+        }
+      }
+
+      // Mark Repository & Job Completed
       await repositoryRepository.updateSyncStatus(repo.id, 'SYNCED', new Date());
       await syncJobRepository.complete(jobId, totalProcessed);
 
-      console.log(`[Sync] Completed historical sync for ${repo.full_name}. Processed ${totalProcessed} records.`);
+      logger.info('SYNC', `Completed historical sync for ${repo.full_name}. Processed ${totalProcessed} records.`);
       return { success: true, recordsProcessed: totalProcessed };
     } catch (err: any) {
-      console.error(`[Sync Error] Failed sync for ${repo.full_name}:`, err.message);
+      logger.error('SYNC', `Failed historical sync for ${repo.full_name}: ${err.message}`, err);
       await repositoryRepository.updateSyncStatus(repo.id, 'FAILED');
       await syncJobRepository.fail(jobId, err.message);
       throw err;

@@ -19,6 +19,29 @@ export interface CommitRow {
   updated_at: Date;
 }
 
+export interface CommitFileRow {
+  id: string;
+  commit_id: string;
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  changes: number;
+  patch: string | null;
+  previous_filename: string | null;
+  created_at: Date;
+}
+
+export interface CommitFilterOptions {
+  repositoryId?: string;
+  developerId?: string;
+  projectId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  limit?: number;
+}
+
 export class CommitRepository {
   async upsert(data: {
     id: string;
@@ -85,14 +108,125 @@ export class CommitRepository {
     deletions: number;
     changes: number;
     patch?: string | null;
+    previousFilename?: string | null;
   }>): Promise<void> {
+    await pool.query('DELETE FROM commit_files WHERE commit_id = $1', [commitId]);
     for (const f of files) {
       await pool.query(
-        `INSERT INTO commit_files (id, commit_id, filename, status, additions, deletions, changes, patch, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
-        [f.id, commitId, f.filename, f.status, f.additions, f.deletions, f.changes, f.patch || null]
+        `INSERT INTO commit_files (id, commit_id, filename, status, additions, deletions, changes, patch, previous_filename, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+        [f.id, commitId, f.filename, f.status, f.additions, f.deletions, f.changes, f.patch || null, f.previousFilename || null]
       );
     }
+  }
+
+  async findCommitFiles(commitIdOrSha: string): Promise<CommitFileRow[]> {
+    const res = await pool.query(
+      `SELECT cf.* 
+       FROM commit_files cf
+       JOIN commits c ON c.id = cf.commit_id
+       WHERE c.id = $1 OR c.github_commit_sha = $1
+       ORDER BY cf.filename ASC`,
+      [commitIdOrSha]
+    );
+    return res.rows;
+  }
+
+  async findByIdOrSha(idOrSha: string): Promise<any | null> {
+    const query = `
+      SELECT 
+        c.*,
+        r.full_name as repository_name,
+        r.name as repository_short_name,
+        d.login as author_login,
+        d.avatar_url as author_avatar_url,
+        d.html_url as author_html_url
+      FROM commits c
+      JOIN repositories r ON r.id = c.repository_id
+      LEFT JOIN developers d ON d.id = c.developer_id
+      WHERE c.id = $1 OR c.github_commit_sha = $1
+    `;
+    const res = await pool.query(query, [idOrSha]);
+    return res.rows[0] || null;
+  }
+
+  async findCommits(options: CommitFilterOptions): Promise<{ data: any[]; total: number; page: number; limit: number; totalPages: number }> {
+    const page = Math.max(1, Number(options.page) || 1);
+    const limit = Math.max(1, Math.min(100, Number(options.limit) || 20));
+    const offset = (page - 1) * limit;
+
+    const conditions: string[] = [];
+    const params: any[] = [];
+    let paramIdx = 1;
+
+    if (options.repositoryId) {
+      conditions.push(`(c.repository_id = $${paramIdx} OR r.full_name = $${paramIdx} OR r.name = $${paramIdx})`);
+      params.push(options.repositoryId);
+      paramIdx++;
+    }
+
+    if (options.developerId) {
+      conditions.push(`(c.developer_id = $${paramIdx} OR d.login = $${paramIdx})`);
+      params.push(options.developerId);
+      paramIdx++;
+    }
+
+    if (options.projectId) {
+      conditions.push(`r.project_id = $${paramIdx}`);
+      params.push(options.projectId);
+      paramIdx++;
+    }
+
+    if (options.dateFrom) {
+      conditions.push(`c.committed_at >= $${paramIdx}`);
+      params.push(new Date(options.dateFrom));
+      paramIdx++;
+    }
+
+    if (options.dateTo) {
+      conditions.push(`c.committed_at <= $${paramIdx}`);
+      params.push(new Date(options.dateTo));
+      paramIdx++;
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const countSql = `
+      SELECT COUNT(*) 
+      FROM commits c
+      JOIN repositories r ON r.id = c.repository_id
+      LEFT JOIN developers d ON d.id = c.developer_id
+      ${whereClause}
+    `;
+
+    const dataSql = `
+      SELECT 
+        c.*,
+        r.full_name as repository_name,
+        r.name as repository_short_name,
+        d.login as author_login,
+        d.avatar_url as author_avatar_url,
+        d.html_url as author_html_url
+      FROM commits c
+      JOIN repositories r ON r.id = c.repository_id
+      LEFT JOIN developers d ON d.id = c.developer_id
+      ${whereClause}
+      ORDER BY c.committed_at DESC
+      LIMIT $${paramIdx} OFFSET $${paramIdx + 1}
+    `;
+
+    const countRes = await pool.query(countSql, params);
+    const total = parseInt(countRes.rows[0].count, 10);
+
+    const dataRes = await pool.query(dataSql, [...params, limit, offset]);
+
+    return {
+      data: dataRes.rows,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1,
+    };
   }
 
   async findByRepository(repositoryId: string, limit = 100): Promise<CommitRow[]> {
