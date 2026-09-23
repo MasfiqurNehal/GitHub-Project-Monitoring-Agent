@@ -10,6 +10,7 @@
     "migrate": "tsx database/migrate.ts",
     "db:clean": "tsx database/clean.ts",
     "db:reset": "tsx database/reset.ts",
+    "db:seed": "tsx database/seed.ts",
     "logs": "powershell -Command \"Get-Content -Path logs/logger.txt -Wait -Tail 50\""
   },
   "dependencies": {

@@ -6,6 +6,23 @@ export class DeveloperService {
     const dev = await developerRepository.findById(developerId);
     if (!dev) return null;
 
+    // Fetch associated projects
+    const projectsRes = await pool.query(
+      `SELECT DISTINCT p.id, p.name FROM projects p
+       JOIN repositories r ON r.project_id = p.id
+       JOIN repository_developers rd ON rd.repository_id = r.id
+       WHERE rd.developer_id = $1`,
+      [developerId]
+    );
+
+    // Fetch associated repositories
+    const reposRes = await pool.query(
+      `SELECT DISTINCT r.id, r.name, r.full_name FROM repositories r
+       JOIN repository_developers rd ON rd.repository_id = r.id
+       WHERE rd.developer_id = $1`,
+      [developerId]
+    );
+
     const commitStatsRes = await pool.query(
       `SELECT COUNT(*) as total_commits, COALESCE(SUM(additions), 0) as additions, COALESCE(SUM(deletions), 0) as deletions FROM commits WHERE developer_id = $1`,
       [developerId]
@@ -41,35 +58,49 @@ export class DeveloperService {
       [developerId]
     );
 
+    const totalCommits = parseInt(commitStatsRes.rows[0].total_commits, 10);
+    const totalPRs = parseInt(prStatsRes.rows[0].total_prs, 10);
+    const totalReviews = parseInt(reviewStatsRes.rows[0].total_reviews, 10);
+    const linesAdded = parseInt(commitStatsRes.rows[0].additions, 10);
+    const linesDeleted = parseInt(commitStatsRes.rows[0].deletions, 10);
+
     return {
       developer: {
-        ...dev,
+        id: dev.id,
+        githubUserId: dev.github_user_id,
+        login: dev.login,
+        name: dev.name || dev.login,
+        avatarUrl: dev.avatar_url,
+        profileUrl: dev.html_url,
+        email: dev.email,
+        projects: projectsRes.rows,
+        repositories: reposRes.rows,
         metrics: {
-          projectsCount: 1,
-          repositoriesCount: 1,
-          commitsCount: parseInt(commitStatsRes.rows[0].total_commits, 10),
-          prsCount: parseInt(prStatsRes.rows[0].total_prs, 10),
-          reviewsCount: parseInt(reviewStatsRes.rows[0].total_reviews, 10),
+          projectsCount: projectsRes.rows.length,
+          repositoriesCount: reposRes.rows.length,
+          commitsCount: totalCommits,
+          prsCount: totalPRs,
+          reviewsCount: totalReviews,
           issuesCount: 0,
-          linesAdded: parseInt(commitStatsRes.rows[0].additions, 10),
-          linesDeleted: parseInt(commitStatsRes.rows[0].deletions, 10),
+          linesAdded,
+          linesDeleted,
           lastActivityAt: dev.updated_at,
         },
       },
       commitStats: {
-        totalCommits: parseInt(commitStatsRes.rows[0].total_commits, 10),
-        avgAdditionsPerCommit: Math.round(parseInt(commitStatsRes.rows[0].additions, 10) / (parseInt(commitStatsRes.rows[0].total_commits, 10) || 1)),
-        topRepo: 'Main Repository',
+        totalCommits,
+        avgAdditionsPerCommit: Math.round(linesAdded / (totalCommits || 1)),
+        topRepo: reposRes.rows[0]?.name || 'Main Repository',
         commitsByDay: [],
       },
       prStats: {
-        totalPRs: parseInt(prStatsRes.rows[0].total_prs, 10),
+        totalPRs,
         openPRs: parseInt(prStatsRes.rows[0].open_prs, 10),
         mergedPRs: parseInt(prStatsRes.rows[0].merged_prs, 10),
         closedPRs: parseInt(prStatsRes.rows[0].closed_prs, 10),
       },
       reviewStats: {
-        totalReviews: parseInt(reviewStatsRes.rows[0].total_reviews, 10),
+        totalReviews,
         approved: parseInt(reviewStatsRes.rows[0].approved, 10),
         changesRequested: parseInt(reviewStatsRes.rows[0].changes_requested, 10),
         commented: parseInt(reviewStatsRes.rows[0].commented, 10),
@@ -80,9 +111,9 @@ export class DeveloperService {
         closed: 0,
       },
       codeChangeStats: {
-        totalAdditions: parseInt(commitStatsRes.rows[0].additions, 10),
-        totalDeletions: parseInt(commitStatsRes.rows[0].deletions, 10),
-        netChanges: parseInt(commitStatsRes.rows[0].additions, 10) - parseInt(commitStatsRes.rows[0].deletions, 10),
+        totalAdditions: linesAdded,
+        totalDeletions: linesDeleted,
+        netChanges: linesAdded - linesDeleted,
         trend: [],
       },
       activityTimeline: timelineRes.rows.map((t) => ({

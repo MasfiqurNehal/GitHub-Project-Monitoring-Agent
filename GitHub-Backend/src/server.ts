@@ -1,27 +1,47 @@
 import dotenv from 'dotenv';
 import { app } from './app.js';
-import { checkDatabaseHealth } from './db/connection.js';
+import { checkDatabaseHealth, closeDatabasePool } from './db/connection.js';
+import { config } from './config/index.js';
+import { logger } from './utils/logger.js';
 
 dotenv.config();
 
-const PORT = parseInt(process.env.PORT || '5000', 10);
+const PORT = config.port || parseInt(process.env.PORT || '5001', 10);
 
 async function startServer() {
-  console.log('[Server] Checking Neon PostgreSQL database connection...');
-  const dbHealth = await checkDatabaseHealth();
-  if (dbHealth.isHealthy) {
-    console.log('[Server] Successfully connected to Neon PostgreSQL Database.');
-  } else {
-    console.warn('[Server] Neon PostgreSQL Connection Error:', dbHealth.error);
+  logger.info('SERVER', 'Starting backend engine initialization...');
+
+  if (!config.databaseUrl) {
+    logger.error('CONFIG', 'DATABASE_URL environment variable is missing in .env!');
+    process.exit(1);
   }
 
-  app.listen(PORT, () => {
+  const dbHealth = await checkDatabaseHealth();
+  if (dbHealth.isHealthy) {
+    logger.info('SERVER', 'Successfully connected to Neon PostgreSQL Database.');
+  } else {
+    logger.warn('SERVER', `Neon PostgreSQL Connection Warning: ${dbHealth.error}`);
+  }
+
+  const server = app.listen(PORT, () => {
     console.log(`=======================================================`);
     console.log(`🚀 GitHub Project Monitoring Backend Engine Running!`);
     console.log(`📡 Base API URL: http://localhost:${PORT}/api`);
     console.log(`💚 Health Check: http://localhost:${PORT}/api/health`);
     console.log(`=======================================================`);
   });
+
+  const gracefulShutdown = async (signal: string) => {
+    logger.info('SERVER', `Received ${signal}. Closing HTTP server and PostgreSQL pool...`);
+    server.close(async () => {
+      logger.info('SERVER', 'Express HTTP server closed.');
+      await closeDatabasePool();
+      process.exit(0);
+    });
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 }
 
 startServer();

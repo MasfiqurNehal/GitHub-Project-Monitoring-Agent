@@ -2,7 +2,7 @@ import { GitHubClient } from '../github/github-client.js';
 import { repositoryRepository } from '../repositories/repository.repository.js';
 import { developerRepository } from '../repositories/developer.repository.js';
 import { commitRepository } from '../repositories/commit.repository.js';
-import { pullRequestRepository } from '../repositories/pullRequest.repository.ts';
+import { pullRequestRepository } from '../repositories/pullRequest.repository.js';
 import { issueRepository } from '../repositories/issue.repository.js';
 import { activityRepository } from '../repositories/activity.repository.js';
 import { syncJobRepository } from '../repositories/syncJob.repository.js';
@@ -251,7 +251,7 @@ export class SyncService {
       }
 
       // Mark Repository & Job COMPLETED
-      await repositoryRepository.updateSyncStatus(repo.id, 'COMPLETED', new Date());
+      await repositoryRepository.updateSyncStatus(repo.id, 'SYNCED', new Date());
       await syncJobRepository.complete(jobId, totalProcessed);
 
       console.log(`[Sync] Completed historical sync for ${repo.full_name}. Processed ${totalProcessed} records.`);

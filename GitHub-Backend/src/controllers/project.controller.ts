@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { projectRepository } from '../repositories/project.repository.js';
 import { repositoryRepository } from '../repositories/repository.repository.js';
+import { pool } from '../db/connection.js';
 import crypto from 'crypto';
 
 export async function listProjects(req: Request, res: Response, next: NextFunction) {
@@ -36,23 +37,69 @@ export async function getProjectDetail(req: Request, res: Response, next: NextFu
     }
 
     const repositories = await repositoryRepository.findByProjectId(project.id);
+    const repoIds = repositories.map((r) => r.id);
+
+    let developers: any[] = [];
+    let recentActivity: any[] = [];
+    let pullRequests: any[] = [];
+    let issues: any[] = [];
+
+    if (repoIds.length > 0) {
+      // 1. Developers
+      const devsRes = await pool.query(
+        `SELECT DISTINCT d.* FROM developers d
+         JOIN repository_developers rd ON d.id = rd.developer_id
+         WHERE rd.repository_id = ANY($1::text[])`,
+        [repoIds]
+      );
+      developers = devsRes.rows;
+
+      // 2. Activity Stream
+      const actRes = await pool.query(
+        `SELECT a.*, r.name as repo_name, d.login as dev_login, d.avatar_url as dev_avatar
+         FROM activity_events a
+         LEFT JOIN repositories r ON a.repository_id = r.id
+         LEFT JOIN developers d ON a.developer_id = d.id
+         WHERE a.repository_id = ANY($1::text[])
+         ORDER BY a.occurred_at DESC LIMIT 20`,
+        [repoIds]
+      );
+      recentActivity = actRes.rows;
+
+      // 3. Pull Requests
+      const prRes = await pool.query(
+        `SELECT pr.*, r.name as repo_name, d.login as author_login, d.avatar_url as author_avatar
+         FROM pull_requests pr
+         LEFT JOIN repositories r ON pr.repository_id = r.id
+         LEFT JOIN developers d ON pr.author_developer_id = d.id
+         WHERE pr.repository_id = ANY($1::text[])
+         ORDER BY pr.created_at DESC LIMIT 20`,
+        [repoIds]
+      );
+      pullRequests = prRes.rows;
+
+      // 4. Issues
+      const issRes = await pool.query(
+        `SELECT i.*, r.name as repo_name, d.login as author_login, d.avatar_url as author_avatar
+         FROM issues i
+         LEFT JOIN repositories r ON i.repository_id = r.id
+         LEFT JOIN developers d ON i.author_developer_id = d.id
+         WHERE i.repository_id = ANY($1::text[])
+         ORDER BY i.created_at DESC LIMIT 20`,
+        [repoIds]
+      );
+      issues = issRes.rows;
+    }
+
     res.json({
       success: true,
       data: {
         project,
         repositories,
-        developers: [],
-        recentActivity: [],
-        commits: [],
-        pullRequests: [],
-        issues: [],
-        codeChanges: {
-          trend: [],
-          totalAdditions: 0,
-          totalDeletions: 0,
-          netChanges: 0,
-          topFilesChanged: [],
-        },
+        developers,
+        recentActivity,
+        pullRequests,
+        issues,
       },
     });
   } catch (err) {

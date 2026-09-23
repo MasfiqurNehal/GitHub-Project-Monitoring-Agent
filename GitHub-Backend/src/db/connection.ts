@@ -42,3 +42,12 @@ export async function checkDatabaseHealth(): Promise<{ isHealthy: boolean; times
     };
   }
 }
+
+export async function closeDatabasePool(): Promise<void> {
+  try {
+    await pool.end();
+    logger.info('DATABASE', 'Neon PostgreSQL connection pool closed gracefully.');
+  } catch (err: any) {
+    logger.error('DATABASE', `Error closing Neon PostgreSQL connection pool: ${err.message}`, err);
+  }
+}

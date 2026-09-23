@@ -11,6 +11,7 @@ export class GitHubClient {
     this.octokit = new Octokit({
       auth: authToken || undefined,
       baseUrl: process.env.GITHUB_API_URL || 'https://api.github.com',
+      userAgent: 'GitHub-Project-Monitoring-Agent/1.0.0',
     });
   }
 

@@ -25,7 +25,7 @@ export class AnalyticsService {
     const projectsCountRes = await pool.query('SELECT COUNT(*) FROM projects');
     const reposCountRes = await pool.query('SELECT COUNT(*) FROM repositories');
     const devsCountRes = await pool.query('SELECT COUNT(*) FROM developers');
-    
+
     const commitsRes = await pool.query(
       `SELECT COUNT(*) as total_commits, COALESCE(SUM(additions), 0) as lines_added, COALESCE(SUM(deletions), 0) as lines_deleted FROM commits ${whereSql}`,
       params
@@ -120,18 +120,22 @@ export class AnalyticsService {
       closed: parseInt(row.closed || 0, 10),
     }));
 
-    // 5. Developer Contributions Leaderboard
+    // 5. Developer Contributions Leaderboard with PRs & Reviews
     const devContribRes = await pool.query(`
       SELECT 
         d.id,
         d.name,
         d.login,
         d.avatar_url,
-        COUNT(c.id) as commits,
+        COUNT(DISTINCT c.id) as commits,
+        COUNT(DISTINCT pr.id) as prs,
+        COUNT(DISTINCT prr.id) as reviews,
         COALESCE(SUM(c.additions), 0) as lines_added,
         COALESCE(SUM(c.deletions), 0) as lines_deleted
       FROM developers d
       LEFT JOIN commits c ON c.developer_id = d.id
+      LEFT JOIN pull_requests pr ON pr.author_developer_id = d.id
+      LEFT JOIN pull_request_reviews prr ON prr.reviewer_developer_id = d.id
       GROUP BY d.id, d.name, d.login, d.avatar_url
       ORDER BY commits DESC
       LIMIT 10
@@ -143,8 +147,8 @@ export class AnalyticsService {
       login: r.login,
       avatarUrl: r.avatar_url,
       commits: parseInt(r.commits, 10),
-      prs: 0,
-      reviews: 0,
+      prs: parseInt(r.prs, 10),
+      reviews: parseInt(r.reviews, 10),
       linesAdded: parseInt(r.lines_added, 10),
       linesDeleted: parseInt(r.lines_deleted, 10),
     }));
@@ -155,10 +159,16 @@ export class AnalyticsService {
         p.id,
         p.name,
         COUNT(DISTINCT r.id) as repositories_count,
+        COUNT(DISTINCT c.id) as commits_count,
+        COUNT(DISTINCT pr.id) as prs_count,
+        COUNT(DISTINCT i.id) as issues_count,
         p.status,
         p.updated_at
       FROM projects p
       LEFT JOIN repositories r ON r.project_id = p.id
+      LEFT JOIN commits c ON c.repository_id = r.id
+      LEFT JOIN pull_requests pr ON pr.repository_id = r.id
+      LEFT JOIN issues i ON i.repository_id = r.id
       GROUP BY p.id, p.name, p.status, p.updated_at
     `);
 
@@ -166,9 +176,9 @@ export class AnalyticsService {
       id: r.id,
       name: r.name,
       repositoriesCount: parseInt(r.repositories_count, 10),
-      commitsCount: 0,
-      prsCount: 0,
-      issuesCount: 0,
+      commitsCount: parseInt(r.commits_count, 10),
+      prsCount: parseInt(r.prs_count, 10),
+      issuesCount: parseInt(r.issues_count, 10),
       status: r.status,
       updatedAt: r.updated_at,
     }));
@@ -179,10 +189,14 @@ export class AnalyticsService {
         r.name,
         r.full_name,
         r.language,
-        COUNT(c.id) as commits_count,
+        COUNT(DISTINCT c.id) as commits_count,
+        COUNT(DISTINCT pr.id) FILTER (WHERE pr.state = 'OPEN') as open_prs_count,
+        COUNT(DISTINCT i.id) FILTER (WHERE i.state = 'OPEN') as open_issues_count,
         r.last_synced_at
       FROM repositories r
       LEFT JOIN commits c ON c.repository_id = r.id
+      LEFT JOIN pull_requests pr ON pr.repository_id = r.id
+      LEFT JOIN issues i ON i.repository_id = r.id
       GROUP BY r.id, r.name, r.full_name, r.language, r.last_synced_at
     `);
 
@@ -192,8 +206,8 @@ export class AnalyticsService {
       fullName: r.full_name,
       language: r.language,
       commitsCount: parseInt(r.commits_count, 10),
-      openPRsCount: 0,
-      issuesCount: 0,
+      openPRsCount: parseInt(r.open_prs_count, 10),
+      issuesCount: parseInt(r.open_issues_count, 10),
       lastSyncedAt: r.last_synced_at,
     }));
 
@@ -245,15 +259,29 @@ export class AnalyticsService {
       )
     `);
 
-    // Stale Pull Requests (Open for 7+ days)
+    // Stale Pull Requests (Open for 3+ days)
     const stalePRsRes = await pool.query(`
-      SELECT pr.* FROM pull_requests pr
-      WHERE pr.state = 'OPEN' AND pr.created_at <= NOW() - INTERVAL '7 days'
+      SELECT pr.*, r.name as repo_name, d.login as author_login, d.avatar_url as author_avatar
+      FROM pull_requests pr
+      LEFT JOIN repositories r ON pr.repository_id = r.id
+      LEFT JOIN developers d ON pr.author_developer_id = d.id
+      WHERE pr.state = 'OPEN' AND pr.created_at <= NOW() - INTERVAL '3 days'
+    `);
+
+    // Open Issues
+    const openIssuesRes = await pool.query(`
+      SELECT i.*, r.name as repo_name, d.login as author_login, d.avatar_url as author_avatar
+      FROM issues i
+      LEFT JOIN repositories r ON i.repository_id = r.id
+      LEFT JOIN developers d ON i.author_developer_id = d.id
+      WHERE i.state = 'OPEN'
     `);
 
     return {
       inactiveRepositories: inactiveReposRes.rows,
       stalePullRequests: stalePRsRes.rows,
+      openIssues: openIssuesRes.rows,
+      signalAlertsCount: inactiveReposRes.rows.length + stalePRsRes.rows.length,
     };
   }
 }

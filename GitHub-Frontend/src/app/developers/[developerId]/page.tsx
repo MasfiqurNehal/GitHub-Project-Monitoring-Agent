@@ -140,12 +140,12 @@ export default function DeveloperDetailPage({ params }: { params: { developerId:
               <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
                 <span className="flex items-center gap-1">
                   <FolderKanban className="w-3.5 h-3.5 text-blue-400" />
-                  Projects: {developer.projects.map(p => p.name).join(', ') || 'None'}
+                  Projects: {developer.projects?.map(p => p.name).join(', ') || 'None'}
                 </span>
                 <span>•</span>
                 <span className="flex items-center gap-1">
                   <GitBranch className="w-3.5 h-3.5 text-indigo-400" />
-                  Repos: {developer.repositories.map(r => r.name).join(', ') || 'None'}
+                  Repos: {developer.repositories?.map(r => r.name).join(', ') || 'None'}
                 </span>
               </div>
 
