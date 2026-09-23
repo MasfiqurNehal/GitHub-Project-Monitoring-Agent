@@ -1,24 +1,41 @@
 import { Octokit } from '@octokit/rest';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import { config } from '../config/index.js';
+import { githubAppService } from './github-app.service.js';
+import { logger } from '../utils/logger.js';
 
 export class GitHubClient {
-  private octokit: Octokit;
+  private octokit: Octokit | null = null;
+  private token?: string;
+  private installationId?: number;
 
-  constructor(token?: string) {
-    const authToken = token || process.env.GITHUB_TOKEN || '';
-    this.octokit = new Octokit({
-      auth: authToken || undefined,
-      baseUrl: process.env.GITHUB_API_URL || 'https://api.github.com',
-      userAgent: 'GitHub-Project-Monitoring-Agent/1.0.0',
-    });
+  constructor(options?: { token?: string; installationId?: number }) {
+    this.token = options?.token;
+    this.installationId = options?.installationId;
   }
 
-  // Validate Repository URL & Access
+  private async getOctokit(): Promise<Octokit> {
+    if (this.octokit) return this.octokit;
+
+    if (this.installationId && githubAppService.isAppConfigured()) {
+      this.octokit = await githubAppService.getInstallationOctokit(this.installationId);
+      return this.octokit;
+    }
+
+    const authToken = this.token || config.githubToken || '';
+    this.octokit = new Octokit({
+      auth: authToken || undefined,
+      baseUrl: config.githubApiUrl,
+      userAgent: 'GitHub-Project-Monitoring-Agent/1.0.0',
+    });
+
+    return this.octokit;
+  }
+
+  // Validate Repository Access (Public & Private via App / Token)
   async validateRepositoryAccess(owner: string, repo: string) {
     try {
-      const response = await this.octokit.rest.repos.get({ owner, repo });
+      const client = await this.getOctokit();
+      const response = await client.rest.repos.get({ owner, repo });
       return {
         success: true,
         data: {
@@ -41,16 +58,38 @@ export class GitHubClient {
         },
       };
     } catch (err: any) {
+      let errorCode = 'GITHUB_API_ERROR';
+      let errorMessage = err.message || 'Failed to fetch repository metadata from GitHub';
+
+      if (err.status === 401) {
+        errorCode = 'INVALID_CREDENTIALS';
+        errorMessage = 'Unauthorized. Invalid GitHub App Installation or Token.';
+      } else if (err.status === 403) {
+        if (err.headers && err.headers['x-ratelimit-remaining'] === '0') {
+          errorCode = 'RATE_LIMITED';
+          errorMessage = 'GitHub API rate limit exceeded. Please wait or use GitHub App authentication.';
+        } else {
+          errorCode = 'REPOSITORY_ACCESS_DENIED';
+          errorMessage = `Access denied for repository ${owner}/${repo}. Check permissions.`;
+        }
+      } else if (err.status === 404) {
+        errorCode = 'MISSING_REPOSITORY_OR_INSTALLATION';
+        errorMessage = `Repository ${owner}/${repo} not found or not accessible by this installation.`;
+      }
+
+      logger.error('GITHUB_CLIENT', `[${errorCode}] ${errorMessage}`);
+
       return {
         success: false,
-        error: err.message || 'Failed to fetch repository metadata from GitHub',
+        code: errorCode,
+        error: errorMessage,
       };
     }
   }
 
-  // Fetch Contributors / Members
   async getContributors(owner: string, repo: string) {
-    const response = await this.octokit.rest.repos.listContributors({
+    const client = await this.getOctokit();
+    const response = await client.rest.repos.listContributors({
       owner,
       repo,
       per_page: 100,
@@ -58,9 +97,9 @@ export class GitHubClient {
     return response.data;
   }
 
-  // Fetch Commits (Paginated)
   async getCommits(owner: string, repo: string, since?: string, page = 1, perPage = 100) {
-    const response = await this.octokit.rest.repos.listCommits({
+    const client = await this.getOctokit();
+    const response = await client.rest.repos.listCommits({
       owner,
       repo,
       since,
@@ -70,9 +109,9 @@ export class GitHubClient {
     return response.data;
   }
 
-  // Fetch Single Commit Detail (with files & patches)
   async getCommitDetail(owner: string, repo: string, ref: string) {
-    const response = await this.octokit.rest.repos.getCommit({
+    const client = await this.getOctokit();
+    const response = await client.rest.repos.getCommit({
       owner,
       repo,
       ref,
@@ -80,9 +119,9 @@ export class GitHubClient {
     return response.data;
   }
 
-  // Fetch Pull Requests
   async getPullRequests(owner: string, repo: string, state: 'all' | 'open' | 'closed' = 'all', page = 1, perPage = 100) {
-    const response = await this.octokit.rest.pulls.list({
+    const client = await this.getOctokit();
+    const response = await client.rest.pulls.list({
       owner,
       repo,
       state,
@@ -92,9 +131,9 @@ export class GitHubClient {
     return response.data;
   }
 
-  // Fetch PR Reviews
   async getPullRequestReviews(owner: string, repo: string, pullNumber: number) {
-    const response = await this.octokit.rest.pulls.listReviews({
+    const client = await this.getOctokit();
+    const response = await client.rest.pulls.listReviews({
       owner,
       repo,
       pull_number: pullNumber,
@@ -102,22 +141,21 @@ export class GitHubClient {
     return response.data;
   }
 
-  // Fetch Issues
   async getIssues(owner: string, repo: string, state: 'all' | 'open' | 'closed' = 'all', page = 1, perPage = 100) {
-    const response = await this.octokit.rest.issues.listForRepo({
+    const client = await this.getOctokit();
+    const response = await client.rest.issues.listForRepo({
       owner,
       repo,
       state,
       page,
       per_page: perPage,
     });
-    // Filter out PRs which GitHub includes in issues list
     return response.data.filter((item) => !item.pull_request);
   }
 
-  // Fetch Rate Limit Status
   async getRateLimit() {
-    const response = await this.octokit.rest.rateLimit.get();
+    const client = await this.getOctokit();
+    const response = await client.rest.rateLimit.get();
     return response.data.rate;
   }
 }

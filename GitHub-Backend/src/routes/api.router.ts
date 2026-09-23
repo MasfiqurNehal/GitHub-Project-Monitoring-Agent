@@ -9,6 +9,7 @@ import * as reportController from '../controllers/report.controller.js';
 import * as pullRequestController from '../controllers/pullRequest.controller.js';
 import * as issueController from '../controllers/issue.controller.js';
 import * as githubController from '../controllers/github.controller.js';
+import * as githubConnectionController from '../controllers/githubConnection.controller.js';
 import * as webhookController from '../controllers/webhook.controller.js';
 import * as telemetryController from '../controllers/telemetry.controller.js';
 
@@ -78,13 +79,28 @@ apiRouter.get('/reports', reportController.listReports);
 apiRouter.post('/reports/generate', reportController.generateReport);
 apiRouter.get('/reports/:id', reportController.getReportDetail);
 
-// 10. Settings & GitHub Integration Endpoints
-apiRouter.get('/settings/github/status', githubController.getGitHubStatus);
-apiRouter.post('/settings/github/validate-repo', githubController.validateRepository);
+// 10. GitHub Connection & App Flow Endpoints
+apiRouter.get('/github/install', githubConnectionController.getInstallUrl);
+apiRouter.get('/github/callback', githubConnectionController.handleInstallationCallback);
+apiRouter.get('/github/connection', githubConnectionController.getConnectionStatus);
+apiRouter.delete('/github/connection', githubConnectionController.disconnectConnection);
+
+apiRouter.get('/github/repositories', githubConnectionController.listGithubRepositories);
+apiRouter.post('/github/repositories/validate', githubConnectionController.validateGithubRepository);
+
+// 11. Settings & GitHub Integration Endpoints
+apiRouter.get('/settings/github/status', githubConnectionController.getConnectionStatus);
+apiRouter.post('/settings/github/connect', githubConnectionController.getInstallUrl);
+apiRouter.post('/settings/github/disconnect', githubConnectionController.disconnectConnection);
+apiRouter.get('/settings/github/installations', githubController.listInstallations);
+apiRouter.post('/settings/github/installations/sync', githubController.syncInstallations);
+apiRouter.get('/settings/github/installations/:installationId', githubController.getInstallationDetail);
+apiRouter.post('/settings/github/installations/:installationId/token', githubController.generateInstallationToken);
+apiRouter.post('/settings/github/validate-repo', githubConnectionController.validateGithubRepository);
 apiRouter.get('/settings/github/monitored-repos', repositoryController.listRepositories);
 
-// 11. GitHub Webhooks Ingestion
+// 12. GitHub Webhooks Ingestion
 apiRouter.post('/webhooks/github', webhookController.handleGitHubWebhook);
 
-// 12. Frontend Telemetry & UI Logging
+// 13. Frontend Telemetry & UI Logging
 apiRouter.post('/telemetry/log', telemetryController.logTelemetry);
