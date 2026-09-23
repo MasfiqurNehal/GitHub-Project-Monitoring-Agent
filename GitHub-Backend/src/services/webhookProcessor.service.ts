@@ -10,6 +10,16 @@ import crypto from 'crypto';
 
 export class WebhookProcessorService {
   async processEvent(eventName: string, payload: any): Promise<void> {
+    if (eventName === 'installation') {
+      await this.handleInstallationEvent(payload);
+      return;
+    }
+
+    if (eventName === 'installation_repositories') {
+      await this.handleInstallationRepositoriesEvent(payload);
+      return;
+    }
+
     const repoFullName = payload?.repository?.full_name;
     if (!repoFullName) {
       logger.info('WEBHOOK', `Ignored webhook event '${eventName}': Missing repository full_name in payload`);
@@ -33,6 +43,9 @@ export class WebhookProcessorService {
         case 'issues':
           await this.handleIssuesEvent(repo.id, payload);
           break;
+        case 'issue_comment':
+          await this.handleIssueCommentEvent(repo.id, payload);
+          break;
         case 'push':
           await this.handlePushEvent(repo.id, payload);
           break;
@@ -46,6 +59,37 @@ export class WebhookProcessorService {
     } catch (err: any) {
       logger.error('WEBHOOK', `Error processing webhook event '${eventName}' for ${repoFullName}: ${err.message}`, err);
     }
+  }
+
+  private async handleInstallationEvent(payload: any) {
+    const installation = payload.installation;
+    if (!installation) return;
+
+    const action = payload.action;
+    const installationId = String(installation.id);
+    const accountLogin = installation.account?.login || 'unknown';
+    const accountType = installation.account?.type || 'Organization';
+
+    await pool.query(
+      `INSERT INTO github_installations (id, installation_id, account_login, account_type, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+       ON CONFLICT (installation_id) DO UPDATE SET
+         status = EXCLUDED.status,
+         account_login = EXCLUDED.account_login,
+         updated_at = NOW()`,
+      [`inst-${installationId}`, installationId, accountLogin, accountType, action === 'deleted' ? 'DELETED' : action === 'suspend' ? 'SUSPENDED' : 'ACTIVE']
+    );
+
+    logger.info('WEBHOOK', `Successfully processed installation event '${action}' for installation ID ${installationId}`);
+  }
+
+  private async handleInstallationRepositoriesEvent(payload: any) {
+    const action = payload.action;
+    const installationId = payload.installation?.id;
+    const addedRepos = payload.repositories_added || [];
+    const removedRepos = payload.repositories_removed || [];
+
+    logger.info('WEBHOOK', `Successfully processed installation_repositories '${action}' for installation ${installationId} (Added: ${addedRepos.length}, Removed: ${removedRepos.length})`);
   }
 
   private async handlePullRequestEvent(repositoryId: string, payload: any) {
@@ -79,6 +123,8 @@ export class WebhookProcessorService {
       state: stateStr,
       draft: Boolean(pr.draft),
       merged: Boolean(pr.merged),
+      baseBranch: pr.base?.ref || null,
+      headBranch: pr.head?.ref || null,
       authorDeveloperId: devId,
       additions: pr.additions || 0,
       deletions: pr.deletions || 0,
@@ -103,7 +149,7 @@ export class WebhookProcessorService {
       entityType: 'PULL_REQUEST',
       entityId: `pr-${pr.number}`,
       occurredAt: new Date(),
-      metadata: { prNumber: pr.number, title: pr.title, state: stateStr, action },
+      metadata: { prNumber: pr.number, title: pr.title, state: stateStr, action, html_url: pr.html_url },
     });
 
     logger.info('WEBHOOK', `Successfully processed PR #${pr.number} (${stateStr}) for repository ${repositoryId}`);
@@ -128,6 +174,17 @@ export class WebhookProcessorService {
       devId = dev.id;
     }
 
+    let assigneeDevId: string | null = null;
+    if (issue.assignee?.login) {
+      const aDev = await developerRepository.upsert({
+        id: `dev-${issue.assignee.id || issue.assignee.login}`,
+        githubUserId: issue.assignee.id,
+        login: issue.assignee.login,
+        avatarUrl: issue.assignee.avatar_url,
+      });
+      assigneeDevId = aDev.id;
+    }
+
     const stateStr = issue.state ? issue.state.toUpperCase() : 'OPEN';
 
     await issueRepository.upsert({
@@ -139,6 +196,8 @@ export class WebhookProcessorService {
       body: issue.body || null,
       state: stateStr,
       authorDeveloperId: devId,
+      assigneeDeveloperId: assigneeDevId,
+      labels: issue.labels ? issue.labels.map((l: any) => typeof l === 'string' ? l : l.name) : [],
       commentsCount: issue.comments || 0,
       createdAt: new Date(issue.created_at),
       updatedAt: new Date(issue.updated_at),
@@ -157,10 +216,49 @@ export class WebhookProcessorService {
       entityType: 'ISSUE',
       entityId: `iss-${issue.number}`,
       occurredAt: new Date(),
-      metadata: { issueNumber: issue.number, title: issue.title, state: stateStr, action },
+      metadata: { issueNumber: issue.number, title: issue.title, state: stateStr, action, html_url: issue.html_url },
     });
 
     logger.info('WEBHOOK', `Successfully processed Issue #${issue.number} (${stateStr}) for repository ${repositoryId}`);
+  }
+
+  private async handleIssueCommentEvent(repositoryId: string, payload: any) {
+    const comment = payload.comment;
+    const issue = payload.issue;
+    if (!comment || !issue) return;
+
+    const author = comment.user;
+    let devId: string | null = null;
+
+    if (author?.login) {
+      const dev = await developerRepository.upsert({
+        id: `dev-${author.id || author.login}`,
+        githubUserId: author.id,
+        login: author.login,
+        avatarUrl: author.avatar_url,
+        htmlUrl: author.html_url,
+      });
+      await developerRepository.linkToRepository(repositoryId, dev.id);
+      devId = dev.id;
+    }
+
+    await activityRepository.create({
+      id: `act-${crypto.randomUUID()}`,
+      repositoryId,
+      developerId: devId,
+      eventType: 'ISSUE_COMMENT_CREATED',
+      entityType: 'ISSUE_COMMENT',
+      entityId: `comment-${comment.id}`,
+      occurredAt: new Date(comment.created_at || Date.now()),
+      metadata: {
+        issueNumber: issue.number,
+        title: issue.title,
+        html_url: comment.html_url,
+        bodySnippet: comment.body ? comment.body.substring(0, 100) : '',
+      },
+    });
+
+    logger.info('WEBHOOK', `Successfully processed Issue Comment for Issue #${issue.number} in repository ${repositoryId}`);
   }
 
   private async handlePushEvent(repositoryId: string, payload: any) {
@@ -257,7 +355,7 @@ export class WebhookProcessorService {
       entityType: 'REVIEW',
       entityId: `rev-${review.id}`,
       occurredAt: new Date(),
-      metadata: { prNumber: pr.number, state: review.state },
+      metadata: { prNumber: pr.number, state: review.state, html_url: review.html_url },
     });
 
     logger.info('WEBHOOK', `Successfully processed Review for PR #${pr.number} for repository ${repositoryId}`);
