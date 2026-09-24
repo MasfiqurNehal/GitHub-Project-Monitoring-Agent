@@ -47,3 +47,52 @@ class TestProviderResponse(BaseModel):
     usage: Optional[Dict[str, Any]] = None
     message: str = "AI Provider test completed successfully"
 
+# ==============================================================================
+# CONVERSATION MANAGEMENT SCHEMAS
+# ==============================================================================
+
+class CreateConversationRequest(BaseModel):
+    title: Optional[str] = Field("New Conversation", description="Optional conversation title")
+
+class RenameConversationRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255, description="New title for the conversation")
+
+class ConversationSchema(BaseModel):
+    id: str
+    user_id: str
+    organization_id: Optional[str] = None
+    title: str
+    is_pinned: bool = False
+    is_deleted: bool = False
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    messages_count: int = 0
+
+class MessageSchema(BaseModel):
+    id: str
+    conversation_id: str
+    sender: str
+    content: str
+    metrics: Optional[List[Dict[str, Any]]] = None
+    sources: Optional[List[Dict[str, Any]]] = None
+    created_at: Optional[str] = None
+
+class ConversationResponseEnvelope(BaseModel):
+    success: bool = True
+    conversation: Dict[str, Any]
+    message: Optional[str] = "Operation successful"
+
+class ConversationListEnvelope(BaseModel):
+    success: bool = True
+    conversations: List[Dict[str, Any]]
+    count: int
+    message: Optional[str] = "Conversations retrieved successfully"
+
+class MessageListEnvelope(BaseModel):
+    success: bool = True
+    conversation_id: str
+    messages: List[Dict[str, Any]]
+    count: int
+    message: Optional[str] = "Messages retrieved successfully"
+
+

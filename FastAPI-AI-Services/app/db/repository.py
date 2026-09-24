@@ -165,6 +165,32 @@ class ChatbotRepository:
         await session.commit()
         return result.rowcount > 0
 
+    async def rename_conversation(
+        self,
+        session: AsyncSession,
+        conversation_id: str,
+        user_id: str,
+        new_title: str
+    ) -> Optional[ConversationModel]:
+        """Rename a conversation owned by user_id."""
+        now = datetime.now(timezone.utc)
+        stmt = (
+            update(ConversationModel)
+            .where(
+                and_(
+                    ConversationModel.id == conversation_id,
+                    ConversationModel.user_id == user_id,
+                    ConversationModel.is_deleted == False
+                )
+            )
+            .values(title=new_title, updated_at=now)
+        )
+        result = await session.execute(stmt)
+        if result.rowcount == 0:
+            return None
+        await session.commit()
+        return await self.get_conversation_by_id(session, conversation_id, user_id)
+
     async def clear_user_history(
         self,
         session: AsyncSession,

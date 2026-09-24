@@ -125,6 +125,46 @@ class ChatbotService:
                 message="Response generated successfully"
             )
 
+    async def create_conversation(
+        self,
+        user: AuthenticatedUser,
+        title: Optional[str] = "New Conversation"
+    ) -> Dict[str, Any]:
+        """Create a new conversation record owned by current user."""
+        if not db_manager.session_factory:
+            raise HTTPException(status_code=500, detail="Database connection pool uninitialized")
+        async with db_manager.session_factory() as session:
+            conv = await chatbot_repository.create_conversation(
+                session=session,
+                user_id=user.id,
+                organization_id=user.organization_id,
+                title=title or "New Conversation"
+            )
+            return conv.to_dict()
+
+    async def rename_conversation(
+        self,
+        conversation_id: str,
+        user: AuthenticatedUser,
+        new_title: str
+    ) -> Dict[str, Any]:
+        """Rename a conversation owned by current user."""
+        if not db_manager.session_factory:
+            raise HTTPException(status_code=500, detail="Database connection pool uninitialized")
+        async with db_manager.session_factory() as session:
+            conv = await chatbot_repository.rename_conversation(
+                session=session,
+                conversation_id=conversation_id,
+                user_id=user.id,
+                new_title=new_title
+            )
+            if not conv:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Conversation not found or access denied."
+                )
+            return conv.to_dict()
+
     async def get_user_conversations(self, user: AuthenticatedUser) -> List[Dict[str, Any]]:
         """Fetch all conversations owned by current authenticated user."""
         if not db_manager.session_factory:
@@ -170,6 +210,33 @@ class ChatbotService:
             res = conv.to_dict()
             res["messages"] = [m.to_dict() for m in messages]
             return res
+
+    async def get_conversation_messages(
+        self,
+        conversation_id: str,
+        user: AuthenticatedUser
+    ) -> List[Dict[str, Any]]:
+        """Fetch messages for a conversation owned by current user."""
+        if not db_manager.session_factory:
+            raise HTTPException(status_code=500, detail="Database uninitialized")
+        
+        async with db_manager.session_factory() as session:
+            conv = await chatbot_repository.get_conversation_by_id(
+                session=session,
+                conversation_id=conversation_id,
+                user_id=user.id
+            )
+            if not conv:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Conversation not found or access denied."
+                )
+            messages = await chatbot_repository.get_conversation_messages(
+                session=session,
+                conversation_id=conversation_id,
+                user_id=user.id
+            )
+            return [m.to_dict() for m in messages]
 
     async def delete_conversation(self, conversation_id: str, user: AuthenticatedUser) -> bool:
         """Delete conversation owned by current user."""
