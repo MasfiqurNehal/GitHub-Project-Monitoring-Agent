@@ -75,6 +75,19 @@ def create_application() -> FastAPI:
             "version": "1.0.0"
         }
 
+    # Direct /api/chat alias route
+    from app.schemas.chat import ChatPromptRequest, ChatResponseEnvelope
+    from app.services.chatbot_service import chatbot_service
+    from app.utils.auth import get_current_user, AuthenticatedUser
+    from fastapi import Depends
+
+    @app.post("/api/chat", response_model=ChatResponseEnvelope, tags=["Chatbot"])
+    async def direct_api_chat(
+        request: ChatPromptRequest,
+        current_user: AuthenticatedUser = Depends(get_current_user)
+    ):
+        return await chatbot_service.process_chat_message(request, current_user)
+
     return app
 
 app = create_application()

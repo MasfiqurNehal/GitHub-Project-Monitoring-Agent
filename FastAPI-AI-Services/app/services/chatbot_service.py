@@ -28,7 +28,14 @@ class ChatbotService:
         4. Saves AI assistant response message to DB.
         5. Returns structured ChatResponseEnvelope.
         """
-        logger.info(f"[ChatService] User '{user.email}' ({user.id}) prompt: '{request.prompt[:40]}...'")
+        user_text = (request.message or request.prompt or "").strip()
+        if not user_text:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Message or prompt content cannot be empty."
+            )
+
+        logger.info(f"[ChatService] User '{user.email}' ({user.id}) prompt: '{user_text[:40]}...'")
 
         if not db_manager.session_factory:
             raise HTTPException(
@@ -38,22 +45,23 @@ class ChatbotService:
 
         async with db_manager.session_factory() as session:
             # 1. Check if conversation exists & belongs to user
-            conv_id = request.conversation_id
-            existing_conv = await chatbot_repository.get_conversation_by_id(
-                session=session,
-                conversation_id=conv_id,
-                user_id=user.id
-            )
+            existing_conv = None
+            if request.conversation_id:
+                existing_conv = await chatbot_repository.get_conversation_by_id(
+                    session=session,
+                    conversation_id=request.conversation_id,
+                    user_id=user.id
+                )
 
             if not existing_conv:
                 # Derive title from prompt
-                title = request.prompt[:35] + ("..." if len(request.prompt) > 35 else "")
+                title = user_text[:35] + ("..." if len(user_text) > 35 else "")
                 existing_conv = await chatbot_repository.create_conversation(
                     session=session,
                     user_id=user.id,
                     organization_id=user.organization_id,
                     title=title,
-                    custom_id=conv_id
+                    custom_id=request.conversation_id
                 )
 
             # 2. Save user prompt message
@@ -61,7 +69,7 @@ class ChatbotService:
                 session=session,
                 conversation_id=existing_conv.id,
                 sender="user",
-                content=request.prompt
+                content=user_text
             )
 
             # 3. Build context & fetch historical messages

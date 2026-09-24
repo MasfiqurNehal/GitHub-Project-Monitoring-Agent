@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 class HealthCheckResponse(BaseModel):
     status: str = "ok"
@@ -8,11 +8,19 @@ class HealthCheckResponse(BaseModel):
     version: str = "1.0.0"
 
 class ChatPromptRequest(BaseModel):
-    conversation_id: str = Field(..., description="Unique conversation session identifier")
-    prompt: str = Field(..., description="User query prompt")
-    user_id: Optional[str] = Field(None, description="Authenticated user ID")
-    organization_id: Optional[str] = Field(None, description="Tenant organization ID")
+    conversation_id: Optional[str] = Field(None, description="Optional conversation session identifier")
+    message: Optional[str] = Field(None, description="User query message")
+    prompt: Optional[str] = Field(None, description="User query prompt (alias)")
     context: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional client context")
+
+    @model_validator(mode="before")
+    @classmethod
+    def sync_message_prompt(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            text = data.get("message") or data.get("prompt") or ""
+            data["message"] = text
+            data["prompt"] = text
+        return data
 
 class ChatResponseData(BaseModel):
     message_id: str
