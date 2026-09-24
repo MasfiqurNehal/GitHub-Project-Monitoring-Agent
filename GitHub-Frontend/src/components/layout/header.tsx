@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useLayout } from '../../providers/layout-provider';
 import { Breadcrumbs } from './breadcrumbs';
-import { Calendar, Sparkles, Menu, ShieldCheck } from 'lucide-react';
+import { Calendar, Sparkles, Menu } from 'lucide-react';
 
 interface HeaderProps {
   onOpenAIChat?: () => void;
@@ -82,13 +82,7 @@ export default function Header({ onOpenAIChat, onFilterChange }: HeaderProps) {
           <span>Webhooks Active</span>
         </div>
 
-        {/* CTO Console Indicator */}
-        <div className="flex items-center space-x-2 px-2.5 py-1 bg-slate-800/80 border border-slate-700/60 rounded-xl text-xs font-medium text-slate-300">
-          <div className="w-5 h-5 rounded-full bg-indigo-600/30 text-indigo-400 flex items-center justify-center font-bold text-[10px] border border-indigo-500/30">
-            CTO
-          </div>
-          <span className="hidden sm:inline text-[11px]">Console</span>
-        </div>
+
 
         {/* AI Agent Trigger Button */}
         <button

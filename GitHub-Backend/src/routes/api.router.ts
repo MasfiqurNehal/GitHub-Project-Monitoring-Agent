@@ -14,8 +14,18 @@ import * as githubConnectionController from '../controllers/githubConnection.con
 import * as webhookController from '../controllers/webhook.controller.js';
 import * as telemetryController from '../controllers/telemetry.controller.js';
 import * as codeChurnController from '../controllers/codeChurn.controller.js';
+import * as authController from '../controllers/auth.controller.js';
 
 export const apiRouter = Router();
+
+// Authentication & SaaS Credentials Endpoints
+apiRouter.post('/auth/login', authController.login);
+apiRouter.post('/auth/refresh', authController.refreshToken);
+apiRouter.get('/auth/me', authController.getMe);
+apiRouter.put('/auth/profile', authController.updateProfile);
+apiRouter.post('/auth/logout', authController.logout);
+apiRouter.post('/auth/users', authController.createUser);
+apiRouter.get('/auth/logins', authController.getLoginLogs);
 
 // 1. Health Checks
 apiRouter.get('/health', async (req, res) => {

@@ -1,6 +1,8 @@
 import dotenv from 'dotenv';
 import { app } from './app.js';
 import { checkDatabaseHealth, closeDatabasePool } from './db/connection.js';
+import { githubAppService } from './github/github-app.service.js';
+import { authService } from './services/auth.service.js';
 import { config } from './config/index.js';
 import { logger } from './utils/logger.js';
 
@@ -19,6 +21,13 @@ async function startServer() {
   const dbHealth = await checkDatabaseHealth();
   if (dbHealth.isHealthy) {
     logger.info('SERVER', 'Successfully connected to Neon PostgreSQL Database.');
+    // Synchronize active GitHub App installations & users on startup
+    githubAppService.syncInstallations().catch((err) => {
+      logger.warn('SERVER', `Background GitHub App installations sync warning: ${err.message}`);
+    });
+    authService.syncUsersToDb().catch((err) => {
+      logger.warn('SERVER', `Background users sync warning: ${err.message}`);
+    });
   } else {
     logger.warn('SERVER', `Neon PostgreSQL Connection Warning: ${dbHealth.error}`);
   }

@@ -11,7 +11,14 @@ export interface ProjectRow {
 }
 
 export class ProjectRepository {
-  async findAll(): Promise<any[]> {
+  async findAll(organizationId?: string): Promise<any[]> {
+    const params: any[] = [];
+    let whereClause = '';
+    if (organizationId) {
+      whereClause = 'WHERE p.organization_id = $1';
+      params.push(organizationId);
+    }
+
     const query = `
       SELECT 
         p.*,
@@ -24,10 +31,11 @@ export class ProjectRepository {
       LEFT JOIN commits c ON c.repository_id = r.id
       LEFT JOIN pull_requests pr ON pr.repository_id = r.id
       LEFT JOIN issues i ON i.repository_id = r.id
+      ${whereClause}
       GROUP BY p.id
       ORDER BY p.created_at DESC
     `;
-    const res = await pool.query(query);
+    const res = await pool.query(query, params);
     return res.rows.map(r => ({
       ...r,
       repositories_count: parseInt(r.repositories_count, 10),
@@ -42,17 +50,21 @@ export class ProjectRepository {
     return res.rows[0] || null;
   }
 
-  async findByName(name: string): Promise<ProjectRow | null> {
+  async findByName(name: string, organizationId?: string): Promise<ProjectRow | null> {
+    if (organizationId) {
+      const res = await pool.query('SELECT * FROM projects WHERE LOWER(name) = LOWER($1) AND organization_id = $2', [name, organizationId]);
+      return res.rows[0] || null;
+    }
     const res = await pool.query('SELECT * FROM projects WHERE LOWER(name) = LOWER($1)', [name]);
     return res.rows[0] || null;
   }
 
-  async create(id: string, name: string, description?: string, organization?: string): Promise<ProjectRow> {
+  async create(id: string, name: string, description?: string, organization?: string, organizationId?: string): Promise<ProjectRow> {
     const res = await pool.query(
-      `INSERT INTO projects (id, name, description, organization, status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, 'ACTIVE', NOW(), NOW())
+      `INSERT INTO projects (id, name, description, organization, organization_id, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'ACTIVE', NOW(), NOW())
        RETURNING *`,
-      [id, name, description || null, organization || null]
+      [id, name, description || null, organization || null, organizationId || 'org-masfiqurnehal']
     );
     return res.rows[0];
   }

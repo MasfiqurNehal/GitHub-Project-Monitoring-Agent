@@ -8,7 +8,8 @@ import crypto from 'crypto';
 // 1. GET /api/projects
 export async function listProjects(req: Request, res: Response, next: NextFunction) {
   try {
-    const projects = await projectRepository.findAll();
+    const orgId = (req as any).organizationId;
+    const projects = await projectRepository.findAll(orgId);
     res.json({ success: true, data: projects });
   } catch (err) {
     next(err);
@@ -23,10 +24,11 @@ export async function createProject(req: Request, res: Response, next: NextFunct
       return res.status(400).json({ success: false, error: 'Project name is required' });
     }
 
+    const orgId = (req as any).organizationId;
     const id = `prj-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
-    const project = await projectRepository.create(id, name.trim(), description, organization);
+    const project = await projectRepository.create(id, name.trim(), description, organization, orgId);
 
-    logger.info('PROJECTS', `Created new project '${project.name}' [ID: ${project.id}]`);
+    logger.info('PROJECTS', `Created new project '${project.name}' [ID: ${project.id}, Org: ${orgId}]`);
     res.status(201).json({ success: true, data: project });
   } catch (err) {
     next(err);

@@ -48,8 +48,9 @@ export async function handleInstallationCallback(req: Request, res: Response, ne
       try {
         const appOctokit = await githubAppService.getAppOctokit();
         const instRes = await appOctokit.rest.apps.getInstallation({ installation_id: instId });
-        accountLogin = instRes.data.account?.login || accountLogin;
-        accountType = instRes.data.account?.type || accountType;
+        const account = instRes.data.account as any;
+        accountLogin = account?.login || accountLogin;
+        accountType = account?.type || accountType;
         targetType = instRes.data.target_type || targetType;
         permissions = instRes.data.permissions || {};
         events = instRes.data.events || [];

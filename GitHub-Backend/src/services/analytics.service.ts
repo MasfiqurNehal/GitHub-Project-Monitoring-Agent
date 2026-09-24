@@ -340,6 +340,7 @@ export class AnalyticsService {
         author: c.author || 'Developer',
         authorAvatar: c.author_avatar || undefined,
         timeAgo: c.committed_at ? new Date(c.committed_at).toLocaleDateString() : 'recently',
+        status: `+${c.additions} / -${c.deletions} lines`,
         details: `+${c.additions} / -${c.deletions} lines`,
         url: c.commit_url,
       }));

@@ -45,8 +45,8 @@ export class SyncService {
           defaultBranch: repoMeta.data.defaultBranch,
           isPrivate: repoMeta.data.isPrivate,
           description: repoMeta.data.description || undefined,
-          language: repoMeta.data.language,
-          stars: repoMeta.data.starsCount,
+          language: repoMeta.data.language || undefined,
+          stars: repoMeta.data.stars,
           forks: repoMeta.data.forks,
           openIssuesCount: repoMeta.data.openIssuesCount,
         });

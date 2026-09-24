@@ -29,9 +29,6 @@ export class GitHubAppService {
       privateKey: config.githubPrivateKey,
       clientId: config.githubClientId || undefined,
       clientSecret: config.githubClientSecret || undefined,
-      request: {
-        baseUrl: config.githubApiUrl,
-      },
     });
   }
 

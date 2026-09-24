@@ -1,11 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const logsDir = path.join(__dirname, '../../logs');
+const logsDir = path.resolve(process.cwd(), 'logs');
 const logFilePath = path.join(logsDir, 'logger.txt');
 
 // Ensure logs directory exists

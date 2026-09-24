@@ -48,6 +48,8 @@ const envSchema = z.object({
   ENCRYPTION_KEY: z.string().optional(),
   FRONTEND_URL: z.string().default('http://localhost:3000'),
   FASTAPI_URL: z.string().default('http://localhost:8000'),
+  GEMINI_API_KEY: z.string().optional(),
+  REDIS_URL: z.string().optional(),
 });
 
 const _env = envSchema.safeParse(process.env);
@@ -72,5 +74,7 @@ export const config = {
   encryptionKey: process.env.ENCRYPTION_KEY || '',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
   fastapiUrl: process.env.FASTAPI_URL || 'http://localhost:8000',
+  geminiApiKey: process.env.GEMINI_API_KEY || '',
+  redisUrl: process.env.REDIS_URL || '',
 };
 

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "usr-admin-1",
+    "email": "admin1@masfiqurnehal.com",
+    "password": "password",
+    "name": "Masfiqur Nehal (Admin)",
+    "role": "admin",
+    "organization": "MasfiqurNehal Org"
+  },
+  {
+    "id": "usr-admin-2",
+    "email": "admin@betopia.com",
+    "password": "password",
+    "name": "Betopia Admin 1",
+    "role": "client_admin",
+    "organization": "Betopia Global Org 1"
+  },
+  {
+    "id": "usr-admin-3",
+    "email": "admin2@betopia.com",
+    "password": "password",
+    "name": "Betopia Admin 2",
+    "role": "client_admin",
+    "organization": "Betopia Global Org 2"
+  }
+]

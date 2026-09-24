@@ -30,6 +30,11 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
+import { tenantAuthMiddleware } from './middleware/auth.middleware.js';
+
+// Mount Tenant Auth & Data Isolation Middleware
+app.use(tenantAuthMiddleware as any);
+
 // Mount API Router
 app.use('/api', apiRouter);
 

@@ -1,6 +1,7 @@
 import { Octokit } from '@octokit/rest';
 import { config } from '../config/index.js';
 import { githubAppService } from './github-app.service.js';
+import { githubInstallationRepository } from '../repositories/githubInstallation.repository.js';
 import { logger } from '../utils/logger.js';
 
 export class GitHubClient {
@@ -19,6 +20,21 @@ export class GitHubClient {
     if (this.installationId && githubAppService.isAppConfigured()) {
       this.octokit = await githubAppService.getInstallationOctokit(this.installationId);
       return this.octokit;
+    }
+
+    if (githubAppService.isAppConfigured()) {
+      try {
+        const installations = await githubInstallationRepository.findAll();
+        if (installations.length > 0) {
+          const instId = installations[0].github_installation_id;
+          this.octokit = await githubAppService.getInstallationOctokit(instId);
+          return this.octokit;
+        }
+        this.octokit = await githubAppService.getAppOctokit();
+        return this.octokit;
+      } catch (err: any) {
+        logger.warn('GITHUB_CLIENT', `Could not initialize GitHub App Octokit: ${err.message}`);
+      }
     }
 
     const authToken = this.token || config.githubToken || '';

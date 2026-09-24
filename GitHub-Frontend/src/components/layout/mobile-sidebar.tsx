@@ -58,9 +58,16 @@ const navigationGroups = [
   },
 ];
 
+import { useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import UserProfileModal from '../profile/UserProfileModal';
+import { User, LogOut } from 'lucide-react';
+
 export function MobileSidebar() {
   const pathname = usePathname();
   const { isMobileMenuOpen, setMobileMenuOpen } = useLayout();
+  const { user, logout } = useAuth();
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -74,92 +81,126 @@ export function MobileSidebar() {
 
   if (!isMobileMenuOpen) return null;
 
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Navigation Menu"
-      className="fixed inset-0 z-50 lg:hidden"
-    >
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity"
-        onClick={() => setMobileMenuOpen(false)}
-      />
+  const getInitials = (name?: string) => {
+    if (!name) return 'US';
+    const parts = name.split(' ').filter(Boolean);
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return name.substring(0, 2).toUpperCase();
+  };
 
-      {/* Drawer */}
-      <div className="fixed inset-y-0 left-0 w-72 bg-slate-900 border-r border-slate-800 flex flex-col justify-between shadow-2xl animate-in slide-in-from-left duration-300 z-50">
-        <div className="overflow-y-auto flex-1">
-          {/* Header */}
-          <div className="p-5 border-b border-slate-800 flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20 shrink-0">
-                <Bot className="w-5 h-5" />
+  return (
+    <>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Navigation Menu"
+        className="fixed inset-0 z-50 lg:hidden"
+      >
+        {/* Backdrop */}
+        <div
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+
+        {/* Drawer */}
+        <div className="fixed inset-y-0 left-0 w-72 bg-slate-900 border-r border-slate-800 flex flex-col justify-between shadow-2xl animate-in slide-in-from-left duration-300 z-50">
+          <div className="overflow-y-auto flex-1">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20 shrink-0">
+                  <Bot className="w-5 h-5" />
+                </div>
+                <div>
+                  <h1 className="font-bold text-white text-sm leading-tight">GitHub Monitoring</h1>
+                  <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                    <ShieldCheck className="w-3 h-3 text-emerald-400" /> Executive Console
+                  </p>
+                </div>
               </div>
-              <div>
-                <h1 className="font-bold text-white text-sm leading-tight">GitHub Monitoring</h1>
-                <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
-                  <ShieldCheck className="w-3 h-3 text-emerald-400" /> Executive Console
-                </p>
-              </div>
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                aria-label="Close navigation menu"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(false)}
-              aria-label="Close navigation menu"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+
+            {/* Navigation Links */}
+            <nav aria-label="Mobile Navigation" className="p-3 space-y-4">
+              {navigationGroups.map((group) => (
+                <div key={group.name} className="space-y-1">
+                  <span className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    {group.name}
+                  </span>
+                  {group.items.map((item) => {
+                    const isActive =
+                      pathname === item.href ||
+                      (item.href !== '/dashboard' && item.href !== '/' && pathname.startsWith(item.href));
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ${
+                          isActive
+                            ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-sm'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                        }`}
+                      >
+                        <Icon className={`w-4 h-4 ${isActive ? 'text-blue-400' : 'text-slate-400'}`} />
+                        <span>{item.name}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              ))}
+            </nav>
           </div>
 
-          {/* Navigation Links */}
-          <nav aria-label="Mobile Navigation" className="p-3 space-y-4">
-            {navigationGroups.map((group) => (
-              <div key={group.name} className="space-y-1">
-                <span className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                  {group.name}
-                </span>
-                {group.items.map((item) => {
-                  const isActive =
-                    pathname === item.href ||
-                    (item.href !== '/dashboard' && item.href !== '/' && pathname.startsWith(item.href));
-                  const Icon = item.icon;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ${
-                        isActive
-                          ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                      }`}
-                    >
-                      <Icon className={`w-4 h-4 ${isActive ? 'text-blue-400' : 'text-slate-400'}`} />
-                      <span>{item.name}</span>
-                    </Link>
-                  );
-                })}
+          {/* User Footer */}
+          <div className="p-4 border-t border-slate-800 shrink-0 space-y-2">
+            <div
+              onClick={() => setIsProfileOpen(true)}
+              className="bg-slate-800/50 hover:bg-slate-800/80 cursor-pointer rounded-xl p-3 flex items-center space-x-3 border border-slate-700/50 hover:border-slate-600 transition-all group"
+            >
+              {user?.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt={user.name || 'User avatar'}
+                  className="w-9 h-9 rounded-full object-cover border border-blue-500/40 shrink-0 shadow-sm"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-xs border border-blue-500/30 shrink-0 shadow-sm">
+                  {getInitials(user?.name)}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-slate-200 group-hover:text-white truncate">{user?.name || 'Admin User'}</p>
+                <p className="text-[10px] text-slate-400 truncate">{user?.designation || user?.email || 'admin1@masfiqurnehal.com'}</p>
               </div>
-            ))}
-          </nav>
-        </div>
+              <span className="px-2 py-1 rounded-lg bg-blue-600/20 text-blue-400 text-[10px] font-medium border border-blue-500/30">
+                Profile
+              </span>
+            </div>
 
-        {/* User Footer */}
-        <div className="p-4 border-t border-slate-800 shrink-0">
-          <div className="bg-slate-800/50 rounded-xl p-3 flex items-center space-x-3 border border-slate-700/50">
-            <div className="w-8 h-8 rounded-full bg-indigo-600/30 text-indigo-400 flex items-center justify-center font-bold text-xs border border-indigo-500/30">
-              CTO
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-slate-200 truncate">Executive Console</p>
-              <p className="text-[10px] text-slate-400 truncate">Agent Monitoring Active</p>
-            </div>
+            <button
+              type="button"
+              onClick={logout}
+              className="w-full flex items-center justify-center space-x-2 px-3 py-2 rounded-xl bg-slate-800/40 hover:bg-rose-500/10 hover:text-rose-400 text-slate-400 text-xs font-medium border border-slate-700/40 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Log Out</span>
+            </button>
           </div>
         </div>
       </div>
-    </div>
+
+      <UserProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
+    </>
   );
 }
 
