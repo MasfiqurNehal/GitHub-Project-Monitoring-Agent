@@ -1,18 +1,11 @@
-from fastapi import FastAPI
+import uvicorn
+from app.main import app
+from app.config import settings
 
-app = FastAPI(
-    title="GitHub Project Monitoring FastAPI Service",
-    description="Python microservice for code similarity, NLP, and advanced analytics.",
-    version="1.0.0",
-)
-
-@app.get("/")
-def read_root():
-    return {
-        "service": "GitHub Monitoring FastAPI Analytics Engine",
-        "status": "active"
-    }
-
-@app.get("/health")
-def health_check():
-    return {"status": "ok"}
+if __name__ == "__main__":
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=settings.PORT,
+        reload=settings.ENVIRONMENT == "development",
+    )
