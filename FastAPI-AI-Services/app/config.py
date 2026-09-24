@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     AI_MODEL: str = "auto"
     AI_TIMEOUT_SECONDS: float = 30.0
 
+    # Security & Auth Settings
+    JWT_SECRET: str = "super-secret-jwt-key-github-monitoring-agent"
+    JWT_ALGORITHM: str = "HS256"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
