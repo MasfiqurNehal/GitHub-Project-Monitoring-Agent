@@ -12,7 +12,7 @@ The current project consists of three planned applications:
 GitHub-Project-Monitoring-Agent/
 ├── GitHub-Frontend/       # Next.js — already implemented
 ├── GitHub-Backend/        # Node.js + Express.js — implement now
-└── GitHub-FastAPI/        # Python + FastAPI AI layer — implement later
+└── FastAPI-AI-Services/        # Python + FastAPI AI layer — implement later
 ```
 
 For this phase, implement **only the backend and Neon PostgreSQL integration**.
@@ -2814,7 +2814,7 @@ Before implementing:
 1. Read this entire `backend-agent.md`.
 2. Inspect the existing `GitHub-Backend` directory.
 3. Do not modify `GitHub-Frontend` unless explicitly required for API integration.
-4. Do not create `GitHub-FastAPI`.
+4. Do not create `FastAPI-AI-Services`.
 5. Do not install Prisma.
 6. Do not install Redis.
 7. Do not install/configure Docker.

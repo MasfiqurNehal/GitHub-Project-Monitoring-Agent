@@ -1712,7 +1712,7 @@ GitHub-Project-Monitoring-Agent/
 |       +-- app.ts
 |       +-- server.ts
 |
-+-- GitHub-FastAPI/
++-- FastAPI-AI-Services/
 |
 +-- GitHub-Frontend/
 |
@@ -2320,7 +2320,7 @@ Create:
 
 ```text
 GitHub-Backend
-GitHub-FastAPI
+FastAPI-AI-Services
 GitHub-Frontend
 agent.md
 README.md

@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { LayoutProvider, useLayout } from '../../providers/layout-provider';
 import Sidebar from './sidebar';
 import { MobileSidebar } from './mobile-sidebar';
-import ChatDrawer from '../ai/chat-drawer';
+import FloatingChatbot from '../ai/FloatingChatbot';
 import { useAuth } from '../../context/AuthContext';
 import { PageLoader } from '../common/PageLoader';
 
@@ -53,11 +53,8 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
         {children}
       </div>
 
-      {/* AI Assistant Chat Drawer */}
-      <ChatDrawer
-        isOpen={isAIChatOpen}
-        onClose={() => setAIChatOpen(false)}
-      />
+      {/* Floating Frontend AI Chatbot Component */}
+      <FloatingChatbot />
     </div>
   );
 }

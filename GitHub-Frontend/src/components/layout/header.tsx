@@ -81,19 +81,6 @@ export default function Header({ onOpenAIChat, onFilterChange }: HeaderProps) {
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
           <span>Webhooks Active</span>
         </div>
-
-
-
-        {/* AI Agent Trigger Button */}
-        <button
-          type="button"
-          onClick={handleOpenAIChat}
-          aria-label="Open AI Engineering Agent assistant"
-          className="flex items-center space-x-2 px-3 sm:px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-medium text-xs rounded-lg shadow-md shadow-blue-500/20 transition-all active:scale-95"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
-          <span className="hidden xs:inline">Ask AI</span>
-        </button>
       </div>
     </header>
   );

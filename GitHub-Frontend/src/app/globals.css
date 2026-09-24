@@ -33,11 +33,21 @@ body {
   overflow-x: hidden;
 }
 
-/* Accessibility: High-Contrast Visible Focus Rings for Keyboard Navigation */
+/* Accessibility: Visible Focus Rings for Keyboard Navigation */
 :focus-visible {
-  outline: 2px solid #f59e0b !important;
-  outline-offset: 2px !important;
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
   border-radius: 6px;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none !important;
+  outline-offset: 0 !important;
 }
 
 /* Screen Reader Only Utility */
