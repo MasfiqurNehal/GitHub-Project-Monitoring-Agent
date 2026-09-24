@@ -104,10 +104,14 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
           onClose();
         }, 1200);
       } else {
-        setErrorMessage(result.error || 'Failed to update profile.');
+        const errText = typeof result.error === 'string'
+          ? result.error
+          : ((result.error as any)?.message || 'Failed to update profile.');
+        setErrorMessage(errText);
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'An unexpected error occurred.');
+      const errText = typeof err?.message === 'string' ? err.message : 'An unexpected error occurred.';
+      setErrorMessage(errText);
     } finally {
       setIsLoading(false);
     }

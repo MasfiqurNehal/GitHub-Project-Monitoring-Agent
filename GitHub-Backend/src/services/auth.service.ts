@@ -91,9 +91,8 @@ export class AuthService {
            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
            ON CONFLICT (id) DO UPDATE SET
              email = EXCLUDED.email,
-             name = EXCLUDED.name,
-             role = EXCLUDED.role,
              password_hash = EXCLUDED.password_hash,
+             role = EXCLUDED.role,
              organization_id = EXCLUDED.organization_id,
              updated_at = NOW()`,
           [userId, githubLogin, userName, cleanEmail, userRole, u.password || 'password', orgId]
@@ -245,27 +244,31 @@ export class AuthService {
       logger.warn('AUTH_SERVICE', `Could not update last_login_at in DB: ${err.message}`);
     }
 
-    // 5. Generate Access Token (3 Days) & Refresh Token (30 Days)
-    const accessToken = this.generateAccessToken({
+    // 5. Fetch full user profile from Neon DB (with avatarUrl, designation, companyName, phoneNumber, contactEmail)
+    const fullProfile = await this.getUserProfile(dbUserId);
+    const userToReturn = fullProfile || {
       id: dbUserId,
       email: cleanEmail,
       name: dbName,
       role: dbRole,
       organizationId: dbOrgId,
+    };
+
+    // 6. Generate Access Token (3 Days) & Refresh Token (30 Days)
+    const accessToken = this.generateAccessToken({
+      id: userToReturn.id,
+      email: userToReturn.email,
+      name: userToReturn.name,
+      role: userToReturn.role,
+      organizationId: userToReturn.organizationId,
     });
 
     const refreshToken = await this.createRefreshToken(dbUserId, ipAddress, userAgent);
 
-    logger.info('AUTH_SERVICE', `User ${cleanEmail} logged in successfully [Org: ${dbOrgId}, Access Token: 3d, Refresh Token: 30d]`);
+    logger.info('AUTH_SERVICE', `User ${cleanEmail} logged in successfully [Org: ${userToReturn.organizationId}, Access Token: 3d, Refresh Token: 30d]`);
 
     return {
-      user: {
-        id: dbUserId,
-        email: cleanEmail,
-        name: dbName,
-        role: dbRole,
-        organizationId: dbOrgId,
-      },
+      user: userToReturn,
       accessToken,
       refreshToken,
       expiresInSeconds: ACCESS_TOKEN_EXPIRY,
@@ -305,23 +308,28 @@ export class AuthService {
     // Revoke old refresh token (Token Rotation for security)
     await pool.query(`UPDATE user_refresh_tokens SET revoked = TRUE WHERE id = $1`, [row.id]);
 
-    // Issue new 3-day Access Token & 30-day Refresh Token
-    const accessToken = this.generateAccessToken({
+    // Issue new 3-day Access Token & 30-day Refresh Token with full profile
+    const fullProfile = await this.getUserProfile(row.user_id);
+    const userToReturn = fullProfile || {
       id: row.user_id,
       email: row.email,
       name: row.name,
       role: row.role,
+      organizationId: (row as any).organization_id || null,
+    };
+
+    const accessToken = this.generateAccessToken({
+      id: userToReturn.id,
+      email: userToReturn.email,
+      name: userToReturn.name,
+      role: userToReturn.role,
+      organizationId: userToReturn.organizationId,
     });
 
     const newRefreshToken = await this.createRefreshToken(row.user_id, ipAddress, userAgent);
 
     return {
-      user: {
-        id: row.user_id,
-        email: row.email,
-        name: row.name,
-        role: row.role,
-      },
+      user: userToReturn,
       accessToken,
       refreshToken: newRefreshToken,
       expiresInSeconds: ACCESS_TOKEN_EXPIRY,

@@ -60,7 +60,10 @@ export async function fetchApi<T>(
     const body = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      const errorMessage = body.error || body.message || `API request failed with status ${response.status}`;
+      const errorMessage =
+        typeof body.error === 'string'
+          ? body.error
+          : (body.error?.message || body.message || `API request failed with status ${response.status}`);
       
       if (response.status === 401) {
         throw new UnauthorizedError(errorMessage);

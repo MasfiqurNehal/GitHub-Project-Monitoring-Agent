@@ -12,10 +12,12 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json({
+  limit: '50mb',
   verify: (req: any, _res, buf) => {
     req.rawBody = buf;
   },
 }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Descriptive HTTP Request Logger Middleware
 app.use((req: Request, res: Response, next: NextFunction) => {
