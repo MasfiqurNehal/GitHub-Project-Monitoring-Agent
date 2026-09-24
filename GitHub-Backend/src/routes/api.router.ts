@@ -13,6 +13,7 @@ import * as githubController from '../controllers/github.controller.js';
 import * as githubConnectionController from '../controllers/githubConnection.controller.js';
 import * as webhookController from '../controllers/webhook.controller.js';
 import * as telemetryController from '../controllers/telemetry.controller.js';
+import * as codeChurnController from '../controllers/codeChurn.controller.js';
 
 export const apiRouter = Router();
 
@@ -54,6 +55,8 @@ apiRouter.get('/dashboard/developers', dashboardController.getDashboardDeveloper
 apiRouter.get('/dashboard/repositories', dashboardController.getDashboardRepositories);
 apiRouter.get('/dashboard/daily', dashboardController.getDailyAnalytics);
 apiRouter.get('/analytics/daily', dashboardController.getDailyAnalytics);
+apiRouter.get('/analytics/churn', codeChurnController.getCodeChurnAnalysis);
+apiRouter.get('/repositories/:id/churn', codeChurnController.getCodeChurnAnalysis);
 
 
 // 3. Projects Endpoints
@@ -105,6 +108,12 @@ apiRouter.get('/repositories/:id/issues', issueController.getRepositoryIssues);
 
 // 9. Reports Endpoints
 apiRouter.get('/reports', reportController.listReports);
+apiRouter.get('/reports/daily', reportController.getDailyReport);
+apiRouter.get('/reports/weekly', reportController.getWeeklyReport);
+apiRouter.get('/reports/monthly', reportController.getMonthlyReport);
+apiRouter.get('/reports/project/:id', reportController.getProjectReport);
+apiRouter.get('/reports/repository/:id', reportController.getRepositoryReport);
+apiRouter.get('/reports/developer/:id', reportController.getDeveloperReport);
 apiRouter.post('/reports/generate', reportController.generateReport);
 apiRouter.get('/reports/:id', reportController.getReportDetail);
 

@@ -1,0 +1,402 @@
+{
+  "info": {
+    "_postman_id": "col-github-monitoring-agent-v1",
+    "name": "GitHub Monitoring Agent API Collection",
+    "description": "Complete Postman API test collection for all 20 endpoint categories of the GitHub Monitoring Platform.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Health",
+      "item": [
+        {
+          "name": "Check System Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+          }
+        },
+        {
+          "name": "Check Database Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health/database", "host": ["{{baseUrl}}"], "path": ["health", "database"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. GitHub Connection",
+      "item": [
+        {
+          "name": "Get Connection Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/github/connection", "host": ["{{baseUrl}}"], "path": ["github", "connection"] }
+          }
+        },
+        {
+          "name": "Get GitHub App Installation URL",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/github/install", "host": ["{{baseUrl}}"], "path": ["github", "install"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. GitHub Callback",
+      "item": [
+        {
+          "name": "Handle Installation Callback",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/github/callback?installation_id={{installationId}}&setup_action=install",
+              "host": ["{{baseUrl}}"],
+              "path": ["github", "callback"],
+              "query": [
+                { "key": "installation_id", "value": "{{installationId}}" },
+                { "key": "setup_action", "value": "install" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Repository Validation",
+      "item": [
+        {
+          "name": "Validate Repository URL",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://github.com/MasfiqurNehal/GitHub-Project-Monitoring-Agent\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/repositories/validate", "host": ["{{baseUrl}}"], "path": ["repositories", "validate"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Project Creation",
+      "item": [
+        {
+          "name": "Create Project",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Betopia AI Engine\",\n  \"description\": \"Real-time engineering monitoring intelligence platform.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects", "host": ["{{baseUrl}}"], "path": ["projects"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Repository Creation",
+      "item": [
+        {
+          "name": "Add Monitored Repository",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://github.com/MasfiqurNehal/GitHub-Project-Monitoring-Agent\",\n  \"name\": \"GitHub-Project-Monitoring-Agent\",\n  \"owner\": \"MasfiqurNehal\",\n  \"full_name\": \"MasfiqurNehal/GitHub-Project-Monitoring-Agent\",\n  \"default_branch\": \"main\",\n  \"is_private\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/repositories", "host": ["{{baseUrl}}"], "path": ["repositories"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Repository Synchronization",
+      "item": [
+        {
+          "name": "Trigger Repository Sync",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/repositories/{{repositoryId}}/sync", "host": ["{{baseUrl}}"], "path": ["repositories", "{{repositoryId}}", "sync"] }
+          }
+        },
+        {
+          "name": "Get Sync Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/repositories/{{repositoryId}}/sync-status", "host": ["{{baseUrl}}"], "path": ["repositories", "{{repositoryId}}", "sync-status"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Repository Metadata",
+      "item": [
+        {
+          "name": "List Repositories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/repositories", "host": ["{{baseUrl}}"], "path": ["repositories"] }
+          }
+        },
+        {
+          "name": "Get Repository Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/repositories/{{repositoryId}}", "host": ["{{baseUrl}}"], "path": ["repositories", "{{repositoryId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Developers",
+      "item": [
+        {
+          "name": "List Developers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/developers", "host": ["{{baseUrl}}"], "path": ["developers"] }
+          }
+        },
+        {
+          "name": "Get Developer Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/developers/{{developerId}}", "host": ["{{baseUrl}}"], "path": ["developers", "{{developerId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Commits",
+      "item": [
+        {
+          "name": "Get Repository Commits",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/repositories/{{repositoryId}}/commits", "host": ["{{baseUrl}}"], "path": ["repositories", "{{repositoryId}}", "commits"] }
+          }
+        },
+        {
+          "name": "Get Commit Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/commits/{{commitSha}}", "host": ["{{baseUrl}}"], "path": ["commits", "{{commitSha}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Commit Changes",
+      "item": [
+        {
+          "name": "Get Commit File Changes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/commits/{{commitSha}}/changes", "host": ["{{baseUrl}}"], "path": ["commits", "{{commitSha}}", "changes"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Pull Requests",
+      "item": [
+        {
+          "name": "List Pull Requests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/pull-requests", "host": ["{{baseUrl}}"], "path": ["pull-requests"] }
+          }
+        },
+        {
+          "name": "Get Pull Request Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/pull-requests/{{pullRequestId}}", "host": ["{{baseUrl}}"], "path": ["pull-requests", "{{pullRequestId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. PR Reviews",
+      "item": [
+        {
+          "name": "Get Developer Reviews",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/developers/{{developerId}}/reviews", "host": ["{{baseUrl}}"], "path": ["developers", "{{developerId}}", "reviews"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "14. Issues",
+      "item": [
+        {
+          "name": "List Issues",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/issues", "host": ["{{baseUrl}}"], "path": ["issues"] }
+          }
+        },
+        {
+          "name": "Get Issue Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/issues/{{issueId}}", "host": ["{{baseUrl}}"], "path": ["issues", "{{issueId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "15. Activity",
+      "item": [
+        {
+          "name": "Get Unified Activity Stream",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/activity?limit=20", "host": ["{{baseUrl}}"], "path": ["activity"], "query": [{ "key": "limit", "value": "20" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "16. Dashboard",
+      "item": [
+        {
+          "name": "Get Dashboard Overview",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/dashboard/overview", "host": ["{{baseUrl}}"], "path": ["dashboard", "overview"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "17. Daily Analytics",
+      "item": [
+        {
+          "name": "Get Daily Analytics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/analytics/daily?preset=this_month", "host": ["{{baseUrl}}"], "path": ["analytics", "daily"], "query": [{ "key": "preset", "value": "this_month" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "18. Developer Analytics",
+      "item": [
+        {
+          "name": "Get Factual Developer Analytics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/analytics/developers/{{developerId}}", "host": ["{{baseUrl}}"], "path": ["analytics", "developers", "{{developerId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "19. Reports",
+      "item": [
+        {
+          "name": "Get Daily Report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/reports/daily", "host": ["{{baseUrl}}"], "path": ["reports", "daily"] }
+          }
+        },
+        {
+          "name": "Get Weekly Report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/reports/weekly", "host": ["{{baseUrl}}"], "path": ["reports", "weekly"] }
+          }
+        },
+        {
+          "name": "Get Monthly Report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/reports/monthly", "host": ["{{baseUrl}}"], "path": ["reports", "monthly"] }
+          }
+        },
+        {
+          "name": "Get Project Report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/reports/project/{{projectId}}", "host": ["{{baseUrl}}"], "path": ["reports", "project", "{{projectId}}"] }
+          }
+        },
+        {
+          "name": "Get Repository Report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/reports/repository/{{repositoryId}}", "host": ["{{baseUrl}}"], "path": ["reports", "repository", "{{repositoryId}}"] }
+          }
+        },
+        {
+          "name": "Get Developer Report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/reports/developer/{{developerId}}", "host": ["{{baseUrl}}"], "path": ["reports", "developer", "{{developerId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "20. Webhooks",
+      "item": [
+        {
+          "name": "Ingest GitHub Webhook Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-GitHub-Event", "value": "push" },
+              { "key": "X-GitHub-Delivery", "value": "722970e0-8b40-11ec-872f-51828f72365a" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ref\": \"refs/heads/main\",\n  \"repository\": {\n    \"id\": 101,\n    \"name\": \"GitHub-Project-Monitoring-Agent\",\n    \"full_name\": \"MasfiqurNehal/GitHub-Project-Monitoring-Agent\"\n  },\n  \"pusher\": {\n    \"name\": \"MasfiqurNehal\"\n  },\n  \"commits\": [\n    {\n      \"id\": \"c3d4e5f678901234567890abcdef12345678a9b0\",\n      \"message\": \"feat: push webhook event delivery\",\n      \"timestamp\": \"2026-09-23T18:00:00Z\"\n    }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/webhooks/github", "host": ["{{baseUrl}}"], "path": ["webhooks", "github"] }
+          }
+        }
+      ]
+    }
+  ]
+}

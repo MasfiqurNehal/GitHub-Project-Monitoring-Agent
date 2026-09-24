@@ -11,7 +11,7 @@ export function useProjects(filters: { search?: string; status?: string } = {}) 
   });
 
   const createMutation = useMutation({
-    mutationFn: ({ name, description }: { name: string; description?: string }) => createProject(name, description),
+    mutationFn: ({ name, description }: { name: string; description?: string }) => createProject({ name, description }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects-list'] });
     },
