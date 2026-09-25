@@ -32,10 +32,12 @@ class ConversationModel(Base):
     )
 
     def to_dict(self) -> Dict[str, Any]:
-        from sqlalchemy.orm import attributes
-        state_dict = attributes.instance_state(self).dict
-        messages_loaded = state_dict.get("messages")
-        messages_count = len(messages_loaded) if messages_loaded is not None else 0
+        msg_count = 0
+        try:
+            if hasattr(self, "messages") and self.messages is not None:
+                msg_count = len(self.messages)
+        except Exception:
+            msg_count = 0
 
         return {
             "id": self.id,
@@ -46,7 +48,7 @@ class ConversationModel(Base):
             "is_deleted": self.is_deleted,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "messages_count": messages_count
+            "messages_count": msg_count
         }
 
 

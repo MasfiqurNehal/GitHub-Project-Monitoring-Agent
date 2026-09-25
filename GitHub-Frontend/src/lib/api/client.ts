@@ -86,3 +86,56 @@ export async function fetchApi<T>(
     throw new ApiError(err.message || 'Network connection error', 500);
   }
 }
+
+const AI_API_BASE_URL = (process.env.NEXT_PUBLIC_AI_API_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '');
+
+export function getAiApiUrl(endpoint: string): string {
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  return `${AI_API_BASE_URL}${cleanEndpoint}`;
+}
+
+export async function fetchAiApi<T>(
+  endpoint: string,
+  options?: RequestInit
+): Promise<T> {
+  const url = getAiApiUrl(endpoint);
+  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+
+  const defaultHeaders: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...defaultHeaders,
+        ...options?.headers,
+      },
+    });
+
+    const body = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const errorMessage =
+        typeof body.detail === 'string'
+          ? body.detail
+          : typeof body.error === 'string'
+          ? body.error
+          : (body.error?.message || body.message || `AI API failed with status ${response.status}`);
+
+      if (response.status === 401) {
+        throw new UnauthorizedError(errorMessage);
+      }
+      throw new ApiError(errorMessage, response.status, body.code);
+    }
+
+    return body;
+  } catch (err: any) {
+    if (err instanceof ApiError) {
+      throw err;
+    }
+    throw new ApiError(err.message || 'AI Service connection error', 500);
+  }
+}

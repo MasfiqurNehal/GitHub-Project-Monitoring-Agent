@@ -53,8 +53,8 @@ def verify_authenticated_user(token: str) -> AuthenticatedUser:
     """Extract and validate the AuthenticatedUser from raw JWT string."""
     payload = decode_jwt_token(token)
 
-    # Extract user ID (supports 'id', 'user_id', or 'sub')
-    user_id = payload.get("id") or payload.get("user_id") or payload.get("sub")
+    # Extract user ID (supports 'id', 'user_id', 'userId', or 'sub')
+    user_id = payload.get("id") or payload.get("user_id") or payload.get("userId") or payload.get("sub")
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -10,6 +10,11 @@ from fastapi import HTTPException, status
 from app.db.connection import db_manager
 from app.db.repository import chatbot_repository
 from app.providers.ai_provider import ai_provider, AIProviderException
+from app.services.context_manager import context_manager
+from app.rag.knowledge_base import knowledge_retriever
+from app.rag.rag_pipeline import rag_pipeline
+from app.services.topic_guard import topic_guard
+from app.agents.detector import agent_detector
 from app.schemas.chat import ChatPromptRequest, ChatResponseData, ChatResponseEnvelope
 from app.utils.auth import AuthenticatedUser
 from app.utils.logger import logger
@@ -72,21 +77,84 @@ class ChatbotService:
                 content=user_text
             )
 
-            # 3. Build context & fetch historical messages
+            # 3. Validate user topic (allow technical/domain, refuse off-topic non-technical)
+            topic_res = topic_guard.validate_prompt(user_text)
+            if not topic_res.is_allowed:
+                logger.info(f"[ChatService] User prompt refused by TopicGuard (category: '{topic_res.category}')")
+                ai_msg_id = f"msg-{uuid.uuid4().hex[:12]}"
+                refusal_answer = topic_res.refusal_message or topic_guard.POLITE_REFUSAL_MESSAGE
+
+                await chatbot_repository.add_message(
+                    session=session,
+                    conversation_id=existing_conv.id,
+                    sender="assistant",
+                    content=refusal_answer,
+                    sources=[{"title": "System Policy", "type": "policy"}],
+                    custom_id=ai_msg_id
+                )
+
+                return ChatResponseEnvelope(
+                    success=True,
+                    data=ChatResponseData(
+                        message_id=ai_msg_id,
+                        conversation_id=existing_conv.id,
+                        answer=refusal_answer,
+                        metrics=[{"label": "Scope", "value": "Refused", "color": "text-rose-400"}],
+                        sources=[{"title": "System Scope Policy", "type": "policy"}],
+                        actions=[]
+                    ),
+                    message="Prompt refused by domain scope guardrails."
+                )
+
+            # 4. Engineering Agent Intent Detection: Check if prompt requires complex agent processing
+            agent_res = agent_detector.detect_intent(user_text)
+            if agent_res.requires_agent:
+                logger.info(f"[ChatService] Engineering Agent intent detected for task: '{agent_res.task_category}'")
+                ai_msg_id = f"msg-{uuid.uuid4().hex[:12]}"
+                redirect_answer = agent_res.redirect_message or agent_detector.DEFAULT_REDIRECT_MESSAGE
+                actions = agent_res.actions or []
+
+                await chatbot_repository.add_message(
+                    session=session,
+                    conversation_id=existing_conv.id,
+                    sender="assistant",
+                    content=redirect_answer,
+                    sources=[{"title": f"Engineering Agent Handoff ({agent_res.task_title})", "type": "agent_redirect"}],
+                    custom_id=ai_msg_id
+                )
+
+                return ChatResponseEnvelope(
+                    success=True,
+                    data=ChatResponseData(
+                        message_id=ai_msg_id,
+                        conversation_id=existing_conv.id,
+                        answer=redirect_answer,
+                        metrics=[{"label": "Agent Required", "value": agent_res.task_title or "Engineering Agent", "color": "text-sky-400"}],
+                        sources=[{"title": f"Engineering Agent Handoff ({agent_res.task_title})", "type": "agent_redirect"}],
+                        actions=actions
+                    ),
+                    message="Request requires Engineering Agent processing."
+                )
+
+            # Retrieve conversation history
             history_messages = await chatbot_repository.get_conversation_messages(
                 session=session,
                 conversation_id=existing_conv.id,
                 user_id=user.id
             )
 
-            messages_for_ai: List[Dict[str, str]] = []
-            messages_for_ai.append({
-                "role": "system",
-                "content": "You are GitMonitor AI Assistant, an expert engineering analytics assistant for GitHub projects."
-            })
-            for m in history_messages[-10:]:
-                role = "assistant" if m.sender == "assistant" else "user"
-                messages_for_ai.append({"role": role, "content": m.content})
+            # 4. Modular RAG Pipeline: Vector similarity search against GitMonitor domain knowledge
+            rag_res = rag_pipeline.retrieve_context(query=user_text)
+            rag_context_str = rag_res.get("rag_context", "") if rag_res.get("is_relevant") else None
+
+            # Exclude current message from history to avoid duplication
+            previous_history = history_messages[:-1] if history_messages else []
+
+            messages_for_ai = context_manager.build_context(
+                history_messages=previous_history,
+                current_prompt=user_text,
+                rag_context=rag_context_str
+            )
 
             # 4. Generate AI Completion
             try:
@@ -98,11 +166,18 @@ class ChatbotService:
 
             # 5. Save AI assistant response
             ai_msg_id = f"msg-{uuid.uuid4().hex[:12]}"
+            
+            # Map retrieved RAG sources for client envelope
+            sources = rag_res.get("sources", []) if rag_res.get("is_relevant") else [
+                {"title": "General AI Knowledge", "type": "llm_knowledge"}
+            ]
+
             await chatbot_repository.add_message(
                 session=session,
                 conversation_id=existing_conv.id,
                 sender="assistant",
                 content=answer_text,
+                sources=sources,
                 custom_id=ai_msg_id
             )
 
@@ -113,9 +188,7 @@ class ChatbotService:
                 metrics=[
                     {"label": "Status", "value": "Online", "color": "text-emerald-400"}
                 ],
-                sources=[
-                    {"title": "GitMonitor Analytics", "type": "database"}
-                ],
+                sources=sources,
                 actions=[]
             )
 

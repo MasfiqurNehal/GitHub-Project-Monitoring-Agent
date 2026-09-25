@@ -27,6 +27,21 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "super-secret-jwt-key-github-monitoring-agent"
     JWT_ALGORITHM: str = "HS256"
 
+    # Context Window & History Limits
+    MAX_CONTEXT_MESSAGES: int = 10
+    MAX_CONTEXT_TOKENS: int = 3000
+    SYSTEM_PROMPT: str = (
+        "You are GitMonitor AI Assistant, an expert engineering analytics assistant for GitHub projects. "
+        "Help users analyze repositories, interpret commit/PR activity, summarize trends, spot potential issues, "
+        "and extract actionable insights from Git data. Maintain context across multi-turn conversations."
+    )
+
+    # RAG Knowledge Base Architecture Settings
+    EMBEDDING_PROVIDER: str = "tfidf"  # Options: 'tfidf', 'api', 'mock'
+    VECTOR_STORE_TYPE: str = "memory"  # Options: 'memory'
+    RAG_SIMILARITY_THRESHOLD: float = 0.35  # Threshold to distinguish GitMonitor domain queries vs general AI knowledge
+    RAG_TOP_K: int = 2
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
