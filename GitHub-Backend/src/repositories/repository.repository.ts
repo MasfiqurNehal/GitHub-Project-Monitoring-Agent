@@ -30,14 +30,29 @@ export interface RepositoryRow {
 
 export class RepositoryRepository {
   async findAll(organizationId?: string): Promise<RepositoryRow[]> {
-    if (organizationId) {
-      const res = await pool.query(
-        'SELECT * FROM repositories WHERE organization_id = $1 OR project_id IN (SELECT id FROM projects WHERE organization_id = $1) ORDER BY created_at DESC',
-        [organizationId]
-      );
-      return res.rows;
-    }
-    const res = await pool.query('SELECT * FROM repositories ORDER BY created_at DESC');
+    const orgFilter = organizationId
+      ? `WHERE r.organization_id = $1 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $1)`
+      : '';
+    const params = organizationId ? [organizationId] : [];
+
+    const query = `
+      SELECT 
+        r.*,
+        COUNT(DISTINCT c.developer_id)::int as developers_count,
+        COUNT(DISTINCT c.id)::int as commits_count,
+        COUNT(DISTINCT pr.id)::int as prs_count,
+        COUNT(DISTINCT i.id)::int as issues_count,
+        COALESCE(SUM(c.additions), 0)::int as lines_added,
+        COALESCE(SUM(c.deletions), 0)::int as lines_deleted
+      FROM repositories r
+      LEFT JOIN commits c ON c.repository_id = r.id
+      LEFT JOIN pull_requests pr ON pr.repository_id = r.id
+      LEFT JOIN issues i ON i.repository_id = r.id
+      ${orgFilter}
+      GROUP BY r.id
+      ORDER BY r.created_at DESC
+    `;
+    const res = await pool.query(query, params);
     return res.rows;
   }
 

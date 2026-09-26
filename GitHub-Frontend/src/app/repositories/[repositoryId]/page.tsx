@@ -24,11 +24,14 @@ export default function RepositoryDetailPage({ params }: { params: { repositoryI
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const { repositoryDetail, isLoading, isError, refetch } = useRepositoryDetail(params.repositoryId);
+  const { repositoryDetail, isLoading, isError, refetch, syncRepository, isSyncing: isHookSyncing } = useRepositoryDetail(params.repositoryId);
 
   const handleManualSync = async () => {
     setIsSyncing(true);
     try {
+      if (syncRepository) {
+        await syncRepository(params.repositoryId);
+      }
       await refetch();
     } catch (err) {
       console.error(err);

@@ -81,6 +81,7 @@ export async function fetchRepositoryDetails(repositoryId: string): Promise<{ su
 
   const detailData: RepositoryDetailData = {
     repository,
+    branches: res.data?.branches || r.branches || [{ name: repository.defaultBranch, isDefault: true, isProtected: false }],
     overview: res.data?.overview || {
       openPRsCount: Number(repository.metrics.prsCount),
       mergedPRsCount: 0,

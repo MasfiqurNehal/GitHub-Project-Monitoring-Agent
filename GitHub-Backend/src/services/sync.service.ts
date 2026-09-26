@@ -2,6 +2,7 @@ import { GitHubClient } from '../github/github-client.js';
 import { githubInstallationRepository } from '../repositories/githubInstallation.repository.js';
 import { repositoryRepository } from '../repositories/repository.repository.js';
 import { developerRepository } from '../repositories/developer.repository.js';
+import { branchRepository } from '../repositories/branch.repository.js';
 import { commitRepository } from '../repositories/commit.repository.js';
 import { pullRequestRepository } from '../repositories/pullRequest.repository.js';
 import { issueRepository } from '../repositories/issue.repository.js';
@@ -11,6 +12,7 @@ import { logger } from '../utils/logger.js';
 import crypto from 'crypto';
 
 export interface SyncCounts {
+  branches: number;
   developers: number;
   commits: number;
   pullRequests: number;
@@ -60,6 +62,7 @@ export class SyncService {
     await repositoryRepository.updateSyncStatus(repo.id, 'SYNCING');
 
     const counts: SyncCounts = {
+      branches: 0,
       developers: 0,
       commits: 0,
       pullRequests: 0,
@@ -74,8 +77,10 @@ export class SyncService {
       logger.info('SYNC', `Starting historical sync for ${repo.full_name} [Tenant: ${targetOrgId || 'default'}, Inst: ${installationId || 'none'}]...`);
 
       // 1. Sync Repository Metadata
+      let currentDefaultBranch = repo.default_branch || 'main';
       const repoMeta = await githubClient.validateRepositoryAccess(repo.owner, repo.name);
       if (repoMeta.success && repoMeta.data) {
+        currentDefaultBranch = repoMeta.data.defaultBranch || currentDefaultBranch;
         await repositoryRepository.upsert({
           id: repo.id,
           organizationId: targetOrgId,
@@ -85,7 +90,7 @@ export class SyncService {
           name: repoMeta.data.name,
           fullName: repoMeta.data.fullName,
           htmlUrl: repoMeta.data.htmlUrl,
-          defaultBranch: repoMeta.data.defaultBranch,
+          defaultBranch: currentDefaultBranch,
           isPrivate: repoMeta.data.isPrivate,
           description: repoMeta.data.description || undefined,
           language: repoMeta.data.language || undefined,
@@ -95,7 +100,27 @@ export class SyncService {
         });
       }
 
-      // 2. Sync Contributors & Developers
+      // 2. Sync Repository Branches
+      try {
+        const branches = await githubClient.getBranches(repo.owner, repo.name);
+        for (const b of branches) {
+          if (!b.name) continue;
+          await branchRepository.upsert({
+            id: `br-${repo.id}-${b.name}`,
+            repositoryId: repo.id,
+            organizationId: targetOrgId,
+            name: b.name,
+            headSha: b.commit?.sha || null,
+            isDefault: b.name === currentDefaultBranch,
+            isProtected: Boolean(b.protected),
+          });
+          counts.branches++;
+        }
+      } catch (err: any) {
+        logger.warn('SYNC', `Branches fetch warning for ${repo.full_name}: ${err.message}`);
+      }
+
+      // 3. Sync Contributors & Developers
       try {
         const contributors = await githubClient.getContributors(repo.owner, repo.name);
         for (const contrib of contributors) {

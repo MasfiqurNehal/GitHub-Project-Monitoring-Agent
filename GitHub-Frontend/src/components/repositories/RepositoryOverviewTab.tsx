@@ -23,8 +23,15 @@ interface RepositoryOverviewTabProps {
 }
 
 export function RepositoryOverviewTab({ detail }: RepositoryOverviewTabProps) {
-  const { repository, overview, developers, recentActivity } = detail;
+  const { repository, overview, developers, recentActivity, branches } = detail;
   const metrics = repository.metrics;
+  const branchList = branches || repository.branches || [];
+
+  const netImpact = metrics.linesAdded - metrics.linesDeleted;
+  const formattedNetImpact = netImpact >= 0 ? `+${netImpact.toLocaleString()}` : `${netImpact.toLocaleString()}`;
+
+  const isSyncError = repository.status === 'ERROR' || repository.status === 'FAILED';
+  const isSyncing = repository.status === 'SYNCING';
 
   return (
     <div className="space-y-6">
@@ -34,9 +41,9 @@ export function RepositoryOverviewTab({ detail }: RepositoryOverviewTabProps) {
           <div className="w-10 h-10 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center border border-blue-500/20">
             <GitBranch className="w-5 h-5" />
           </div>
-          <div>
-            <span className="text-[11px] text-slate-400 font-medium">Active Branch</span>
-            <p className="text-sm font-bold text-white font-mono">{overview.activeBranch}</p>
+          <div className="min-w-0">
+            <span className="text-[11px] text-slate-400 font-medium">Default Branch</span>
+            <p className="text-sm font-bold text-white font-mono truncate">{repository.defaultBranch || overview.activeBranch}</p>
           </div>
         </div>
 
@@ -56,7 +63,7 @@ export function RepositoryOverviewTab({ detail }: RepositoryOverviewTabProps) {
           </div>
           <div>
             <span className="text-[11px] text-slate-400 font-medium">Commits</span>
-            <p className="text-xl font-bold text-white">{metrics.commitsCount}</p>
+            <p className="text-xl font-bold text-white">{metrics.commitsCount.toLocaleString()}</p>
           </div>
         </div>
 
@@ -65,8 +72,10 @@ export function RepositoryOverviewTab({ detail }: RepositoryOverviewTabProps) {
             <GitPullRequest className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[11px] text-slate-400 font-medium">Open PRs</span>
-            <p className="text-xl font-bold text-amber-400">{overview.openPRsCount}</p>
+            <span className="text-[11px] text-slate-400 font-medium">Pull Requests</span>
+            <p className="text-sm font-bold text-amber-400">
+              {overview.openPRsCount} open <span className="text-slate-500 font-normal">/ {overview.mergedPRsCount} merged</span>
+            </p>
           </div>
         </div>
 
@@ -75,8 +84,10 @@ export function RepositoryOverviewTab({ detail }: RepositoryOverviewTabProps) {
             <AlertCircle className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[11px] text-slate-400 font-medium">Open Issues</span>
-            <p className="text-xl font-bold text-rose-400">{overview.openIssuesCount}</p>
+            <span className="text-[11px] text-slate-400 font-medium">Issues</span>
+            <p className="text-sm font-bold text-rose-400">
+              {overview.openIssuesCount} open <span className="text-slate-500 font-normal">/ {overview.closedIssuesCount} closed</span>
+            </p>
           </div>
         </div>
 
@@ -85,9 +96,9 @@ export function RepositoryOverviewTab({ detail }: RepositoryOverviewTabProps) {
             <FileCode className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[11px] text-slate-400 font-medium">Code Impact</span>
-            <p className="text-xs font-bold text-emerald-400 mt-0.5">
-              +{metrics.linesAdded.toLocaleString()} <span className="text-rose-400">-{metrics.linesDeleted.toLocaleString()}</span>
+            <span className="text-[11px] text-slate-400 font-medium">Net Impact</span>
+            <p className={`text-xs font-bold ${netImpact >= 0 ? 'text-emerald-400' : 'text-rose-400'} mt-0.5`}>
+              {formattedNetImpact} <span className="text-[10px] text-slate-500 font-normal">(+{metrics.linesAdded.toLocaleString()} / -{metrics.linesDeleted.toLocaleString()})</span>
             </p>
           </div>
         </div>
@@ -95,7 +106,7 @@ export function RepositoryOverviewTab({ detail }: RepositoryOverviewTabProps) {
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Repository Specs & Top Developers */}
+        {/* Left Column: Security Specs & Branches & Top Developers */}
         <div className="lg:col-span-2 space-y-6">
           {/* Security & Access Specs */}
           <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-4">
@@ -128,11 +139,60 @@ export function RepositoryOverviewTab({ detail }: RepositoryOverviewTabProps) {
 
               <div className="bg-slate-950/60 border border-slate-800 p-3.5 rounded-xl space-y-1">
                 <span className="text-[11px] text-slate-400 font-medium">Sync Status</span>
-                <div className="flex items-center gap-1.5 font-bold text-white text-xs">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Synchronized
+                <div className="flex items-center gap-1.5 font-bold text-xs">
+                  {isSyncError ? (
+                    <span className="text-rose-400 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-500" /> Synchronization Error
+                    </span>
+                  ) : isSyncing ? (
+                    <span className="text-amber-400 flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 animate-spin" /> Syncing in Progress...
+                    </span>
+                  ) : (
+                    <span className="text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Synchronized
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Branches Section */}
+          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-4">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
+              <GitBranch className="w-4 h-4 text-blue-400" /> Repository Branches ({branchList.length})
+            </h3>
+
+            {branchList.length === 0 ? (
+              <p className="text-xs text-slate-500 italic py-2">No branches synchronized yet.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {branchList.map((branch, idx) => (
+                  <div 
+                    key={idx} 
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-mono flex items-center gap-2 ${
+                      branch.isDefault 
+                        ? 'bg-blue-600/15 text-blue-300 border-blue-500/30 font-semibold' 
+                        : 'bg-slate-950/60 text-slate-300 border-slate-800'
+                    }`}
+                  >
+                    <GitBranch className="w-3.5 h-3.5 text-blue-400" />
+                    <span>{branch.name}</span>
+                    {branch.isDefault && (
+                      <span className="px-1.5 py-0.2 bg-blue-500/20 text-blue-300 rounded text-[9px] uppercase font-bold">
+                        default
+                      </span>
+                    )}
+                    {branch.isProtected && (
+                      <span className="px-1.5 py-0.2 bg-amber-500/20 text-amber-300 rounded text-[9px] uppercase font-bold">
+                        protected
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Key Developer Contributors */}
@@ -141,24 +201,34 @@ export function RepositoryOverviewTab({ detail }: RepositoryOverviewTabProps) {
               <Users className="w-4 h-4 text-purple-400" /> Active Repository Contributors ({developers.length})
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {developers.map((dev) => (
-                <div key={dev.id} className="bg-slate-950/60 border border-slate-800 p-3.5 rounded-xl flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-slate-200 text-xs shrink-0">
-                    {dev.name ? dev.name[0] : dev.login[0].toUpperCase()}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h4 className="text-xs font-bold text-white truncate">{dev.name || dev.login}</h4>
-                    <span className="text-[10px] text-slate-400">@{dev.login}</span>
-                    <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-2">
-                      <span>{dev.commits} commits</span>
-                      <span>•</span>
-                      <span>{dev.prs} PRs</span>
+            {developers.length === 0 ? (
+              <div className="text-center py-6 text-slate-500 text-xs italic">
+                No developer activity recorded for this repository yet.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {developers.map((dev) => (
+                  <div key={dev.id} className="bg-slate-950/60 border border-slate-800 p-3.5 rounded-xl flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-slate-200 text-xs shrink-0 overflow-hidden">
+                      {dev.avatarUrl ? (
+                        <img src={dev.avatarUrl} alt={dev.login} className="w-full h-full object-cover" />
+                      ) : (
+                        dev.name ? dev.name[0] : dev.login[0].toUpperCase()
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-xs font-bold text-white truncate">{dev.name || dev.login}</h4>
+                      <span className="text-[10px] text-slate-400">@{dev.login}</span>
+                      <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-2">
+                        <span>{dev.commits} commits</span>
+                        <span>•</span>
+                        <span>{dev.prs} PRs</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -168,25 +238,31 @@ export function RepositoryOverviewTab({ detail }: RepositoryOverviewTabProps) {
             <Clock className="w-4 h-4 text-emerald-400" /> Recent Repository Activity
           </h3>
 
-          <div className="space-y-3">
-            {recentActivity.map((act) => (
-              <div key={act.id} className="p-3 bg-slate-950/50 rounded-xl border border-slate-800/80 space-y-1">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="font-semibold text-blue-400">{act.author}</span>
-                  <span className="text-slate-500">{act.timeAgo}</span>
+          {recentActivity.length === 0 ? (
+            <div className="text-center py-8 text-slate-500 text-xs italic">
+              No recent activity recorded.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {recentActivity.map((act) => (
+                <div key={act.id} className="p-3 bg-slate-950/50 rounded-xl border border-slate-800/80 space-y-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-semibold text-blue-400">{act.author}</span>
+                    <span className="text-slate-500">{act.timeAgo}</span>
+                  </div>
+                  <p className="text-xs text-slate-200 font-medium line-clamp-2">{act.title}</p>
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
+                    <span className="font-mono text-slate-400">{act.repoName}</span>
+                    {act.status && (
+                      <span className="px-1.5 py-0.5 rounded bg-slate-800 text-emerald-400 border border-slate-700 font-mono">
+                        {act.status}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <p className="text-xs text-slate-200 font-medium line-clamp-2">{act.title}</p>
-                <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
-                  <span className="font-mono text-slate-400">{act.repoName}</span>
-                  {act.status && (
-                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-emerald-400 border border-slate-700 font-mono">
-                      {act.status}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

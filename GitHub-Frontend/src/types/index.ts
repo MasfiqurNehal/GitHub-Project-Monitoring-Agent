@@ -22,10 +22,11 @@ export interface Repository {
   fullName: string;
   url: string;
   defaultBranch: string;
+  branches?: BranchItem[];
   language?: string | null;
   isActive: boolean;
   isPrivate?: boolean;
-  status?: 'ACTIVE' | 'SYNCING' | 'PAUSED';
+  status?: 'ACTIVE' | 'SYNCING' | 'PAUSED' | 'ERROR' | 'FAILED';
   lastSyncedAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -35,12 +36,20 @@ export interface Repository {
 
 export interface RepositoryWithMetrics extends Repository {
   isPrivate: boolean;
-  status: 'ACTIVE' | 'SYNCING' | 'PAUSED';
+  status: 'ACTIVE' | 'SYNCING' | 'PAUSED' | 'ERROR' | 'FAILED';
   metrics: RepositoryMetrics;
+}
+
+export interface BranchItem {
+  name: string;
+  isDefault: boolean;
+  isProtected: boolean;
+  headSha?: string;
 }
 
 export interface RepositoryDetailData {
   repository: RepositoryWithMetrics;
+  branches: BranchItem[];
   overview: {
     openPRsCount: number;
     mergedPRsCount: number;

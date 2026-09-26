@@ -47,30 +47,58 @@ export class GitHubClient {
     return this.octokit;
   }
 
-  // Validate Repository Access (Public & Private via App / Token)
+  private async handleRateLimitError(err: any, attempt = 1): Promise<boolean> {
+    if ((err.status === 403 && err.headers && err.headers['x-ratelimit-remaining'] === '0') || err.status === 429) {
+      const resetTime = err.headers ? err.headers['x-ratelimit-reset'] : null;
+      const sleepMs = resetTime ? Math.max(2000, Number(resetTime) * 1000 - Date.now()) : 10000;
+      logger.warn('GITHUB_CLIENT', `GitHub API rate limit hit (${err.status}). Retrying after ${Math.min(sleepMs, 60000)}ms (Attempt ${attempt})...`);
+      await new Promise((res) => setTimeout(res, Math.min(sleepMs, 60000)));
+      return true;
+    }
+    return false;
+  }
+
+  // Reusable API methods with rate-limit resiliency and explicit aliases
+  async getRepository(owner: string, repo: string) {
+    const client = await this.getOctokit();
+    try {
+      const response = await client.rest.repos.get({ owner, repo });
+      return response.data;
+    } catch (err: any) {
+      if (await this.handleRateLimitError(err)) {
+        const response = await client.rest.repos.get({ owner, repo });
+        return response.data;
+      }
+      throw err;
+    }
+  }
+
+  async getRepositoryMetadata(owner: string, repo: string) {
+    return this.getRepository(owner, repo);
+  }
+
   async validateRepositoryAccess(owner: string, repo: string) {
     try {
-      const client = await this.getOctokit();
-      const response = await client.rest.repos.get({ owner, repo });
+      const data = await this.getRepository(owner, repo);
       return {
         success: true,
         data: {
-          githubRepositoryId: response.data.id,
-          owner: response.data.owner.login,
-          name: response.data.name,
-          fullName: response.data.full_name,
-          htmlUrl: response.data.html_url,
-          cloneUrl: response.data.clone_url,
-          defaultBranch: response.data.default_branch,
-          visibility: response.data.visibility || (response.data.private ? 'private' : 'public'),
-          isPrivate: response.data.private,
-          description: response.data.description,
-          language: response.data.language,
-          stars: response.data.stargazers_count,
-          forks: response.data.forks_count,
-          openIssuesCount: response.data.open_issues_count,
-          githubCreatedAt: response.data.created_at,
-          githubUpdatedAt: response.data.updated_at,
+          githubRepositoryId: data.id,
+          owner: data.owner.login,
+          name: data.name,
+          fullName: data.full_name,
+          htmlUrl: data.html_url,
+          cloneUrl: data.clone_url,
+          defaultBranch: data.default_branch,
+          visibility: data.visibility || (data.private ? 'private' : 'public'),
+          isPrivate: data.private,
+          description: data.description,
+          language: data.language,
+          stars: data.stargazers_count,
+          forks: data.forks_count,
+          openIssuesCount: data.open_issues_count,
+          githubCreatedAt: data.created_at,
+          githubUpdatedAt: data.updated_at,
         },
       };
     } catch (err: any) {
@@ -81,13 +109,8 @@ export class GitHubClient {
         errorCode = 'INVALID_CREDENTIALS';
         errorMessage = 'Unauthorized. Invalid GitHub App Installation or Token.';
       } else if (err.status === 403) {
-        if (err.headers && err.headers['x-ratelimit-remaining'] === '0') {
-          errorCode = 'RATE_LIMITED';
-          errorMessage = 'GitHub API rate limit exceeded. Please wait or use GitHub App authentication.';
-        } else {
-          errorCode = 'REPOSITORY_ACCESS_DENIED';
-          errorMessage = `Access denied for repository ${owner}/${repo}. Check permissions.`;
-        }
+        errorCode = 'REPOSITORY_ACCESS_DENIED';
+        errorMessage = `Access denied for repository ${owner}/${repo}. Check permissions.`;
       } else if (err.status === 404) {
         errorCode = 'MISSING_REPOSITORY_OR_INSTALLATION';
         errorMessage = `Repository ${owner}/${repo} not found or not accessible by this installation.`;
@@ -105,85 +128,149 @@ export class GitHubClient {
 
   async getContributors(owner: string, repo: string) {
     const client = await this.getOctokit();
-    const response = await client.rest.repos.listContributors({
-      owner,
-      repo,
-      per_page: 100,
-    });
-    return response.data;
+    try {
+      const response = await client.rest.repos.listContributors({
+        owner,
+        repo,
+        per_page: 100,
+      });
+      return response.data;
+    } catch (err: any) {
+      if (err.status === 404 || err.status === 204) return [];
+      if (await this.handleRateLimitError(err)) {
+        const response = await client.rest.repos.listContributors({ owner, repo, per_page: 100 });
+        return response.data;
+      }
+      throw err;
+    }
   }
 
   async getCommits(owner: string, repo: string, since?: string, page = 1, perPage = 100) {
     const client = await this.getOctokit();
-    const response = await client.rest.repos.listCommits({
-      owner,
-      repo,
-      since,
-      page,
-      per_page: perPage,
-    });
-    return response.data;
+    try {
+      const response = await client.rest.repos.listCommits({
+        owner,
+        repo,
+        since,
+        page,
+        per_page: perPage,
+      });
+      return response.data;
+    } catch (err: any) {
+      if (err.status === 409 || err.status === 404) return []; // Empty repository or no commits on branch
+      if (await this.handleRateLimitError(err)) {
+        const response = await client.rest.repos.listCommits({ owner, repo, since, page, per_page: perPage });
+        return response.data;
+      }
+      throw err;
+    }
   }
 
   async getCommitDetail(owner: string, repo: string, ref: string) {
     const client = await this.getOctokit();
-    const response = await client.rest.repos.getCommit({
-      owner,
-      repo,
-      ref,
-    });
-    return response.data;
+    try {
+      const response = await client.rest.repos.getCommit({
+        owner,
+        repo,
+        ref,
+      });
+      return response.data;
+    } catch (err: any) {
+      if (await this.handleRateLimitError(err)) {
+        const response = await client.rest.repos.getCommit({ owner, repo, ref });
+        return response.data;
+      }
+      throw err;
+    }
+  }
+
+  async getCommitStatistics(owner: string, repo: string, ref: string) {
+    return this.getCommitDetail(owner, repo, ref);
   }
 
   async getPullRequests(owner: string, repo: string, state: 'all' | 'open' | 'closed' = 'all', page = 1, perPage = 100) {
     const client = await this.getOctokit();
-    const response = await client.rest.pulls.list({
-      owner,
-      repo,
-      state,
-      page,
-      per_page: perPage,
-    });
-    return response.data;
+    try {
+      const response = await client.rest.pulls.list({
+        owner,
+        repo,
+        state,
+        page,
+        per_page: perPage,
+      });
+      return response.data;
+    } catch (err: any) {
+      if (err.status === 404) return [];
+      if (await this.handleRateLimitError(err)) {
+        const response = await client.rest.pulls.list({ owner, repo, state, page, per_page: perPage });
+        return response.data;
+      }
+      throw err;
+    }
   }
 
   async getPullRequestReviews(owner: string, repo: string, pullNumber: number) {
     const client = await this.getOctokit();
-    const response = await client.rest.pulls.listReviews({
-      owner,
-      repo,
-      pull_number: pullNumber,
-    });
-    return response.data;
+    try {
+      const response = await client.rest.pulls.listReviews({
+        owner,
+        repo,
+        pull_number: pullNumber,
+      });
+      return response.data;
+    } catch (err: any) {
+      if (err.status === 404) return [];
+      if (await this.handleRateLimitError(err)) {
+        const response = await client.rest.pulls.listReviews({ owner, repo, pull_number: pullNumber });
+        return response.data;
+      }
+      throw err;
+    }
+  }
+
+  async getReviews(owner: string, repo: string, pullNumber: number) {
+    return this.getPullRequestReviews(owner, repo, pullNumber);
   }
 
   async getIssues(owner: string, repo: string, state: 'all' | 'open' | 'closed' = 'all', page = 1, perPage = 100) {
     const client = await this.getOctokit();
-    const response = await client.rest.issues.listForRepo({
-      owner,
-      repo,
-      state,
-      page,
-      per_page: perPage,
-    });
-    return response.data.filter((item) => !item.pull_request);
+    try {
+      const response = await client.rest.issues.listForRepo({
+        owner,
+        repo,
+        state,
+        page,
+        per_page: perPage,
+      });
+      return response.data.filter((item) => !item.pull_request);
+    } catch (err: any) {
+      if (err.status === 404) return [];
+      if (await this.handleRateLimitError(err)) {
+        const response = await client.rest.issues.listForRepo({ owner, repo, state, page, per_page: perPage });
+        return response.data.filter((item) => !item.pull_request);
+      }
+      throw err;
+    }
   }
 
   async getBranches(owner: string, repo: string, page = 1, perPage = 100) {
     const client = await this.getOctokit();
-    const response = await client.rest.repos.listBranches({
-      owner,
-      repo,
-      page,
-      per_page: perPage,
-    });
-    return response.data;
-  }
-
-  async getRepositoryMetadata(owner: string, repo: string) {
-    const client = await this.getOctokit();
-    const response = await client.rest.repos.get({ owner, repo });
-    return response.data;
+    try {
+      const response = await client.rest.repos.listBranches({
+        owner,
+        repo,
+        page,
+        per_page: perPage,
+      });
+      return response.data;
+    } catch (err: any) {
+      if (err.status === 404) return [];
+      if (await this.handleRateLimitError(err)) {
+        const response = await client.rest.repos.listBranches({ owner, repo, page, per_page: perPage });
+        return response.data;
+      }
+      throw err;
+    }
   }
 
   async getRepoStats(owner: string, repo: string) {

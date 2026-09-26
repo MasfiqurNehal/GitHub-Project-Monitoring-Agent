@@ -4,6 +4,7 @@ import { projectRepository } from '../repositories/project.repository.js';
 import { syncJobRepository } from '../repositories/syncJob.repository.js';
 import { githubService } from '../services/github.service.js';
 import { syncService } from '../services/sync.service.js';
+import { analyticsService } from '../services/analytics.service.js';
 import { logger } from '../utils/logger.js';
 import crypto from 'crypto';
 
@@ -12,7 +13,21 @@ export async function listRepositories(req: Request, res: Response, next: NextFu
   try {
     const orgId = (req as any).organizationId;
     const repos = await repositoryRepository.findAll(orgId);
-    res.json({ success: true, data: repos });
+    
+    const data = repos.map((r: any) => ({
+      ...r,
+      metrics: {
+        developersCount: Number(r.developers_count || 0),
+        commitsCount: Number(r.commits_count || 0),
+        prsCount: Number(r.prs_count || 0),
+        issuesCount: Number(r.issues_count || 0),
+        linesAdded: Number(r.lines_added || 0),
+        linesDeleted: Number(r.lines_deleted || 0),
+        lastActivityAt: r.last_synced_at || r.updated_at || r.created_at,
+      },
+    }));
+
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }
@@ -108,37 +123,15 @@ export async function getRepositoryDetail(req: Request, res: Response, next: Nex
   try {
     const { id } = req.params;
     const orgId = (req as any).organizationId;
-    let repo = await repositoryRepository.findById(id, orgId);
-    if (!repo) {
-      repo = await repositoryRepository.findByFullName(id, orgId);
-    }
-    if (!repo) {
+
+    const fullDetail = await analyticsService.getRepositoryFullDetail(id, orgId);
+    if (!fullDetail) {
       return res.status(404).json({ success: false, error: 'Repository not found' });
     }
 
-    const repoData = {
-      ...repo,
-      lastSyncedAt: repo.last_synced_at,
-      syncStatus: repo.sync_status || 'PENDING',
-      syncError: repo.sync_error || null,
-    };
-
     res.json({
       success: true,
-      data: {
-        repository: repoData,
-        overview: {
-          openPRsCount: 0,
-          mergedPRsCount: 0,
-          openIssuesCount: repo.open_issues_count || 0,
-          closedIssuesCount: 0,
-          activeBranch: repo.default_branch || 'main',
-          readOnlyStatus: true,
-          lastSyncedAt: repo.last_synced_at,
-          syncStatus: repo.sync_status || 'PENDING',
-          syncError: repo.sync_error || null,
-        },
-      },
+      data: fullDetail,
     });
   } catch (err) {
     next(err);

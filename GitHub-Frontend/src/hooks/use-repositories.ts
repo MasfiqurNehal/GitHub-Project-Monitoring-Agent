@@ -33,10 +33,20 @@ export function useRepositories(filters: {
 }
 
 export function useRepository(repositoryId: string) {
+  const queryClient = useQueryClient();
+
   const detailQuery = useQuery({
     queryKey: ['repository-detail', repositoryId],
     queryFn: () => getRepositoryDetail(repositoryId),
     enabled: !!repositoryId,
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: (targetId?: string) => triggerRepositorySync(targetId || repositoryId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['repository-detail', repositoryId] });
+      queryClient.invalidateQueries({ queryKey: ['repositories-list'] });
+    },
   });
 
   return {
@@ -47,6 +57,8 @@ export function useRepository(repositoryId: string) {
     isLoading: detailQuery.isLoading,
     isError: detailQuery.isError,
     refetch: detailQuery.refetch,
+    syncRepository: syncMutation.mutateAsync,
+    isSyncing: syncMutation.isPending,
   };
 }
 

@@ -134,6 +134,48 @@ export class GitHubService {
       installationId: activeInst.github_installation_id,
     };
   }
+
+  // Helper delegate methods with explicit installationId context
+  async getRepository(owner: string, repo: string, installationId?: number) {
+    const client = new GitHubClient({ installationId });
+    return client.getRepository(owner, repo);
+  }
+
+  async getBranches(owner: string, repo: string, page = 1, perPage = 100, installationId?: number) {
+    const client = new GitHubClient({ installationId });
+    return client.getBranches(owner, repo, page, perPage);
+  }
+
+  async getCommits(owner: string, repo: string, since?: string, page = 1, perPage = 100, installationId?: number) {
+    const client = new GitHubClient({ installationId });
+    return client.getCommits(owner, repo, since, page, perPage);
+  }
+
+  async getContributors(owner: string, repo: string, installationId?: number) {
+    const client = new GitHubClient({ installationId });
+    return client.getContributors(owner, repo);
+  }
+
+  async getPullRequests(owner: string, repo: string, state: 'all' | 'open' | 'closed' = 'all', page = 1, perPage = 100, installationId?: number) {
+    const client = new GitHubClient({ installationId });
+    return client.getPullRequests(owner, repo, state, page, perPage);
+  }
+
+  async getIssues(owner: string, repo: string, state: 'all' | 'open' | 'closed' = 'all', page = 1, perPage = 100, installationId?: number) {
+    const client = new GitHubClient({ installationId });
+    return client.getIssues(owner, repo, state, page, perPage);
+  }
+
+  async getReviews(owner: string, repo: string, pullNumber: number, installationId?: number) {
+    const client = new GitHubClient({ installationId });
+    return client.getReviews(owner, repo, pullNumber);
+  }
+
+  async getCommitStatistics(owner: string, repo: string, ref: string, installationId?: number) {
+    const client = new GitHubClient({ installationId });
+    return client.getCommitStatistics(owner, repo, ref);
+  }
 }
 
 export const githubService = new GitHubService();
+

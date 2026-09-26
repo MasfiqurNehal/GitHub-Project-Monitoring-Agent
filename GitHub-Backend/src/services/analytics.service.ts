@@ -1233,7 +1233,439 @@ export class AnalyticsService {
     const result = Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
     return result;
   }
+
+  // 9. Repository Detail API (Full synchronized analytics for a single repository)
+  async getRepositoryFullDetail(repositoryIdOrName: string, organizationId?: string) {
+    // Find repository record first
+    let repoRes;
+    if (organizationId) {
+      repoRes = await pool.query(
+        `SELECT * FROM repositories 
+         WHERE (id = $1 OR LOWER(full_name) = LOWER($1)) 
+           AND (organization_id = $2 OR project_id IN (SELECT id FROM projects WHERE organization_id = $2))`,
+        [repositoryIdOrName, organizationId]
+      );
+    } else {
+      repoRes = await pool.query(
+        `SELECT * FROM repositories WHERE id = $1 OR LOWER(full_name) = LOWER($1)`,
+        [repositoryIdOrName]
+      );
+    }
+
+    if (repoRes.rows.length === 0) {
+      return null;
+    }
+
+    const repo = repoRes.rows[0];
+    const repoId = repo.id;
+
+    // Run parallel queries to gather all detail data from child tables
+    const [
+      metricsRes,
+      overviewRes,
+      developersRes,
+      recentActivityRes,
+      commitsRes,
+      prsRes,
+      issuesRes,
+      codeChangesTrendRes,
+      topFilesRes,
+      branchesRes,
+    ] = await Promise.all([
+      // 1. Aggregated Metrics
+      pool.query(
+        `SELECT 
+          COUNT(DISTINCT c.id) as commits_count,
+          COUNT(DISTINCT pr.id) as prs_count,
+          COUNT(DISTINCT i.id) as issues_count,
+          COUNT(DISTINCT c.developer_id) as developers_count,
+          COALESCE(SUM(c.additions), 0) as lines_added,
+          COALESCE(SUM(c.deletions), 0) as lines_deleted,
+          MAX(c.committed_at) as last_activity
+         FROM repositories r
+         LEFT JOIN commits c ON c.repository_id = r.id
+         LEFT JOIN pull_requests pr ON pr.repository_id = r.id
+         LEFT JOIN issues i ON i.repository_id = r.id
+         WHERE r.id = $1
+         GROUP BY r.id`,
+        [repoId]
+      ),
+
+      // 2. Overview Counts
+      pool.query(
+        `SELECT 
+          COUNT(*) FILTER (WHERE UPPER(pr.state) = 'OPEN') as open_prs_count,
+          COUNT(*) FILTER (WHERE pr.merged = true OR UPPER(pr.state) = 'MERGED') as merged_prs_count,
+          (SELECT COUNT(*) FROM issues WHERE repository_id = $1 AND UPPER(state) = 'OPEN') as open_issues_count,
+          (SELECT COUNT(*) FROM issues WHERE repository_id = $1 AND UPPER(state) = 'CLOSED') as closed_issues_count
+         FROM pull_requests pr
+         WHERE pr.repository_id = $1`,
+        [repoId]
+      ),
+
+      // 3. Developers/Contributors
+      pool.query(
+        `SELECT 
+          d.id,
+          d.name,
+          d.login,
+          d.avatar_url,
+          COUNT(DISTINCT c.id) as commits,
+          COUNT(DISTINCT pr.id) as prs,
+          COUNT(DISTINCT prr.id) as reviews,
+          COALESCE(SUM(c.additions), 0) as lines_added,
+          COALESCE(SUM(c.deletions), 0) as lines_deleted
+         FROM developers d
+         JOIN repository_developers rd ON rd.developer_id = d.id
+         LEFT JOIN commits c ON c.developer_id = d.id AND c.repository_id = $1
+         LEFT JOIN pull_requests pr ON pr.author_developer_id = d.id AND pr.repository_id = $1
+         LEFT JOIN pull_request_reviews prr ON prr.reviewer_developer_id = d.id AND prr.pull_request_id IN (SELECT id FROM pull_requests WHERE repository_id = $1)
+         WHERE rd.repository_id = $1
+         GROUP BY d.id, d.name, d.login, d.avatar_url
+         ORDER BY commits DESC, prs DESC, d.login ASC`,
+        [repoId]
+      ),
+
+      // 4. Recent Activity Feed
+      pool.query(
+        `SELECT 
+          ae.id,
+          ae.event_type as type,
+          ae.occurred_at,
+          ae.metadata,
+          r.name as repo_name,
+          COALESCE(d.name, d.login, 'System') as author,
+          d.avatar_url as author_avatar
+         FROM activity_events ae
+         JOIN repositories r ON r.id = ae.repository_id
+         LEFT JOIN developers d ON d.id = ae.developer_id
+         WHERE ae.repository_id = $1
+         ORDER BY ae.occurred_at DESC
+         LIMIT 20`,
+        [repoId]
+      ),
+
+      // 5. Commits
+      pool.query(
+        `SELECT 
+          c.id,
+          c.repository_id,
+          c.github_commit_sha as github_sha,
+          c.developer_id,
+          c.message,
+          c.commit_url,
+          c.committed_at,
+          c.additions,
+          c.deletions,
+          c.changed_files,
+          d.id as dev_id,
+          d.name as dev_name,
+          d.login as dev_login,
+          d.avatar_url as dev_avatar
+         FROM commits c
+         LEFT JOIN developers d ON d.id = c.developer_id
+         WHERE c.repository_id = $1
+         ORDER BY c.committed_at DESC
+         LIMIT 50`,
+        [repoId]
+      ),
+
+      // 6. Pull Requests
+      pool.query(
+        `SELECT 
+          pr.id,
+          pr.repository_id,
+          pr.github_pr_id,
+          pr.number,
+          pr.author_developer_id,
+          pr.title,
+          pr.body,
+          pr.state,
+          pr.merged,
+          pr.created_at,
+          pr.updated_at,
+          pr.closed_at,
+          pr.merged_at,
+          pr.additions,
+          pr.deletions,
+          pr.changed_files,
+          d.id as dev_id,
+          d.name as dev_name,
+          d.login as dev_login,
+          d.avatar_url as dev_avatar
+         FROM pull_requests pr
+         LEFT JOIN developers d ON d.id = pr.author_developer_id
+         WHERE pr.repository_id = $1
+         ORDER BY pr.created_at DESC
+         LIMIT 50`,
+        [repoId]
+      ),
+
+      // 7. Issues
+      pool.query(
+        `SELECT 
+          i.id,
+          i.github_issue_id,
+          i.number,
+          i.title,
+          i.state,
+          i.created_at,
+          i.updated_at,
+          i.closed_at,
+          r.name as repo_name,
+          d.name as author_name,
+          d.login as author_login,
+          d.avatar_url as author_avatar
+         FROM issues i
+         JOIN repositories r ON r.id = i.repository_id
+         LEFT JOIN developers d ON d.id = i.author_developer_id
+         WHERE i.repository_id = $1
+         ORDER BY i.created_at DESC
+         LIMIT 50`,
+        [repoId]
+      ),
+
+      // 8. Code Changes Trend by date
+      pool.query(
+        `SELECT 
+          TO_CHAR(committed_at, 'YYYY-MM-DD') as date,
+          COALESCE(SUM(additions), 0) as additions,
+          COALESCE(SUM(deletions), 0) as deletions
+         FROM commits
+         WHERE repository_id = $1
+         GROUP BY TO_CHAR(committed_at, 'YYYY-MM-DD')
+         ORDER BY date ASC`,
+        [repoId]
+      ),
+
+      // 9. Top Files Changed
+      pool.query(
+        `SELECT 
+          cf.filename as name,
+          COALESCE(SUM(cf.additions), 0) as additions,
+          COALESCE(SUM(cf.deletions), 0) as deletions
+         FROM commit_files cf
+         JOIN commits c ON c.id = cf.commit_id
+         WHERE c.repository_id = $1
+         GROUP BY cf.filename
+         ORDER BY (COALESCE(SUM(cf.additions), 0) + COALESCE(SUM(cf.deletions), 0)) DESC
+         LIMIT 10`,
+        [repoId]
+      ),
+
+      // 10. Branches
+      pool.query(
+        `SELECT name, is_default, is_protected, head_sha FROM branches WHERE repository_id = $1 ORDER BY is_default DESC, name ASC`,
+        [repoId]
+      ),
+    ]);
+
+    const mRow = metricsRes.rows[0] || {};
+    const oRow = overviewRes.rows[0] || {};
+
+    const commitsCount = parseInt(mRow.commits_count || '0', 10);
+    const prsCount = parseInt(mRow.prs_count || '0', 10);
+    const issuesCount = parseInt(mRow.issues_count || '0', 10);
+    const developersCount = parseInt(mRow.developers_count || '0', 10);
+    const linesAdded = parseInt(mRow.lines_added || '0', 10);
+    const linesDeleted = parseInt(mRow.lines_deleted || '0', 10);
+    const lastActivityAt = mRow.last_activity ? new Date(mRow.last_activity).toISOString() : (repo.last_synced_at ? new Date(repo.last_synced_at).toISOString() : new Date().toISOString());
+
+    const branches = branchesRes.rows.map((b) => ({
+      name: b.name,
+      isDefault: b.is_default,
+      isProtected: b.is_protected,
+      headSha: b.head_sha,
+    }));
+
+    const repository = {
+      id: repo.id,
+      projectId: repo.project_id,
+      githubId: repo.github_repository_id,
+      owner: repo.owner,
+      name: repo.name,
+      fullName: repo.full_name,
+      url: repo.html_url,
+      defaultBranch: repo.default_branch || 'main',
+      branches,
+      language: repo.language || 'TypeScript',
+      isActive: true,
+      isPrivate: repo.is_private,
+      status: (repo.sync_status || 'ACTIVE').toUpperCase(),
+      lastSyncedAt: repo.last_synced_at ? new Date(repo.last_synced_at).toISOString() : null,
+      createdAt: repo.created_at ? new Date(repo.created_at).toISOString() : new Date().toISOString(),
+      updatedAt: repo.updated_at ? new Date(repo.updated_at).toISOString() : new Date().toISOString(),
+      metrics: {
+        developersCount,
+        commitsCount,
+        prsCount,
+        issuesCount,
+        linesAdded,
+        linesDeleted,
+        lastActivityAt,
+      },
+    };
+
+    const overview = {
+      openPRsCount: parseInt(oRow.open_prs_count || '0', 10),
+      mergedPRsCount: parseInt(oRow.merged_prs_count || '0', 10),
+      openIssuesCount: parseInt(oRow.open_issues_count || '0', 10),
+      closedIssuesCount: parseInt(oRow.closed_issues_count || '0', 10),
+      activeBranch: repo.default_branch || 'main',
+      readOnlyStatus: true,
+    };
+
+    const developers = developersRes.rows.map((d) => ({
+      id: d.id,
+      name: d.name || d.login,
+      login: d.login,
+      avatarUrl: d.avatar_url || undefined,
+      commits: parseInt(d.commits || '0', 10),
+      prs: parseInt(d.prs || '0', 10),
+      reviews: parseInt(d.reviews || '0', 10),
+      linesAdded: parseInt(d.lines_added || '0', 10),
+      linesDeleted: parseInt(d.lines_deleted || '0', 10),
+    }));
+
+    let recentActivity = recentActivityRes.rows.map((r) => {
+      let eventType: 'commit' | 'pull_request' | 'review' | 'issue' = 'commit';
+      if (r.type.includes('pr') || r.type.includes('pull')) eventType = 'pull_request';
+      else if (r.type.includes('issue')) eventType = 'issue';
+      else if (r.type.includes('review')) eventType = 'review';
+
+      return {
+        id: r.id,
+        type: eventType,
+        title: r.metadata?.message || r.metadata?.title || `Event: ${r.type}`,
+        repoName: r.repo_name,
+        author: r.author,
+        authorAvatar: r.author_avatar || undefined,
+        timeAgo: r.occurred_at ? new Date(r.occurred_at).toLocaleDateString() : 'recently',
+        status: r.metadata?.state,
+        url: r.metadata?.url,
+      };
+    });
+
+    // Fallback recent activity from commits if activity_events table is empty
+    if (recentActivity.length === 0 && commitsRes.rows.length > 0) {
+      recentActivity = commitsRes.rows.slice(0, 10).map((c) => ({
+        id: c.id,
+        type: 'commit',
+        title: c.message,
+        repoName: repo.name,
+        author: c.dev_name || c.dev_login || 'Developer',
+        authorAvatar: c.dev_avatar || undefined,
+        timeAgo: c.committed_at ? new Date(c.committed_at).toLocaleDateString() : 'recently',
+        status: `+${c.additions} / -${c.deletions}`,
+        details: `+${c.additions} / -${c.deletions} lines`,
+        url: c.commit_url,
+      }));
+    }
+
+    const commits = commitsRes.rows.map((c) => ({
+      id: c.id,
+      repositoryId: c.repository_id,
+      githubSha: c.github_sha,
+      authorId: c.developer_id,
+      message: c.message,
+      commitUrl: c.commit_url,
+      committedAt: c.committed_at ? new Date(c.committed_at).toISOString() : new Date().toISOString(),
+      additions: parseInt(c.additions || '0', 10),
+      deletions: parseInt(c.deletions || '0', 10),
+      changedFiles: parseInt(c.changed_files || '0', 10),
+      repository: {
+        id: repo.id,
+        owner: repo.owner,
+        name: repo.name,
+        fullName: repo.full_name,
+        url: repo.html_url,
+      },
+      author: c.dev_id
+        ? {
+            id: c.dev_id,
+            login: c.dev_login,
+            name: c.dev_name || c.dev_login,
+            avatarUrl: c.dev_avatar || undefined,
+          }
+        : null,
+    }));
+
+    const pullRequests = prsRes.rows.map((pr) => {
+      let prState = (pr.state || 'OPEN').toUpperCase();
+      if (pr.merged) prState = 'MERGED';
+
+      return {
+        id: pr.id,
+        repositoryId: pr.repository_id,
+        githubPrId: pr.github_pr_id,
+        number: parseInt(pr.number, 10),
+        authorId: pr.author_developer_id,
+        title: pr.title,
+        body: pr.body || null,
+        state: prState as any,
+        createdAt: pr.created_at ? new Date(pr.created_at).toISOString() : new Date().toISOString(),
+        updatedAt: pr.updated_at ? new Date(pr.updated_at).toISOString() : new Date().toISOString(),
+        closedAt: pr.closed_at ? new Date(pr.closed_at).toISOString() : null,
+        mergedAt: pr.merged_at ? new Date(pr.merged_at).toISOString() : null,
+        additions: parseInt(pr.additions || '0', 10),
+        deletions: parseInt(pr.deletions || '0', 10),
+        changedFiles: parseInt(pr.changed_files || '0', 10),
+        author: pr.dev_id
+          ? {
+              id: pr.dev_id,
+              login: pr.dev_login,
+              name: pr.dev_name || pr.dev_login,
+              avatarUrl: pr.dev_avatar || undefined,
+            }
+          : null,
+      };
+    });
+
+    const issues = issuesRes.rows.map((i) => ({
+      id: i.id,
+      number: parseInt(i.number, 10),
+      title: i.title,
+      repoName: i.repo_name,
+      author: i.author_name || i.author_login || 'Developer',
+      authorAvatar: i.author_avatar || undefined,
+      state: (i.state || 'OPEN').toUpperCase() as any,
+      createdAt: i.created_at ? new Date(i.created_at).toISOString() : new Date().toISOString(),
+      updatedAt: i.updated_at ? new Date(i.updated_at).toISOString() : new Date().toISOString(),
+    }));
+
+    const codeChangesTrend = codeChangesTrendRes.rows.map((r) => ({
+      date: r.date,
+      additions: parseInt(r.additions || '0', 10),
+      deletions: parseInt(r.deletions || '0', 10),
+    }));
+
+    const topFilesChanged = topFilesRes.rows.map((r) => ({
+      name: r.name,
+      repoName: repo.name,
+      additions: parseInt(r.additions || '0', 10),
+      deletions: parseInt(r.deletions || '0', 10),
+    }));
+
+    return {
+      repository,
+      branches,
+      overview,
+      developers,
+      recentActivity,
+      commits,
+      pullRequests,
+      issues,
+      codeChanges: {
+        trend: codeChangesTrend,
+        totalAdditions: linesAdded,
+        totalDeletions: linesDeleted,
+        netChanges: linesAdded - linesDeleted,
+        topFilesChanged,
+      },
+    };
+  }
 }
 
 export const analyticsService = new AnalyticsService();
+
 
