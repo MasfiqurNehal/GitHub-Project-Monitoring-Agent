@@ -23,6 +23,7 @@ export interface RepositoryRow {
   github_updated_at: Date | null;
   last_synced_at: Date | null;
   sync_status: string;
+  sync_error?: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -156,16 +157,16 @@ export class RepositoryRepository {
     return res.rows[0];
   }
 
-  async updateSyncStatus(id: string, status: string, lastSyncedAt?: Date): Promise<void> {
+  async updateSyncStatus(id: string, status: string, lastSyncedAt?: Date, syncError?: string | null): Promise<void> {
     if (lastSyncedAt) {
       await pool.query(
-        'UPDATE repositories SET sync_status = $1, last_synced_at = $2, updated_at = NOW() WHERE id = $3',
-        [status, lastSyncedAt, id]
+        'UPDATE repositories SET sync_status = $1, last_synced_at = $2, sync_error = $3, updated_at = NOW() WHERE id = $4',
+        [status, lastSyncedAt, syncError || null, id]
       );
     } else {
       await pool.query(
-        'UPDATE repositories SET sync_status = $1, updated_at = NOW() WHERE id = $2',
-        [status, id]
+        'UPDATE repositories SET sync_status = $1, sync_error = $2, updated_at = NOW() WHERE id = $3',
+        [status, syncError || null, id]
       );
     }
   }

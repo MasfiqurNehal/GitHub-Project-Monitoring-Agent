@@ -116,10 +116,17 @@ export async function getRepositoryDetail(req: Request, res: Response, next: Nex
       return res.status(404).json({ success: false, error: 'Repository not found' });
     }
 
+    const repoData = {
+      ...repo,
+      lastSyncedAt: repo.last_synced_at,
+      syncStatus: repo.sync_status || 'PENDING',
+      syncError: repo.sync_error || null,
+    };
+
     res.json({
       success: true,
       data: {
-        repository: repo,
+        repository: repoData,
         overview: {
           openPRsCount: 0,
           mergedPRsCount: 0,
@@ -127,6 +134,9 @@ export async function getRepositoryDetail(req: Request, res: Response, next: Nex
           closedIssuesCount: 0,
           activeBranch: repo.default_branch || 'main',
           readOnlyStatus: true,
+          lastSyncedAt: repo.last_synced_at,
+          syncStatus: repo.sync_status || 'PENDING',
+          syncError: repo.sync_error || null,
         },
       },
     });
@@ -187,6 +197,7 @@ export async function getSyncStatus(req: Request, res: Response, next: NextFunct
         repositoryName: repo.full_name,
         syncStatus: repo.sync_status || 'not_started',
         lastSyncedAt: repo.last_synced_at,
+        syncError: repo.sync_error || null,
         latestJob: latestJob
           ? {
               jobId: latestJob.id,

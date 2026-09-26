@@ -405,7 +405,7 @@ export class SyncService {
       // Mark Repository & Job Completed
       const totalProcessed = counts.commits + counts.pullRequests + counts.issues + counts.reviews;
       const completedAt = new Date();
-      await repositoryRepository.updateSyncStatus(repo.id, 'SYNCED', completedAt);
+      await repositoryRepository.updateSyncStatus(repo.id, 'SYNCED', completedAt, null);
       await syncJobRepository.complete(jobId, totalProcessed);
 
       logger.info('SYNC', `Completed historical sync for ${repo.full_name}. Processed ${totalProcessed} records.`);
@@ -428,10 +428,14 @@ export class SyncService {
       };
     } catch (err: any) {
       logger.error('SYNC', `Failed historical sync for ${repo.full_name}: ${err.message}`, err);
-      await repositoryRepository.updateSyncStatus(repo.id, 'FAILED');
+      await repositoryRepository.updateSyncStatus(repo.id, 'FAILED', undefined, err.message);
       await syncJobRepository.fail(jobId, err.message);
       throw err;
     }
+  }
+
+  async syncRepositoryIncremental(repositoryId: string, organizationId?: string): Promise<SyncResult> {
+    return this.runFullHistoricalSync(repositoryId, organizationId);
   }
 }
 

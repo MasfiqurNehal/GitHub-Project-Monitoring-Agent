@@ -6,6 +6,8 @@ import { authService } from './services/auth.service.js';
 import { config } from './config/index.js';
 import { logger } from './utils/logger.js';
 
+import { syncSchedulerService } from './services/syncScheduler.service.js';
+
 dotenv.config();
 
 const PORT = config.port || parseInt(process.env.PORT || '5001', 10);
@@ -28,6 +30,9 @@ async function startServer() {
     authService.syncUsersToDb().catch((err) => {
       logger.warn('SERVER', `Background users sync warning: ${err.message}`);
     });
+
+    // Start Periodic Repository Synchronization Scheduler
+    syncSchedulerService.startScheduler();
   } else {
     logger.warn('SERVER', `Neon PostgreSQL Connection Warning: ${dbHealth.error}`);
   }
@@ -42,6 +47,7 @@ async function startServer() {
 
   const gracefulShutdown = async (signal: string) => {
     logger.info('SERVER', `Received ${signal}. Closing HTTP server and PostgreSQL pool...`);
+    syncSchedulerService.stopScheduler();
     server.close(async () => {
       logger.info('SERVER', 'Express HTTP server closed.');
       await closeDatabasePool();
