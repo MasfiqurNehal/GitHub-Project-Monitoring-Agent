@@ -136,3 +136,21 @@ export async function getDashboardSignals(req: Request, res: Response, next: Nex
     next(err);
   }
 }
+
+// 12. POST /api/dashboard/refresh
+export async function refreshDashboard(req: Request, res: Response, next: NextFunction) {
+  try {
+    const filters = parseFilters(req);
+    analyticsService.clearCache();
+
+    const overview = await analyticsService.getDashboardOverview(filters);
+
+    res.json({
+      success: true,
+      message: 'Dashboard data refreshed successfully',
+      data: overview,
+    });
+  } catch (err) {
+    next(err);
+  }
+}

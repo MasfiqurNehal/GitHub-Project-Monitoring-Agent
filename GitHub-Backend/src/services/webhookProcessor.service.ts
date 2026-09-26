@@ -8,6 +8,8 @@ import { activityRepository } from '../repositories/activity.repository.js';
 import { logger } from '../utils/logger.js';
 import crypto from 'crypto';
 
+import { analyticsService } from './analytics.service.js';
+
 export class WebhookProcessorService {
   async processEvent(eventName: string, payload: any): Promise<void> {
     if (eventName === 'installation') {
@@ -67,6 +69,7 @@ export class WebhookProcessorService {
           logger.info('WEBHOOK', `Received unhandled webhook event type '${eventName}' for ${repoFullName || repo.name}`);
           break;
       }
+      analyticsService.clearCache();
     } catch (err: any) {
       logger.error('WEBHOOK', `Error processing webhook event '${eventName}' for ${repoFullName || repo.name}: ${err.message}`, err);
     }

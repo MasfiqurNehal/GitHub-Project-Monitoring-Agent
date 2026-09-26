@@ -11,6 +11,8 @@ import { syncJobRepository } from '../repositories/syncJob.repository.js';
 import { logger } from '../utils/logger.js';
 import crypto from 'crypto';
 
+import { analyticsService } from './analytics.service.js';
+
 export interface SyncCounts {
   branches: number;
   developers: number;
@@ -48,6 +50,31 @@ export class SyncService {
       throw new Error(`Repository with ID ${repositoryId} not found or access denied.`);
     }
 
+    // Concurrent sync lock check
+    if (repo.sync_status === 'SYNCING' || repo.sync_status === 'IN_PROGRESS') {
+      const startedAtTime = (repo as any).last_sync_started_at ? new Date((repo as any).last_sync_started_at).getTime() : 0;
+      const isStaleLock = Date.now() - startedAtTime > 10 * 60 * 1000;
+      if (!isStaleLock) {
+        logger.warn('SYNC', `[LOCK] Synchronization already in progress for repository ${repo.full_name}. Skipping concurrent execution.`);
+        return {
+          success: true,
+          status: 'COMPLETED',
+          repository: {
+            id: repo.id,
+            name: repo.name,
+            fullName: repo.full_name,
+            owner: repo.owner,
+            isPrivate: repo.is_private,
+            defaultBranch: repo.default_branch,
+          },
+          synchronized: false,
+          counts: { branches: 0, developers: 0, commits: 0, pullRequests: 0, issues: 0, reviews: 0, activities: 0 },
+          startedAt: (repo as any).last_sync_started_at ? new Date((repo as any).last_sync_started_at).toISOString() : startedAt.toISOString(),
+          completedAt: new Date().toISOString(),
+        };
+      }
+    }
+
     const targetOrgId = organizationId || repo.organization_id || undefined;
 
     // 2. Resolve GitHub App Installation for this tenant
@@ -64,7 +91,7 @@ export class SyncService {
 
     const jobId = `job-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
     await syncJobRepository.create(jobId, repo.id, `${syncMode}_sync`, targetOrgId);
-    await repositoryRepository.updateSyncStatus(repo.id, 'SYNCING');
+    await repositoryRepository.updateSyncStatus(repo.id, 'SYNCING', null, null, startedAt, null);
 
     const counts: SyncCounts = {
       branches: 0,
@@ -458,8 +485,9 @@ export class SyncService {
       // Mark Repository & Job Completed
       const totalProcessed = counts.commits + counts.pullRequests + counts.issues + counts.reviews;
       const completedAt = new Date();
-      await repositoryRepository.updateSyncStatus(repo.id, 'SYNCED', completedAt, null);
+      await repositoryRepository.updateSyncStatus(repo.id, 'SYNCED', completedAt, null, startedAt, completedAt);
       await syncJobRepository.complete(jobId, totalProcessed);
+      analyticsService.clearCache();
 
       logger.info('SYNC', `[SYNC] Commits fetched: ${totalCommitsFetched}`);
       logger.info('SYNC', `[SYNC] Commits inserted: ${counts.commits}`);
@@ -485,9 +513,11 @@ export class SyncService {
         completedAt: completedAt.toISOString(),
       };
     } catch (err: any) {
+      const failedCompletedAt = new Date();
       logger.error('SYNC', `Failed ${syncMode} sync for ${repo.full_name}: ${err.message}`, err);
-      await repositoryRepository.updateSyncStatus(repo.id, 'FAILED', undefined, err.message);
+      await repositoryRepository.updateSyncStatus(repo.id, 'FAILED', null, err.message, startedAt, failedCompletedAt);
       await syncJobRepository.fail(jobId, err.message);
+      analyticsService.clearCache();
       throw err;
     }
   }

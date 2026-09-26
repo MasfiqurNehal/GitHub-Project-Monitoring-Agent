@@ -67,6 +67,7 @@ apiRouter.get('/dashboard/issues', dashboardController.getDashboardIssues);
 apiRouter.get('/dashboard/developers', dashboardController.getDashboardDevelopers);
 apiRouter.get('/dashboard/repositories', dashboardController.getDashboardRepositories);
 apiRouter.get('/dashboard/daily', dashboardController.getDailyAnalytics);
+apiRouter.post('/dashboard/refresh', dashboardController.refreshDashboard);
 apiRouter.get('/analytics/daily', dashboardController.getDailyAnalytics);
 apiRouter.get('/analytics/churn', codeChurnController.getCodeChurnAnalysis);
 apiRouter.get('/repositories/:id/churn', codeChurnController.getCodeChurnAnalysis);

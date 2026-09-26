@@ -7,9 +7,9 @@ export class SyncSchedulerService {
   private isRunning: boolean = false;
 
   public startScheduler(): void {
-    const isEnabled = process.env.ENABLE_SYNC_SCHEDULER === 'true';
+    const isEnabled = process.env.ENABLE_SYNC_SCHEDULER !== 'false';
     if (!isEnabled) {
-      logger.info('SCHEDULER', 'Periodic Sync Scheduler is disabled (ENABLE_SYNC_SCHEDULER!=true).');
+      logger.info('SCHEDULER', 'Periodic Sync Scheduler is disabled (ENABLE_SYNC_SCHEDULER=false).');
       return;
     }
 
@@ -18,7 +18,7 @@ export class SyncSchedulerService {
       return;
     }
 
-    const intervalMinutes = parseInt(process.env.SYNC_INTERVAL_MINUTES || '5', 10);
+    const intervalMinutes = parseInt(process.env.GITHUB_SYNC_INTERVAL_MINUTES || process.env.SYNC_INTERVAL_MINUTES || '5', 10);
     const intervalMs = Math.max(1, intervalMinutes) * 60 * 1000;
 
     logger.info('SCHEDULER', `Starting Periodic Repository Sync Scheduler (Interval: ${intervalMinutes} minutes).`);

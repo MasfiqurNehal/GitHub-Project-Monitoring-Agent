@@ -172,18 +172,30 @@ export class RepositoryRepository {
     return res.rows[0];
   }
 
-  async updateSyncStatus(id: string, status: string, lastSyncedAt?: Date, syncError?: string | null): Promise<void> {
-    if (lastSyncedAt) {
-      await pool.query(
-        'UPDATE repositories SET sync_status = $1, last_synced_at = $2, sync_error = $3, updated_at = NOW() WHERE id = $4',
-        [status, lastSyncedAt, syncError || null, id]
-      );
-    } else {
-      await pool.query(
-        'UPDATE repositories SET sync_status = $1, sync_error = $2, updated_at = NOW() WHERE id = $3',
-        [status, syncError || null, id]
-      );
-    }
+  async updateSyncStatus(
+    id: string,
+    status: string,
+    lastSyncedAt?: Date | null,
+    syncError?: string | null,
+    startedAt?: Date | null,
+    completedAt?: Date | null
+  ): Promise<void> {
+    const effectiveStarted = startedAt || (status === 'SYNCING' || status === 'IN_PROGRESS' ? new Date() : null);
+    const effectiveCompleted = completedAt || (status === 'SYNCED' || status === 'FAILED' ? new Date() : null);
+
+    await pool.query(
+      `UPDATE repositories 
+       SET sync_status = $1,
+           last_sync_status = $1,
+           last_synced_at = COALESCE($2, last_synced_at),
+           last_sync_completed_at = COALESCE($2, $3, last_sync_completed_at),
+           last_sync_started_at = COALESCE($4, last_sync_started_at),
+           sync_error = $5,
+           last_sync_error = $5,
+           updated_at = NOW() 
+       WHERE id = $6`,
+      [status, lastSyncedAt || null, effectiveCompleted, effectiveStarted, syncError || null, id]
+    );
   }
 
   async delete(id: string): Promise<boolean> {
