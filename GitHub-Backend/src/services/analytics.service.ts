@@ -7,6 +7,7 @@ export interface DashboardFilters {
   dateFrom?: string;
   dateTo?: string;
   organizationId?: string;
+  activityType?: string;
 }
 
 export class AnalyticsService {
@@ -82,6 +83,245 @@ export class AnalyticsService {
 
     const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     return { whereSql, params };
+  }
+
+  // GET /api/dashboard/summary
+  async getDashboardSummary(filters: DashboardFilters) {
+    const cacheKey = `summary_${JSON.stringify(filters)}`;
+    const cached = this.getCached<any>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const { whereSql: commitWhere, params: commitParams } = this.buildCommitWhere(filters);
+    const prWhere = commitWhere.replace(/c\.committed_at/g, 'pr.created_at').replace(/c\./g, 'pr.');
+    const issueWhere = commitWhere.replace(/c\.committed_at/g, 'i.created_at').replace(/c\./g, 'i.');
+    const prrWhere = commitWhere.replace(/c\.committed_at/g, 'prr.submitted_at').replace(/c\./g, 'prr.');
+
+    const [
+      projectsRes,
+      reposRes,
+      commitsRes,
+      prsRes,
+      issuesRes,
+      reviewsRes,
+    ] = await Promise.all([
+      filters.organizationId
+        ? pool.query('SELECT COUNT(*) FROM projects WHERE organization_id = $1', [filters.organizationId])
+        : pool.query('SELECT COUNT(*) FROM projects'),
+      filters.organizationId
+        ? pool.query('SELECT COUNT(*) FROM repositories WHERE organization_id = $1 OR project_id IN (SELECT id FROM projects WHERE organization_id = $1)', [filters.organizationId])
+        : pool.query('SELECT COUNT(*) FROM repositories'),
+      pool.query(
+        `SELECT 
+          COUNT(*) as total_commits, 
+          COALESCE(SUM(c.additions), 0) as lines_added, 
+          COALESCE(SUM(c.deletions), 0) as lines_deleted,
+          COUNT(DISTINCT c.developer_id) as active_devs
+         FROM commits c
+         JOIN repositories r ON r.id = c.repository_id
+         LEFT JOIN developers d ON d.id = c.developer_id
+         ${commitWhere}`,
+        commitParams
+      ),
+      pool.query(
+        `SELECT 
+          COUNT(*) as total_prs,
+          COUNT(*) FILTER (WHERE pr.merged = true OR UPPER(pr.state) = 'MERGED') as merged_prs,
+          COUNT(*) FILTER (WHERE UPPER(pr.state) = 'OPEN') as open_prs
+         FROM pull_requests pr
+         JOIN repositories r ON r.id = pr.repository_id
+         LEFT JOIN developers d ON d.id = pr.author_developer_id
+         ${prWhere}`,
+        commitParams
+      ),
+      pool.query(
+        `SELECT 
+          COUNT(*) as issues_opened,
+          COUNT(*) FILTER (WHERE UPPER(i.state) = 'CLOSED') as issues_closed
+         FROM issues i
+         JOIN repositories r ON r.id = i.repository_id
+         LEFT JOIN developers d ON d.id = i.author_developer_id
+         ${issueWhere}`,
+        commitParams
+      ),
+      pool.query(
+        `SELECT COUNT(*) as total_reviews
+         FROM pull_request_reviews prr
+         JOIN pull_requests pr ON pr.id = prr.pull_request_id
+         JOIN repositories r ON r.id = pr.repository_id
+         LEFT JOIN developers d ON d.id = prr.reviewer_developer_id
+         ${prrWhere}`,
+        commitParams
+      ),
+    ]);
+
+    const cRow = commitsRes.rows[0] || {};
+    const pRow = prsRes.rows[0] || {};
+    const iRow = issuesRes.rows[0] || {};
+    const rRow = reviewsRes.rows[0] || {};
+
+    const summary = {
+      monitoredProjects: parseInt(projectsRes.rows[0]?.count || '0', 10),
+      connectedRepositories: parseInt(reposRes.rows[0]?.count || '0', 10),
+      activeDevelopers: parseInt(cRow.active_devs || '0', 10),
+      totalCommits: parseInt(cRow.total_commits || '0', 10),
+      pullRequests: parseInt(pRow.total_prs || '0', 10),
+      mergedPRs: parseInt(pRow.merged_prs || '0', 10),
+      openPRs: parseInt(pRow.open_prs || '0', 10),
+      issuesOpened: parseInt(iRow.issues_opened || '0', 10),
+      issuesClosed: parseInt(iRow.issues_closed || '0', 10),
+      codeAdded: parseInt(cRow.lines_added || '0', 10),
+      codeRemoved: parseInt(cRow.lines_deleted || '0', 10),
+      prReviews: parseInt(rRow.total_reviews || '0', 10),
+      // Direct alias fields for frontend UI component compatibility
+      totalProjects: parseInt(projectsRes.rows[0]?.count || '0', 10),
+      totalRepositories: parseInt(reposRes.rows[0]?.count || '0', 10),
+      totalPRs: parseInt(pRow.total_prs || '0', 10),
+      linesAdded: parseInt(cRow.lines_added || '0', 10),
+      linesDeleted: parseInt(cRow.lines_deleted || '0', 10),
+      totalReviews: parseInt(rRow.total_reviews || '0', 10),
+    };
+
+    this.setCache(cacheKey, summary);
+    return summary;
+  }
+
+  // GET /api/dashboard/activity-trends
+  async getActivityTrends(filters: DashboardFilters) {
+    const cacheKey = `activity_trends_${JSON.stringify(filters)}`;
+    const cached = this.getCached<any>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const { whereSql: commitWhere, params: commitParams } = this.buildCommitWhere(filters);
+    const prWhere = commitWhere.replace(/c\.committed_at/g, 'pr.created_at').replace(/c\./g, 'pr.');
+    const issueWhere = commitWhere.replace(/c\.committed_at/g, 'i.created_at').replace(/c\./g, 'i.');
+    const prrWhere = commitWhere.replace(/c\.committed_at/g, 'prr.submitted_at').replace(/c\./g, 'prr.');
+
+    const [commitsRes, prsRes, reviewsRes, issuesRes] = await Promise.all([
+      pool.query(
+        `SELECT TO_CHAR(c.committed_at, 'YYYY-MM-DD') as date, COUNT(*) as count, COALESCE(SUM(c.additions), 0) as additions, COALESCE(SUM(c.deletions), 0) as deletions
+         FROM commits c
+         JOIN repositories r ON r.id = c.repository_id
+         LEFT JOIN developers d ON d.id = c.developer_id
+         ${commitWhere}
+         GROUP BY TO_CHAR(c.committed_at, 'YYYY-MM-DD')
+         ORDER BY date ASC`,
+        commitParams
+      ),
+      pool.query(
+        `SELECT TO_CHAR(pr.created_at, 'YYYY-MM-DD') as date, COUNT(*) as count
+         FROM pull_requests pr
+         JOIN repositories r ON r.id = pr.repository_id
+         LEFT JOIN developers d ON d.id = pr.author_developer_id
+         ${prWhere}
+         GROUP BY TO_CHAR(pr.created_at, 'YYYY-MM-DD')
+         ORDER BY date ASC`,
+        commitParams
+      ),
+      pool.query(
+        `SELECT TO_CHAR(prr.submitted_at, 'YYYY-MM-DD') as date, COUNT(*) as count
+         FROM pull_request_reviews prr
+         JOIN pull_requests pr ON pr.id = prr.pull_request_id
+         JOIN repositories r ON r.id = pr.repository_id
+         LEFT JOIN developers d ON d.id = prr.reviewer_developer_id
+         ${prrWhere}
+         GROUP BY TO_CHAR(prr.submitted_at, 'YYYY-MM-DD')
+         ORDER BY date ASC`,
+        commitParams
+      ),
+      pool.query(
+        `SELECT TO_CHAR(i.created_at, 'YYYY-MM-DD') as date, COUNT(*) as count
+         FROM issues i
+         JOIN repositories r ON r.id = i.repository_id
+         LEFT JOIN developers d ON d.id = i.author_developer_id
+         ${issueWhere}
+         GROUP BY TO_CHAR(i.created_at, 'YYYY-MM-DD')
+         ORDER BY date ASC`,
+        commitParams
+      ),
+    ]);
+
+    const dateMap = new Map<string, any>();
+
+    for (const row of commitsRes.rows) {
+      dateMap.set(row.date, {
+        date: row.date,
+        commits: parseInt(row.count, 10),
+        pullRequests: 0,
+        prs: 0,
+        reviews: 0,
+        issues: 0,
+        additions: parseInt(row.additions, 10),
+        deletions: parseInt(row.deletions, 10),
+      });
+    }
+
+    for (const row of prsRes.rows) {
+      const entry = dateMap.get(row.date) || {
+        date: row.date,
+        commits: 0,
+        pullRequests: 0,
+        prs: 0,
+        reviews: 0,
+        issues: 0,
+        additions: 0,
+        deletions: 0,
+      };
+      const count = parseInt(row.count, 10);
+      entry.pullRequests = count;
+      entry.prs = count;
+      dateMap.set(row.date, entry);
+    }
+
+    for (const row of reviewsRes.rows) {
+      const entry = dateMap.get(row.date) || {
+        date: row.date,
+        commits: 0,
+        pullRequests: 0,
+        prs: 0,
+        reviews: 0,
+        issues: 0,
+        additions: 0,
+        deletions: 0,
+      };
+      entry.reviews = parseInt(row.count, 10);
+      dateMap.set(row.date, entry);
+    }
+
+    for (const row of issuesRes.rows) {
+      const entry = dateMap.get(row.date) || {
+        date: row.date,
+        commits: 0,
+        pullRequests: 0,
+        prs: 0,
+        reviews: 0,
+        issues: 0,
+        additions: 0,
+        deletions: 0,
+      };
+      entry.issues = parseInt(row.count, 10);
+      dateMap.set(row.date, entry);
+    }
+
+    let trends = Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+    if (filters.activityType) {
+      const type = filters.activityType.toLowerCase();
+      trends = trends.map((t) => {
+        let count = 0;
+        if (type.includes('commit')) count = t.commits;
+        else if (type.includes('pr') || type.includes('pull')) count = t.pullRequests;
+        else if (type.includes('review')) count = t.reviews;
+        else if (type.includes('issue')) count = t.issues;
+        return { ...t, count };
+      });
+    }
+
+    this.setCache(cacheKey, trends);
+    return trends;
   }
 
   // 1. Overview API with parallel query execution and in-memory caching

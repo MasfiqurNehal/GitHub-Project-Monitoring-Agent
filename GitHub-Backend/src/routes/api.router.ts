@@ -56,6 +56,8 @@ apiRouter.get('/health/database', async (req, res) => {
 });
 
 // 2. Dashboard & Analytics Endpoints
+apiRouter.get('/dashboard/summary', dashboardController.getDashboardSummary);
+apiRouter.get('/dashboard/activity-trends', dashboardController.getActivityTrends);
 apiRouter.get('/dashboard/overview', dashboardController.getDashboardOverview);
 apiRouter.get('/dashboard/signals', dashboardController.getDashboardSignals);
 apiRouter.get('/dashboard/activity', dashboardController.getDashboardActivity);
