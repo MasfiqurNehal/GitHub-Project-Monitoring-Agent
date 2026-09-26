@@ -133,6 +133,7 @@ export class WebhookProcessorService {
     await pullRequestRepository.upsert({
       id: `pr-${repositoryId}-${pr.number}`,
       repositoryId,
+      organizationId,
       githubPrId: pr.id,
       number: pr.number,
       title: pr.title,
@@ -213,6 +214,7 @@ export class WebhookProcessorService {
     await issueRepository.upsert({
       id: `iss-${repositoryId}-${issue.number}`,
       repositoryId,
+      organizationId,
       githubIssueId: issue.id,
       number: issue.number,
       title: issue.title,
@@ -332,6 +334,7 @@ export class WebhookProcessorService {
       await commitRepository.upsert({
         id: `cmt-${c.id}`,
         repositoryId,
+        organizationId,
         githubCommitSha: c.id,
         developerId: commitDevId,
         message: c.message,

@@ -43,6 +43,7 @@ export class PullRequestRepository {
   async upsert(data: {
     id: string;
     repositoryId: string;
+    organizationId?: string | null;
     githubPrId: number | string;
     number: number;
     authorDeveloperId?: string | null;
@@ -67,17 +68,18 @@ export class PullRequestRepository {
   }): Promise<PullRequestRow> {
     const query = `
       INSERT INTO pull_requests (
-        id, repository_id, github_pr_id, number, author_developer_id,
+        id, repository_id, organization_id, github_pr_id, number, author_developer_id,
         title, body, state, draft, merged, base_branch, head_branch,
         created_at, updated_at, closed_at, merged_at, comments_count,
         review_comments_count, commits_count, additions, deletions, changed_files, html_url
       ) VALUES (
-        $1, $2, $3, $4, $5,
-        $6, $7, $8, $9, $10, $11, $12,
-        $13, $14, $15, $16, $17,
-        $18, $19, $20, $21, $22, $23
+        $1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10, $11, $12, $13,
+        $14, $15, $16, $17, $18,
+        $19, $20, $21, $22, $23, $24
       )
       ON CONFLICT (repository_id, github_pr_id) DO UPDATE SET
+        organization_id = COALESCE(EXCLUDED.organization_id, pull_requests.organization_id),
         title = EXCLUDED.title,
         body = EXCLUDED.body,
         state = EXCLUDED.state,
@@ -98,6 +100,7 @@ export class PullRequestRepository {
     const values = [
       data.id,
       data.repositoryId,
+      data.organizationId || null,
       data.githubPrId,
       data.number,
       data.authorDeveloperId || null,

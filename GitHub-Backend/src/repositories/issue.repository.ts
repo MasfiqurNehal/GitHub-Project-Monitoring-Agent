@@ -50,6 +50,7 @@ export class IssueRepository {
   async upsert(data: {
     id: string;
     repositoryId: string;
+    organizationId?: string | null;
     githubIssueId: number | string;
     number: number;
     authorDeveloperId?: string | null;
@@ -67,13 +68,14 @@ export class IssueRepository {
     await this.ensureSchema();
     const query = `
       INSERT INTO issues (
-        id, repository_id, github_issue_id, number, author_developer_id, assignee_developer_id,
+        id, repository_id, organization_id, github_issue_id, number, author_developer_id, assignee_developer_id,
         title, body, state, labels, closed_at, created_at, updated_at, comments_count, html_url
       ) VALUES (
-        $1, $2, $3, $4, $5, $6,
-        $7, $8, $9, $10, $11, $12, $13, $14, $15
+        $1, $2, $3, $4, $5, $6, $7,
+        $8, $9, $10, $11, $12, $13, $14, $15, $16
       )
       ON CONFLICT (repository_id, github_issue_id) DO UPDATE SET
+        organization_id = COALESCE(EXCLUDED.organization_id, issues.organization_id),
         title = EXCLUDED.title,
         body = EXCLUDED.body,
         state = EXCLUDED.state,
@@ -89,6 +91,7 @@ export class IssueRepository {
     const values = [
       data.id,
       data.repositoryId,
+      data.organizationId || null,
       data.githubIssueId,
       data.number,
       data.authorDeveloperId || null,

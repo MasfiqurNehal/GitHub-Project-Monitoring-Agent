@@ -245,6 +245,7 @@ export class SyncService {
             await commitRepository.upsert({
               id: commitId,
               repositoryId: repo.id,
+              organizationId: targetOrgId,
               githubCommitSha: c.sha,
               developerId: devId,
               message: c.commit.message,
@@ -321,6 +322,7 @@ export class SyncService {
             await pullRequestRepository.upsert({
               id: prId,
               repositoryId: repo.id,
+              organizationId: targetOrgId,
               githubPrId: pr.id,
               number: pr.number,
               authorDeveloperId: authorDevId,
@@ -442,6 +444,7 @@ export class SyncService {
             await issueRepository.upsert({
               id: issueId,
               repositoryId: repo.id,
+              organizationId: targetOrgId,
               githubIssueId: issue.id,
               number: issue.number,
               authorDeveloperId: authorDevId,

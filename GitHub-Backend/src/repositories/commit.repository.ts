@@ -62,6 +62,7 @@ export class CommitRepository {
   async upsert(data: {
     id: string;
     repositoryId: string;
+    organizationId?: string | null;
     githubCommitSha: string;
     developerId?: string | null;
     branch?: string | null;
@@ -78,15 +79,16 @@ export class CommitRepository {
     await this.ensureSchema();
     const query = `
       INSERT INTO commits (
-        id, repository_id, github_commit_sha, developer_id, branch,
+        id, repository_id, organization_id, github_commit_sha, developer_id, branch,
         message, commit_url, committed_at, authored_at, additions,
         deletions, changed_files, parent_count, is_merge_commit, created_at, updated_at
       ) VALUES (
-        $1, $2, $3, $4, $5,
-        $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, NOW(), NOW()
+        $1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10, $11,
+        $12, $13, $14, $15, NOW(), NOW()
       )
       ON CONFLICT (repository_id, github_commit_sha) DO UPDATE SET
+        organization_id = COALESCE(EXCLUDED.organization_id, commits.organization_id),
         developer_id = COALESCE(EXCLUDED.developer_id, commits.developer_id),
         message = EXCLUDED.message,
         additions = EXCLUDED.additions,
@@ -99,6 +101,7 @@ export class CommitRepository {
     const values = [
       data.id,
       data.repositoryId,
+      data.organizationId || null,
       data.githubCommitSha,
       data.developerId || null,
       data.branch || null,
@@ -109,7 +112,7 @@ export class CommitRepository {
       data.additions || 0,
       data.deletions || 0,
       data.changedFiles || 0,
-      data.parentCount || 1,
+      data.parentCount || 0,
       data.isMergeCommit || false,
     ];
 
