@@ -31,8 +31,59 @@ export class AnalyticsService {
     this.cache.clear();
   }
 
-  // Helper to build parameterized SQL WHERE clause based on filters
-  private buildCommitWhere(filters: DashboardFilters) {
+  private resolveDateRange(filters: DashboardFilters & { preset?: string }) {
+    let from: string | undefined = filters.dateFrom || (filters as any).from;
+    let to: string | undefined = filters.dateTo || (filters as any).to;
+
+    if (!from && filters.preset) {
+      const now = new Date();
+      const p = filters.preset.toLowerCase().replace(/[\s_-]+/g, '');
+
+      if (p === '1d' || p === 'today') {
+        const start = new Date(now);
+        start.setHours(0, 0, 0, 0);
+        from = start.toISOString();
+        to = now.toISOString();
+      } else if (p === 'yesterday') {
+        const start = new Date(now);
+        start.setDate(start.getDate() - 1);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start);
+        end.setHours(23, 59, 59, 999);
+        from = start.toISOString();
+        to = end.toISOString();
+      } else if (p === '7d' || p === 'thisweek' || p === 'week') {
+        const start = new Date(now);
+        start.setDate(start.getDate() - 6);
+        start.setHours(0, 0, 0, 0);
+        from = start.toISOString();
+        to = now.toISOString();
+      } else if (p === 'lastweek') {
+        const end = new Date(now);
+        end.setDate(end.getDate() - 7);
+        end.setHours(23, 59, 59, 999);
+        const start = new Date(end);
+        start.setDate(start.getDate() - 6);
+        start.setHours(0, 0, 0, 0);
+        from = start.toISOString();
+        to = end.toISOString();
+      } else if (p === '30d' || p === 'thismonth' || p === 'month') {
+        const start = new Date(now);
+        start.setDate(start.getDate() - 29);
+        start.setHours(0, 0, 0, 0);
+        from = start.toISOString();
+        to = now.toISOString();
+      } else if (p === 'all') {
+        from = undefined;
+        to = undefined;
+      }
+    }
+
+    return { from, to };
+  }
+
+  // Helper to build parameterized SQL WHERE clause for Commits
+  private buildCommitWhere(filters: DashboardFilters & { preset?: string }) {
     const conditions: string[] = [];
     const params: any[] = [];
     let pIdx = 1;
@@ -61,20 +112,22 @@ export class AnalyticsService {
       pIdx++;
     }
 
-    if (filters.dateFrom) {
-      let dFrom = new Date(filters.dateFrom);
-      if (typeof filters.dateFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(filters.dateFrom.trim())) {
-        dFrom = new Date(`${filters.dateFrom.trim()}T00:00:00.000Z`);
+    const { from: dFromStr, to: dToStr } = this.resolveDateRange(filters);
+
+    if (dFromStr) {
+      let dFrom = new Date(dFromStr);
+      if (typeof dFromStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dFromStr.trim())) {
+        dFrom = new Date(`${dFromStr.trim()}T00:00:00.000Z`);
       }
       conditions.push(`c.committed_at >= $${pIdx}`);
       params.push(dFrom);
       pIdx++;
     }
 
-    if (filters.dateTo) {
-      let dTo = new Date(filters.dateTo);
-      if (typeof filters.dateTo === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(filters.dateTo.trim())) {
-        dTo = new Date(`${filters.dateTo.trim()}T23:59:59.999Z`);
+    if (dToStr) {
+      let dTo = new Date(dToStr);
+      if (typeof dToStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dToStr.trim())) {
+        dTo = new Date(`${dToStr.trim()}T23:59:59.999Z`);
       }
       conditions.push(`c.committed_at <= $${pIdx}`);
       params.push(dTo);
@@ -85,8 +138,176 @@ export class AnalyticsService {
     return { whereSql, params };
   }
 
+  // Helper for Pull Requests
+  private buildPRWhere(filters: DashboardFilters & { preset?: string }) {
+    const conditions: string[] = [];
+    const params: any[] = [];
+    let pIdx = 1;
+
+    if (filters.organizationId) {
+      conditions.push(`(r.organization_id = $${pIdx} OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $${pIdx}))`);
+      params.push(filters.organizationId);
+      pIdx++;
+    }
+
+    if (filters.repositoryId) {
+      conditions.push(`(pr.repository_id = $${pIdx} OR r.full_name = $${pIdx} OR r.name = $${pIdx})`);
+      params.push(filters.repositoryId);
+      pIdx++;
+    }
+
+    if (filters.projectId) {
+      conditions.push(`r.project_id = $${pIdx}`);
+      params.push(filters.projectId);
+      pIdx++;
+    }
+
+    if (filters.developerId) {
+      conditions.push(`(pr.author_developer_id = $${pIdx} OR d.login = $${pIdx})`);
+      params.push(filters.developerId);
+      pIdx++;
+    }
+
+    const { from: dFromStr, to: dToStr } = this.resolveDateRange(filters);
+
+    if (dFromStr) {
+      let dFrom = new Date(dFromStr);
+      if (typeof dFromStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dFromStr.trim())) {
+        dFrom = new Date(`${dFromStr.trim()}T00:00:00.000Z`);
+      }
+      conditions.push(`pr.created_at >= $${pIdx}`);
+      params.push(dFrom);
+      pIdx++;
+    }
+
+    if (dToStr) {
+      let dTo = new Date(dToStr);
+      if (typeof dToStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dToStr.trim())) {
+        dTo = new Date(`${dToStr.trim()}T23:59:59.999Z`);
+      }
+      conditions.push(`pr.created_at <= $${pIdx}`);
+      params.push(dTo);
+      pIdx++;
+    }
+
+    const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    return { whereSql, params };
+  }
+
+  // Helper for Issues
+  private buildIssueWhere(filters: DashboardFilters & { preset?: string }) {
+    const conditions: string[] = [];
+    const params: any[] = [];
+    let pIdx = 1;
+
+    if (filters.organizationId) {
+      conditions.push(`(r.organization_id = $${pIdx} OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $${pIdx}))`);
+      params.push(filters.organizationId);
+      pIdx++;
+    }
+
+    if (filters.repositoryId) {
+      conditions.push(`(i.repository_id = $${pIdx} OR r.full_name = $${pIdx} OR r.name = $${pIdx})`);
+      params.push(filters.repositoryId);
+      pIdx++;
+    }
+
+    if (filters.projectId) {
+      conditions.push(`r.project_id = $${pIdx}`);
+      params.push(filters.projectId);
+      pIdx++;
+    }
+
+    if (filters.developerId) {
+      conditions.push(`(i.author_developer_id = $${pIdx} OR d.login = $${pIdx})`);
+      params.push(filters.developerId);
+      pIdx++;
+    }
+
+    const { from: dFromStr, to: dToStr } = this.resolveDateRange(filters);
+
+    if (dFromStr) {
+      let dFrom = new Date(dFromStr);
+      if (typeof dFromStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dFromStr.trim())) {
+        dFrom = new Date(`${dFromStr.trim()}T00:00:00.000Z`);
+      }
+      conditions.push(`i.created_at >= $${pIdx}`);
+      params.push(dFrom);
+      pIdx++;
+    }
+
+    if (dToStr) {
+      let dTo = new Date(dToStr);
+      if (typeof dToStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dToStr.trim())) {
+        dTo = new Date(`${dToStr.trim()}T23:59:59.999Z`);
+      }
+      conditions.push(`i.created_at <= $${pIdx}`);
+      params.push(dTo);
+      pIdx++;
+    }
+
+    const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    return { whereSql, params };
+  }
+
+  // Helper for Reviews
+  private buildReviewWhere(filters: DashboardFilters & { preset?: string }) {
+    const conditions: string[] = [];
+    const params: any[] = [];
+    let pIdx = 1;
+
+    if (filters.organizationId) {
+      conditions.push(`(r.organization_id = $${pIdx} OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $${pIdx}))`);
+      params.push(filters.organizationId);
+      pIdx++;
+    }
+
+    if (filters.repositoryId) {
+      conditions.push(`(pr.repository_id = $${pIdx} OR r.full_name = $${pIdx} OR r.name = $${pIdx})`);
+      params.push(filters.repositoryId);
+      pIdx++;
+    }
+
+    if (filters.projectId) {
+      conditions.push(`r.project_id = $${pIdx}`);
+      params.push(filters.projectId);
+      pIdx++;
+    }
+
+    if (filters.developerId) {
+      conditions.push(`(prr.reviewer_developer_id = $${pIdx} OR d.login = $${pIdx})`);
+      params.push(filters.developerId);
+      pIdx++;
+    }
+
+    const { from: dFromStr, to: dToStr } = this.resolveDateRange(filters);
+
+    if (dFromStr) {
+      let dFrom = new Date(dFromStr);
+      if (typeof dFromStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dFromStr.trim())) {
+        dFrom = new Date(`${dFromStr.trim()}T00:00:00.000Z`);
+      }
+      conditions.push(`prr.submitted_at >= $${pIdx}`);
+      params.push(dFrom);
+      pIdx++;
+    }
+
+    if (dToStr) {
+      let dTo = new Date(dToStr);
+      if (typeof dToStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dToStr.trim())) {
+        dTo = new Date(`${dToStr.trim()}T23:59:59.999Z`);
+      }
+      conditions.push(`prr.submitted_at <= $${pIdx}`);
+      params.push(dTo);
+      pIdx++;
+    }
+
+    const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    return { whereSql, params };
+  }
+
   // GET /api/dashboard/summary
-  async getDashboardSummary(filters: DashboardFilters) {
+  async getDashboardSummary(filters: DashboardFilters & { preset?: string }) {
     const cacheKey = `summary_${JSON.stringify(filters)}`;
     const cached = this.getCached<any>(cacheKey);
     if (cached) {
@@ -94,13 +315,14 @@ export class AnalyticsService {
     }
 
     const { whereSql: commitWhere, params: commitParams } = this.buildCommitWhere(filters);
-    const prWhere = commitWhere.replace(/c\.committed_at/g, 'pr.created_at').replace(/c\./g, 'pr.');
-    const issueWhere = commitWhere.replace(/c\.committed_at/g, 'i.created_at').replace(/c\./g, 'i.');
-    const prrWhere = commitWhere.replace(/c\.committed_at/g, 'prr.submitted_at').replace(/c\./g, 'prr.');
+    const { whereSql: prWhere, params: prParams } = this.buildPRWhere(filters);
+    const { whereSql: issueWhere, params: issueParams } = this.buildIssueWhere(filters);
+    const { whereSql: prrWhere, params: prrParams } = this.buildReviewWhere(filters);
 
     const [
       projectsRes,
       reposRes,
+      activeReposRes,
       commitsRes,
       prsRes,
       issuesRes,
@@ -112,6 +334,9 @@ export class AnalyticsService {
       filters.organizationId
         ? pool.query('SELECT COUNT(*) FROM repositories WHERE organization_id = $1 OR project_id IN (SELECT id FROM projects WHERE organization_id = $1)', [filters.organizationId])
         : pool.query('SELECT COUNT(*) FROM repositories'),
+      filters.organizationId
+        ? pool.query("SELECT COUNT(*) FROM repositories WHERE (organization_id = $1 OR project_id IN (SELECT id FROM projects WHERE organization_id = $1)) AND (UPPER(sync_status) = 'SYNCED' OR UPPER(sync_status) = 'ACTIVE')", [filters.organizationId])
+        : pool.query("SELECT COUNT(*) FROM repositories WHERE UPPER(sync_status) = 'SYNCED' OR UPPER(sync_status) = 'ACTIVE'"),
       pool.query(
         `SELECT 
           COUNT(*) as total_commits, 
@@ -133,17 +358,18 @@ export class AnalyticsService {
          JOIN repositories r ON r.id = pr.repository_id
          LEFT JOIN developers d ON d.id = pr.author_developer_id
          ${prWhere}`,
-        commitParams
+        prParams
       ),
       pool.query(
         `SELECT 
           COUNT(*) as issues_opened,
-          COUNT(*) FILTER (WHERE UPPER(i.state) = 'CLOSED') as issues_closed
+          COUNT(*) FILTER (WHERE UPPER(i.state) = 'CLOSED') as issues_closed,
+          COUNT(*) FILTER (WHERE UPPER(i.state) = 'OPEN') as open_issues
          FROM issues i
          JOIN repositories r ON r.id = i.repository_id
          LEFT JOIN developers d ON d.id = i.author_developer_id
          ${issueWhere}`,
-        commitParams
+        issueParams
       ),
       pool.query(
         `SELECT COUNT(*) as total_reviews
@@ -152,7 +378,7 @@ export class AnalyticsService {
          JOIN repositories r ON r.id = pr.repository_id
          LEFT JOIN developers d ON d.id = prr.reviewer_developer_id
          ${prrWhere}`,
-        commitParams
+        prrParams
       ),
     ]);
 
@@ -164,17 +390,21 @@ export class AnalyticsService {
     const summary = {
       monitoredProjects: parseInt(projectsRes.rows[0]?.count || '0', 10),
       connectedRepositories: parseInt(reposRes.rows[0]?.count || '0', 10),
+      activeRepositories: parseInt(activeReposRes.rows[0]?.count || '0', 10),
       activeDevelopers: parseInt(cRow.active_devs || '0', 10),
+      totalDevelopers: parseInt(cRow.active_devs || '0', 10),
       totalCommits: parseInt(cRow.total_commits || '0', 10),
       pullRequests: parseInt(pRow.total_prs || '0', 10),
       mergedPRs: parseInt(pRow.merged_prs || '0', 10),
       openPRs: parseInt(pRow.open_prs || '0', 10),
       issuesOpened: parseInt(iRow.issues_opened || '0', 10),
       issuesClosed: parseInt(iRow.issues_closed || '0', 10),
+      openIssues: parseInt(iRow.open_issues || '0', 10),
       codeAdded: parseInt(cRow.lines_added || '0', 10),
       codeRemoved: parseInt(cRow.lines_deleted || '0', 10),
+      netCodeImpact: parseInt(cRow.lines_added || '0', 10) - parseInt(cRow.lines_deleted || '0', 10),
       prReviews: parseInt(rRow.total_reviews || '0', 10),
-      // Direct alias fields for frontend UI component compatibility
+      // Direct alias fields for UI component compatibility
       totalProjects: parseInt(projectsRes.rows[0]?.count || '0', 10),
       totalRepositories: parseInt(reposRes.rows[0]?.count || '0', 10),
       totalPRs: parseInt(pRow.total_prs || '0', 10),
@@ -196,9 +426,9 @@ export class AnalyticsService {
     }
 
     const { whereSql: commitWhere, params: commitParams } = this.buildCommitWhere(filters);
-    const prWhere = commitWhere.replace(/c\.committed_at/g, 'pr.created_at').replace(/c\./g, 'pr.');
-    const issueWhere = commitWhere.replace(/c\.committed_at/g, 'i.created_at').replace(/c\./g, 'i.');
-    const prrWhere = commitWhere.replace(/c\.committed_at/g, 'prr.submitted_at').replace(/c\./g, 'prr.');
+    const { whereSql: prWhere, params: prParams } = this.buildPRWhere(filters);
+    const { whereSql: issueWhere, params: issueParams } = this.buildIssueWhere(filters);
+    const { whereSql: prrWhere, params: prrParams } = this.buildReviewWhere(filters);
 
     const [commitsRes, prsRes, reviewsRes, issuesRes] = await Promise.all([
       pool.query(
@@ -219,7 +449,7 @@ export class AnalyticsService {
          ${prWhere}
          GROUP BY TO_CHAR(pr.created_at, 'YYYY-MM-DD')
          ORDER BY date ASC`,
-        commitParams
+        prParams
       ),
       pool.query(
         `SELECT TO_CHAR(prr.submitted_at, 'YYYY-MM-DD') as date, COUNT(*) as count
@@ -230,7 +460,7 @@ export class AnalyticsService {
          ${prrWhere}
          GROUP BY TO_CHAR(prr.submitted_at, 'YYYY-MM-DD')
          ORDER BY date ASC`,
-        commitParams
+        prrParams
       ),
       pool.query(
         `SELECT TO_CHAR(i.created_at, 'YYYY-MM-DD') as date, COUNT(*) as count
@@ -240,7 +470,7 @@ export class AnalyticsService {
          ${issueWhere}
          GROUP BY TO_CHAR(i.created_at, 'YYYY-MM-DD')
          ORDER BY date ASC`,
-        commitParams
+        issueParams
       ),
     ]);
 
@@ -325,7 +555,7 @@ export class AnalyticsService {
   }
 
   // 1. Overview API with parallel query execution and in-memory caching
-  async getDashboardOverview(filters: DashboardFilters) {
+  async getDashboardOverview(filters: DashboardFilters & { preset?: string }) {
     const cacheKey = `overview_${JSON.stringify(filters)}`;
     const cached = this.getCached<any>(cacheKey);
     if (cached) {
@@ -333,14 +563,15 @@ export class AnalyticsService {
     }
 
     const { whereSql: commitWhere, params: commitParams } = this.buildCommitWhere(filters);
-    const prWhere = commitWhere.replace(/c\.committed_at/g, 'pr.created_at').replace(/c\./g, 'pr.');
-    const issueWhere = commitWhere.replace(/c\.committed_at/g, 'i.created_at').replace(/c\./g, 'i.');
-    const prrWhere = commitWhere.replace(/c\.committed_at/g, 'prr.submitted_at').replace(/c\./g, 'prr.');
+    const { whereSql: prWhere, params: prParams } = this.buildPRWhere(filters);
+    const { whereSql: issueWhere, params: issueParams } = this.buildIssueWhere(filters);
+    const { whereSql: prrWhere, params: prrParams } = this.buildReviewWhere(filters);
 
     // Execute all independent queries concurrently in parallel with Promise.all
     const [
       projectsRes,
       reposRes,
+      activeReposRes,
       commitsRes,
       prsRes,
       issuesRes,
@@ -361,6 +592,9 @@ export class AnalyticsService {
       filters.organizationId
         ? pool.query('SELECT COUNT(*) FROM repositories WHERE organization_id = $1 OR project_id IN (SELECT id FROM projects WHERE organization_id = $1)', [filters.organizationId])
         : pool.query('SELECT COUNT(*) FROM repositories'),
+      filters.organizationId
+        ? pool.query("SELECT COUNT(*) FROM repositories WHERE (organization_id = $1 OR project_id IN (SELECT id FROM projects WHERE organization_id = $1)) AND (UPPER(sync_status) = 'SYNCED' OR UPPER(sync_status) = 'ACTIVE')", [filters.organizationId])
+        : pool.query("SELECT COUNT(*) FROM repositories WHERE UPPER(sync_status) = 'SYNCED' OR UPPER(sync_status) = 'ACTIVE'"),
       pool.query(
         `SELECT 
           COUNT(*) as total_commits, 
@@ -382,17 +616,18 @@ export class AnalyticsService {
          JOIN repositories r ON r.id = pr.repository_id
          LEFT JOIN developers d ON d.id = pr.author_developer_id
          ${prWhere}`,
-        commitParams
+        prParams
       ),
       pool.query(
         `SELECT 
           COUNT(*) as issues_opened,
-          COUNT(*) FILTER (WHERE UPPER(i.state) = 'CLOSED') as issues_closed
+          COUNT(*) FILTER (WHERE UPPER(i.state) = 'CLOSED') as issues_closed,
+          COUNT(*) FILTER (WHERE UPPER(i.state) = 'OPEN') as open_issues
          FROM issues i
          JOIN repositories r ON r.id = i.repository_id
          LEFT JOIN developers d ON d.id = i.author_developer_id
          ${issueWhere}`,
-        commitParams
+        issueParams
       ),
       pool.query(
         `SELECT COUNT(*) as total_reviews
@@ -401,7 +636,7 @@ export class AnalyticsService {
          JOIN repositories r ON r.id = pr.repository_id
          LEFT JOIN developers d ON d.id = prr.reviewer_developer_id
          ${prrWhere}`,
-        commitParams
+        prrParams
       ),
       pool.query(
         `SELECT TO_CHAR(c.committed_at, 'YYYY-MM-DD') as date, COUNT(*) as commits
@@ -421,7 +656,7 @@ export class AnalyticsService {
          ${prWhere}
          GROUP BY TO_CHAR(pr.created_at, 'YYYY-MM-DD')
          ORDER BY date ASC LIMIT 30`,
-        commitParams
+        prParams
       ),
       pool.query(
         `SELECT TO_CHAR(prr.submitted_at, 'YYYY-MM-DD') as date, COUNT(*) as reviews
@@ -432,7 +667,7 @@ export class AnalyticsService {
          ${prrWhere}
          GROUP BY TO_CHAR(prr.submitted_at, 'YYYY-MM-DD')
          ORDER BY date ASC LIMIT 30`,
-        commitParams
+        prrParams
       ),
       pool.query(
         `SELECT 
@@ -458,7 +693,7 @@ export class AnalyticsService {
          ${issueWhere}
          GROUP BY TO_CHAR(i.created_at, 'YYYY-MM-DD')
          ORDER BY date ASC LIMIT 30`,
-        commitParams
+        issueParams
       ),
       filters.organizationId
         ? pool.query(
@@ -566,15 +801,22 @@ export class AnalyticsService {
     const kpi = {
       totalProjects: parseInt(projectsRes.rows[0]?.count || '0', 10),
       totalRepositories: parseInt(reposRes.rows[0]?.count || '0', 10),
+      activeRepositories: parseInt(activeReposRes.rows[0]?.count || '0', 10),
       activeDevelopers: parseInt(cRow.active_devs || '0', 10),
+      totalDevelopers: parseInt(cRow.active_devs || '0', 10),
       totalCommits: parseInt(cRow.total_commits || '0', 10),
       totalPRs: parseInt(pRow.total_prs || '0', 10),
+      pullRequests: parseInt(pRow.total_prs || '0', 10),
       mergedPRs: parseInt(pRow.merged_prs || '0', 10),
       openPRs: parseInt(pRow.open_prs || '0', 10),
       issuesOpened: parseInt(iRow.issues_opened || '0', 10),
       issuesClosed: parseInt(iRow.issues_closed || '0', 10),
+      openIssues: parseInt(iRow.open_issues || '0', 10),
       linesAdded: parseInt(cRow.lines_added || '0', 10),
       linesDeleted: parseInt(cRow.lines_deleted || '0', 10),
+      codeAdded: parseInt(cRow.lines_added || '0', 10),
+      codeRemoved: parseInt(cRow.lines_deleted || '0', 10),
+      netCodeImpact: parseInt(cRow.lines_added || '0', 10) - parseInt(cRow.lines_deleted || '0', 10),
       totalReviews: parseInt(rRow.total_reviews || '0', 10),
     };
 
@@ -860,8 +1102,7 @@ export class AnalyticsService {
 
   // 4. Pull Requests Dashboard API
   async getDashboardPullRequests(filters: DashboardFilters) {
-    const { whereSql, params } = this.buildCommitWhere(filters);
-    const prWhere = whereSql.replace(/c\.committed_at/g, 'pr.created_at').replace(/c\./g, 'pr.');
+    const { whereSql: prWhere, params: prParams } = this.buildPRWhere(filters);
 
     const prSummaryRes = await pool.query(
       `SELECT 
@@ -874,7 +1115,7 @@ export class AnalyticsService {
        JOIN repositories r ON r.id = pr.repository_id
        LEFT JOIN developers d ON d.id = pr.author_developer_id
        ${prWhere}`,
-      params
+      prParams
     );
 
     const trendRes = await pool.query(
@@ -889,7 +1130,7 @@ export class AnalyticsService {
        ${prWhere}
        GROUP BY TO_CHAR(pr.created_at, 'YYYY-MM-DD')
        ORDER BY date ASC`,
-      params
+      prParams
     );
 
     const row = prSummaryRes.rows[0];
@@ -912,8 +1153,7 @@ export class AnalyticsService {
 
   // 5. Issues Dashboard API
   async getDashboardIssues(filters: DashboardFilters) {
-    const { whereSql, params } = this.buildCommitWhere(filters);
-    const issueWhere = whereSql.replace(/c\.committed_at/g, 'i.created_at').replace(/c\./g, 'i.');
+    const { whereSql: issueWhere, params: issueParams } = this.buildIssueWhere(filters);
 
     const summaryRes = await pool.query(
       `SELECT 
@@ -924,7 +1164,7 @@ export class AnalyticsService {
        JOIN repositories r ON r.id = i.repository_id
        LEFT JOIN developers d ON d.id = i.author_developer_id
        ${issueWhere}`,
-      params
+      issueParams
     );
 
     const trendRes = await pool.query(
@@ -938,7 +1178,7 @@ export class AnalyticsService {
        ${issueWhere}
        GROUP BY TO_CHAR(i.created_at, 'YYYY-MM-DD')
        ORDER BY date ASC`,
-      params
+      issueParams
     );
 
     const row = summaryRes.rows[0];
@@ -1045,55 +1285,6 @@ export class AnalyticsService {
     };
   }
 
-  // 8. Daily Analytics API (Today, Yesterday, This Week, Last Week, This Month, Custom Date Range)
-  private resolveDateRange(filters: DashboardFilters & { preset?: string }) {
-    let from: string | undefined = filters.dateFrom;
-    let to: string | undefined = filters.dateTo;
-
-    if (filters.preset) {
-      const now = new Date();
-      const p = filters.preset.toLowerCase().replace(/[\s_-]+/g, '');
-
-      if (p === 'today') {
-        const start = new Date(now);
-        start.setHours(0, 0, 0, 0);
-        from = start.toISOString();
-        to = now.toISOString();
-      } else if (p === 'yesterday') {
-        const start = new Date(now);
-        start.setDate(start.getDate() - 1);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(start);
-        end.setHours(23, 59, 59, 999);
-        from = start.toISOString();
-        to = end.toISOString();
-      } else if (p === 'thisweek' || p === 'week' || p === '7d') {
-        const start = new Date(now);
-        start.setDate(start.getDate() - 6);
-        start.setHours(0, 0, 0, 0);
-        from = start.toISOString();
-        to = now.toISOString();
-      } else if (p === 'lastweek') {
-        const end = new Date(now);
-        end.setDate(end.getDate() - 7);
-        end.setHours(23, 59, 59, 999);
-        const start = new Date(end);
-        start.setDate(start.getDate() - 6);
-        start.setHours(0, 0, 0, 0);
-        from = start.toISOString();
-        to = end.toISOString();
-      } else if (p === 'thismonth' || p === 'month' || p === '30d') {
-        const start = new Date(now);
-        start.setDate(start.getDate() - 29);
-        start.setHours(0, 0, 0, 0);
-        from = start.toISOString();
-        to = now.toISOString();
-      }
-    }
-
-    return { from, to };
-  }
-
   async getDailyAnalytics(filters: DashboardFilters & { preset?: string }) {
     const { from, to } = this.resolveDateRange(filters);
     const effectiveFilters: DashboardFilters = {
@@ -1103,9 +1294,9 @@ export class AnalyticsService {
     };
 
     const { whereSql: commitWhere, params: commitParams } = this.buildCommitWhere(effectiveFilters);
-    const prWhere = commitWhere.replace(/c\.committed_at/g, 'pr.created_at').replace(/c\./g, 'pr.');
-    const issueWhere = commitWhere.replace(/c\.committed_at/g, 'i.created_at').replace(/c\./g, 'i.');
-    const prrWhere = commitWhere.replace(/c\.committed_at/g, 'prr.submitted_at').replace(/c\./g, 'prr.');
+    const { whereSql: prWhere, params: prParams } = this.buildPRWhere(effectiveFilters);
+    const { whereSql: issueWhere, params: issueParams } = this.buildIssueWhere(effectiveFilters);
+    const { whereSql: prrWhere, params: prrParams } = this.buildReviewWhere(effectiveFilters);
 
     // 1. Commits & Line Changes by Day
     const commitsRes = await pool.query(
@@ -1134,7 +1325,7 @@ export class AnalyticsService {
        ${prWhere}
        GROUP BY TO_CHAR(pr.created_at, 'YYYY-MM-DD')
        ORDER BY date ASC`,
-      commitParams
+      prParams
     );
 
     // 3. Reviews by Day
@@ -1149,7 +1340,7 @@ export class AnalyticsService {
        ${prrWhere}
        GROUP BY TO_CHAR(prr.submitted_at, 'YYYY-MM-DD')
        ORDER BY date ASC`,
-      commitParams
+      prrParams
     );
 
     // 4. Issues by Day
@@ -1163,7 +1354,7 @@ export class AnalyticsService {
        ${issueWhere}
        GROUP BY TO_CHAR(i.created_at, 'YYYY-MM-DD')
        ORDER BY date ASC`,
-      commitParams
+      issueParams
     );
 
     const map = new Map<string, {

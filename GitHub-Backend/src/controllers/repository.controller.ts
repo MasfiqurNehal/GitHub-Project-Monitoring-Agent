@@ -234,3 +234,39 @@ export async function removeRepository(req: Request, res: Response, next: NextFu
     next(err);
   }
 }
+
+// 8. POST /api/repositories/sync-all
+export async function triggerSyncAll(req: Request, res: Response, next: NextFunction) {
+  try {
+    const orgId = (req as any).organizationId;
+    const repos = await repositoryRepository.findAll(orgId);
+    
+    analyticsService.clearCache();
+
+    if (repos.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No repositories connected to synchronize',
+        syncedCount: 0,
+      });
+    }
+
+    const results = await Promise.allSettled(
+      repos.map((r: any) => syncService.runFullHistoricalSync(r.id, orgId))
+    );
+
+    analyticsService.clearCache();
+
+    const successCount = results.filter((r) => r.status === 'fulfilled').length;
+
+    res.json({
+      success: true,
+      message: `Synchronized ${successCount} of ${repos.length} repositories`,
+      syncedCount: successCount,
+      totalCount: repos.length,
+    });
+  } catch (err: any) {
+    logger.error('SYNC', `Sync all error: ${err.message}`);
+    res.status(500).json({ success: false, error: err.message || 'Synchronization failed' });
+  }
+}

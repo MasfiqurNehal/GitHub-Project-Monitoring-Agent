@@ -86,6 +86,7 @@ apiRouter.delete('/projects/:id/repositories/:repositoryId', projectController.r
 apiRouter.get('/repositories', repositoryController.listRepositories);
 apiRouter.post('/repositories', repositoryController.addRepository);
 apiRouter.post('/repositories/validate', repositoryController.validateRepositoryUrl);
+apiRouter.post('/repositories/sync-all', repositoryController.triggerSyncAll);
 apiRouter.get('/repositories/:id', repositoryController.getRepositoryDetail);
 apiRouter.post('/repositories/:id/sync', repositoryController.triggerRepositorySync);
 apiRouter.get('/repositories/:id/sync-status', repositoryController.getSyncStatus);
