@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
-import { Bot, Mail, Lock, Eye, EyeOff, ShieldCheck, ArrowRight, Loader2, KeyRound, Sparkles } from 'lucide-react';
+import { Github, Mail, Lock, Eye, EyeOff, ShieldCheck, ArrowRight, Loader2, KeyRound, Sparkles } from 'lucide-react';
 
 export default function LandingPage() {
   const { isAuthenticated, isLoading: authLoading, login } = useAuth();
@@ -64,7 +64,7 @@ export default function LandingPage() {
           <div className="inline-flex items-center justify-center relative group">
             <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 via-cyan-500 to-indigo-600 rounded-2xl blur opacity-70 group-hover:opacity-100 transition duration-500 animate-pulse" />
             <div className="relative w-16 h-16 rounded-2xl bg-slate-900 border border-slate-700/80 flex items-center justify-center shadow-2xl text-blue-400">
-              <Bot className="w-9 h-9 transform group-hover:scale-110 transition-transform duration-300" />
+              <Github className="w-9 h-9 transform group-hover:scale-110 transition-transform duration-300" />
             </div>
           </div>
 

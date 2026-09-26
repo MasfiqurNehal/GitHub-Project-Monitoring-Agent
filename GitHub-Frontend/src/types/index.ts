@@ -614,12 +614,23 @@ export interface AIResponseData {
 // GitHub Connection Settings Interfaces
 export interface GitHubAccountInfo {
   isConnected: boolean;
-  username?: string;
-  name?: string;
-  avatarUrl?: string;
-  organization?: string;
-  connectedAt?: string;
+  connected?: boolean;
+  username?: string | null;
+  name?: string | null;
+  avatarUrl?: string | null;
+  organization?: string | null;
+  installationId?: number | string | null;
+  accessibleRepositoryCount?: number;
+  lastSynchronization?: string | null;
+  connectionStatus?: string;
+  connectedAt?: string | null;
   scopes?: string[];
+  githubAccount?: {
+    id?: string | number | null;
+    login?: string;
+    type?: string;
+    avatarUrl?: string;
+  } | null;
 }
 
 export interface ValidatedRepositoryInfo {

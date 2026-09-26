@@ -17,6 +17,7 @@ function extractFilters(req: Request): ReportFilters {
   } = req.query;
 
   return {
+    organizationId: (req as any).organizationId as string,
     dateFrom: (dateFrom || date_from) as string,
     dateTo: (dateTo || date_to) as string,
     date: date as string,

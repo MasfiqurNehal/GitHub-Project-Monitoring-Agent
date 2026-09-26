@@ -25,6 +25,7 @@ export async function getActivityStream(req: Request, res: Response, next: NextF
     } = req.query;
 
     const filters = {
+      organizationId: (req as any).organizationId as string | undefined,
       projectId: (project || projectId) as string | undefined,
       repositoryId: (repository || repositoryId) as string | undefined,
       developerId: (developer || developerId) as string | undefined,

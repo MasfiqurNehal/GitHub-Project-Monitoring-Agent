@@ -57,6 +57,7 @@ apiRouter.get('/health/database', async (req, res) => {
 
 // 2. Dashboard & Analytics Endpoints
 apiRouter.get('/dashboard/overview', dashboardController.getDashboardOverview);
+apiRouter.get('/dashboard/signals', dashboardController.getDashboardSignals);
 apiRouter.get('/dashboard/activity', dashboardController.getDashboardActivity);
 apiRouter.get('/dashboard/commits', dashboardController.getDashboardCommits);
 apiRouter.get('/dashboard/pull-requests', dashboardController.getDashboardPullRequests);
@@ -128,6 +129,10 @@ apiRouter.post('/reports/generate', reportController.generateReport);
 apiRouter.get('/reports/:id', reportController.getReportDetail);
 
 // 10. GitHub Connection & App Flow Endpoints
+apiRouter.get('/github/app/install', githubConnectionController.getInstallUrl);
+apiRouter.get('/github/app/setup', githubConnectionController.handleInstallationCallback);
+apiRouter.get('/github/connection/status', githubConnectionController.getConnectionStatus);
+
 apiRouter.get('/github/install', githubConnectionController.getInstallUrl);
 apiRouter.get('/github/callback', githubConnectionController.handleInstallationCallback);
 apiRouter.get('/github/connection', githubConnectionController.getConnectionStatus);

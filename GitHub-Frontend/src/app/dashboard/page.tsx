@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from 'react';
 import Header from '../../components/layout/header';
-import ChatDrawer from '../../components/ai/chat-drawer';
+import { useLayout } from '../../providers/layout-provider';
 import { useDashboard } from '../../hooks/use-dashboard';
 import { useProjects } from '../../hooks/use-projects';
 import { useRepositories } from '../../hooks/use-repositories';
@@ -32,7 +32,7 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 
 function DashboardContent() {
-  const [isAIChatOpen, setIsAIChatOpen] = useState(false);
+  const { setAIChatOpen } = useLayout();
   const [activeChartTab, setActiveChartTab] = useState<'overview' | 'commits' | 'prs' | 'issues' | 'code' | 'developers'>('overview');
   const { filters } = useFilters();
 
@@ -44,7 +44,7 @@ function DashboardContent() {
   if (isLoading) {
     return (
       <div className="flex-1 flex flex-col min-w-0 bg-slate-950 text-slate-100 min-h-screen">
-        <Header onOpenAIChat={() => setIsAIChatOpen(true)} />
+        <Header onOpenAIChat={() => setAIChatOpen(true)} />
         <main className="flex-1 p-6 space-y-6 max-w-7xl w-full mx-auto">
           <DashboardSkeleton />
         </main>
@@ -55,7 +55,7 @@ function DashboardContent() {
   if (isError || !overview) {
     return (
       <div className="flex-1 flex flex-col min-w-0 bg-slate-950 text-slate-100 min-h-screen">
-        <Header onOpenAIChat={() => setIsAIChatOpen(true)} />
+        <Header onOpenAIChat={() => setAIChatOpen(true)} />
         <main className="flex-1 p-6 space-y-6 max-w-7xl w-full mx-auto">
           <ErrorState
             title="Failed to Load Dashboard Metrics"
@@ -71,7 +71,7 @@ function DashboardContent() {
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-slate-950 text-slate-100 min-h-screen">
-      <Header onOpenAIChat={() => setIsAIChatOpen(true)} />
+      <Header onOpenAIChat={() => setAIChatOpen(true)} />
 
       <main className="flex-1 p-6 space-y-6 max-w-7xl w-full mx-auto">
         {/* Welcome Header */}
@@ -149,12 +149,6 @@ function DashboardContent() {
           <RecentActivityFeed activity={overview.recentActivity || []} />
         </div>
       </main>
-
-      {/* AI Assistant Chat Drawer */}
-      <ChatDrawer
-        isOpen={isAIChatOpen}
-        onClose={() => setIsAIChatOpen(false)}
-      />
     </div>
   );
 }

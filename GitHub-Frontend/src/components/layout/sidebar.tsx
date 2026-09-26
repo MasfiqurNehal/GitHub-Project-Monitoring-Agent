@@ -15,12 +15,14 @@ import {
   AlertCircle,
   FileText,
   Bot,
+  Github,
   Link2,
   Settings,
-  ShieldCheck,
-  ChevronLeft,
-  ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen,
   LogOut,
+  User,
+  MoreVertical,
 } from 'lucide-react';
 
 const navigationGroups = [
@@ -63,7 +65,6 @@ const navigationGroups = [
 
 import { useState, useRef, useEffect } from 'react';
 import UserProfileModal from '../profile/UserProfileModal';
-import { User, MoreVertical } from 'lucide-react';
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -99,32 +100,53 @@ export default function Sidebar() {
       >
         <div className="overflow-y-auto flex-1">
           {/* Brand Header */}
-          <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-            <div className="flex items-center space-x-3 overflow-hidden">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20 shrink-0">
-                <Bot className="w-5 h-5" />
-              </div>
-              {!isSidebarCollapsed && (
-                <div className="min-w-0">
-                  <h1 className="font-bold text-white text-sm leading-tight truncate">GitHub Monitoring</h1>
-                  <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5 truncate">
-                    <ShieldCheck className="w-3 h-3 text-emerald-400 shrink-0" /> Read-Only Agent
-                  </p>
-                </div>
-              )}
+          {isSidebarCollapsed ? (
+            <div className="p-3 border-b border-slate-800 flex flex-col items-center justify-center space-y-2.5">
+              <Link
+                href="/dashboard"
+                title="GitHub Monitoring Dashboard"
+                className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20 hover:scale-105 transition-all shrink-0"
+              >
+                <Github className="w-5 h-5" />
+              </Link>
+              <button
+                type="button"
+                onClick={toggleSidebarCollapsed}
+                aria-label="Expand sidebar navigation"
+                className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/80 transition-colors shrink-0"
+                title="Expand Sidebar"
+              >
+                <PanelLeftOpen className="w-5 h-5 text-slate-400 hover:text-blue-400 transition-colors" />
+              </button>
             </div>
+          ) : (
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+              <Link
+                href="/dashboard"
+                className="flex items-center space-x-3 group min-w-0 overflow-hidden"
+                title="GitHub Monitoring Dashboard"
+              >
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20 group-hover:scale-105 transition-all shrink-0">
+                  <Github className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h1 className="font-bold text-white text-sm leading-tight truncate group-hover:text-blue-400 transition-colors">
+                    GitHub Monitoring
+                  </h1>
+                </div>
+              </Link>
 
-            {/* Sidebar Collapse Toggle Button */}
-            <button
-              type="button"
-              onClick={toggleSidebarCollapsed}
-              aria-label={isSidebarCollapsed ? 'Expand sidebar navigation' : 'Collapse sidebar navigation'}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
-              title={isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-            >
-              {isSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={toggleSidebarCollapsed}
+                aria-label="Collapse sidebar navigation"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/80 transition-colors shrink-0"
+                title="Collapse Sidebar"
+              >
+                <PanelLeftClose className="w-5 h-5 text-slate-400 hover:text-blue-400 transition-colors" />
+              </button>
+            </div>
+          )}
 
           {/* Grouped Navigation List */}
           <nav aria-label="Main sidebar navigation" className="p-3 space-y-4">
@@ -150,7 +172,7 @@ export default function Sidebar() {
                     <Link
                       key={item.href}
                       href={item.href}
-                      title={isSidebarCollapsed ? item.name : undefined}
+                      title={item.name}
                       onClick={() => sendTelemetryLog(`Clicked sidebar menu item '${item.name}'`, 'PAGE_NAVIGATION', { href: item.href })}
                       className={`flex items-center space-x-3 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                         isSidebarCollapsed ? 'justify-center px-2' : ''
@@ -174,29 +196,39 @@ export default function Sidebar() {
         <div className="p-3 border-t border-slate-800/80 shrink-0 relative" ref={menuRef}>
           {/* Options Popover Menu */}
           {isMenuOpen && (
-            <div className="absolute bottom-full left-3 right-3 mb-2 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-50 p-1 animate-in fade-in slide-in-from-bottom-2 duration-150">
+            <div
+              className={`absolute bottom-full mb-2 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-50 p-1 animate-in fade-in slide-in-from-bottom-2 duration-150 ${
+                isSidebarCollapsed ? 'left-1/2 -translate-x-1/2 flex flex-col items-center space-y-1 w-11' : 'left-3 right-3'
+              }`}
+            >
               <button
                 type="button"
                 onClick={() => {
                   setIsMenuOpen(false);
                   setIsProfileOpen(true);
                 }}
-                className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-200 hover:bg-blue-600/10 hover:text-blue-400 transition-colors"
+                title="See Profile"
+                className={`flex items-center rounded-lg text-xs font-medium text-slate-200 hover:bg-blue-600/10 hover:text-blue-400 transition-colors ${
+                  isSidebarCollapsed ? 'p-2 justify-center w-full' : 'w-full space-x-2.5 px-3 py-2'
+                }`}
               >
                 <User className="w-4 h-4 text-blue-400 shrink-0" />
-                <span>See Profile</span>
+                {!isSidebarCollapsed && <span>See Profile</span>}
               </button>
-              <div className="h-px bg-slate-800/80 my-1" />
+              <div className={`bg-slate-800/80 ${isSidebarCollapsed ? 'w-full h-px my-0.5' : 'h-px my-1'}`} />
               <button
                 type="button"
                 onClick={() => {
                   setIsMenuOpen(false);
                   logout();
                 }}
-                className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                title="Log Out"
+                className={`flex items-center rounded-lg text-xs font-medium text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors ${
+                  isSidebarCollapsed ? 'p-2 justify-center w-full' : 'w-full space-x-2.5 px-3 py-2'
+                }`}
               >
                 <LogOut className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>Log Out</span>
+                {!isSidebarCollapsed && <span>Log Out</span>}
               </button>
             </div>
           )}
@@ -204,10 +236,12 @@ export default function Sidebar() {
           {/* User Profile Card */}
           <div
             onClick={() => setIsMenuOpen((prev) => !prev)}
-            className="bg-slate-800/50 hover:bg-slate-800/80 cursor-pointer rounded-xl p-2.5 flex items-center justify-between border border-slate-700/50 hover:border-slate-600/60 transition-all group"
-            title="Click to view profile options"
+            className={`bg-slate-800/50 hover:bg-slate-800/80 cursor-pointer rounded-xl p-2.5 flex items-center justify-between border border-slate-700/50 hover:border-slate-600/60 transition-all group ${
+              isSidebarCollapsed ? 'justify-center p-2' : ''
+            }`}
+            title={isSidebarCollapsed ? `Profile: ${user?.name || 'Admin User'} (Click for options)` : 'Click to view profile options'}
           >
-            <div className="flex items-center space-x-2.5 min-w-0">
+            <div className={`flex items-center space-x-2.5 min-w-0 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
               {user?.avatarUrl ? (
                 <img
                   src={user.avatarUrl}

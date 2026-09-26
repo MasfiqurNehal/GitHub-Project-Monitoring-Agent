@@ -3,6 +3,7 @@ import { pool } from '../db/connection.js';
 export interface RepositoryRow {
   id: string;
   project_id: string | null;
+  organization_id?: string | null;
   github_repository_id: number | string;
   github_installation_id?: number | string | null;
   owner: string;
@@ -27,18 +28,49 @@ export interface RepositoryRow {
 }
 
 export class RepositoryRepository {
-  async findAll(): Promise<RepositoryRow[]> {
+  async findAll(organizationId?: string): Promise<RepositoryRow[]> {
+    if (organizationId) {
+      const res = await pool.query(
+        'SELECT * FROM repositories WHERE organization_id = $1 OR project_id IN (SELECT id FROM projects WHERE organization_id = $1) ORDER BY created_at DESC',
+        [organizationId]
+      );
+      return res.rows;
+    }
     const res = await pool.query('SELECT * FROM repositories ORDER BY created_at DESC');
     return res.rows;
   }
 
-  async findById(id: string): Promise<RepositoryRow | null> {
+  async findById(id: string, organizationId?: string): Promise<RepositoryRow | null> {
+    if (organizationId) {
+      const res = await pool.query(
+        'SELECT * FROM repositories WHERE id = $1 AND (organization_id = $2 OR project_id IN (SELECT id FROM projects WHERE organization_id = $2))',
+        [id, organizationId]
+      );
+      return res.rows[0] || null;
+    }
     const res = await pool.query('SELECT * FROM repositories WHERE id = $1', [id]);
     return res.rows[0] || null;
   }
 
-  async findByFullName(fullName: string): Promise<RepositoryRow | null> {
+  async findByFullName(fullName: string, organizationId?: string): Promise<RepositoryRow | null> {
+    if (organizationId) {
+      const res = await pool.query(
+        'SELECT * FROM repositories WHERE LOWER(full_name) = LOWER($1) AND (organization_id = $2 OR project_id IN (SELECT id FROM projects WHERE organization_id = $2))',
+        [fullName, organizationId]
+      );
+      return res.rows[0] || null;
+    }
     const res = await pool.query('SELECT * FROM repositories WHERE LOWER(full_name) = LOWER($1)', [fullName]);
+    return res.rows[0] || null;
+  }
+
+  async findByFullNameGlobal(fullName: string): Promise<RepositoryRow | null> {
+    const res = await pool.query('SELECT * FROM repositories WHERE LOWER(full_name) = LOWER($1)', [fullName]);
+    return res.rows[0] || null;
+  }
+
+  async findByGithubIdGlobal(githubRepositoryId: number | string): Promise<RepositoryRow | null> {
+    const res = await pool.query('SELECT * FROM repositories WHERE github_repository_id = $1', [githubRepositoryId]);
     return res.rows[0] || null;
   }
 
@@ -50,6 +82,7 @@ export class RepositoryRepository {
   async upsert(data: {
     id: string;
     projectId?: string | null;
+    organizationId?: string | null;
     githubRepositoryId: number | string;
     githubInstallationId?: number | string | null;
     owner: string;
@@ -70,18 +103,19 @@ export class RepositoryRepository {
   }): Promise<RepositoryRow> {
     const query = `
       INSERT INTO repositories (
-        id, project_id, github_repository_id, github_installation_id, owner, name, full_name,
+        id, project_id, organization_id, github_repository_id, github_installation_id, owner, name, full_name,
         html_url, clone_url, default_branch, visibility, is_private,
         description, language, stars, forks, open_issues_count,
         github_created_at, github_updated_at, sync_status, created_at, updated_at
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7,
-        $8, $9, $10, $11, $12,
-        $13, $14, $15, $16, $17,
-        $18, $19, 'PENDING', NOW(), NOW()
+        $1, $2, $3, $4, $5, $6, $7, $8,
+        $9, $10, $11, $12, $13,
+        $14, $15, $16, $17, $18,
+        $19, $20, 'PENDING', NOW(), NOW()
       )
       ON CONFLICT (full_name) DO UPDATE SET
         project_id = EXCLUDED.project_id,
+        organization_id = COALESCE(EXCLUDED.organization_id, repositories.organization_id),
         github_repository_id = EXCLUDED.github_repository_id,
         github_installation_id = EXCLUDED.github_installation_id,
         default_branch = EXCLUDED.default_branch,
@@ -98,6 +132,7 @@ export class RepositoryRepository {
     const values = [
       data.id,
       data.projectId || null,
+      data.organizationId || null,
       data.githubRepositoryId,
       data.githubInstallationId || null,
       data.owner,

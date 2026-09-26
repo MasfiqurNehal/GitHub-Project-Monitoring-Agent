@@ -169,6 +169,40 @@ export class GitHubClient {
     return response.data.filter((item) => !item.pull_request);
   }
 
+  async getBranches(owner: string, repo: string, page = 1, perPage = 100) {
+    const client = await this.getOctokit();
+    const response = await client.rest.repos.listBranches({
+      owner,
+      repo,
+      page,
+      per_page: perPage,
+    });
+    return response.data;
+  }
+
+  async getRepositoryMetadata(owner: string, repo: string) {
+    const client = await this.getOctokit();
+    const response = await client.rest.repos.get({ owner, repo });
+    return response.data;
+  }
+
+  async getRepoStats(owner: string, repo: string) {
+    const client = await this.getOctokit();
+    const [repoRes, languagesRes] = await Promise.all([
+      client.rest.repos.get({ owner, repo }),
+      client.rest.repos.listLanguages({ owner, repo }).catch(() => ({ data: {} })),
+    ]);
+    return {
+      stars: repoRes.data.stargazers_count,
+      forks: repoRes.data.forks_count,
+      openIssues: repoRes.data.open_issues_count,
+      subscribersCount: repoRes.data.subscribers_count,
+      size: repoRes.data.size,
+      languages: languagesRes.data,
+      defaultBranch: repoRes.data.default_branch,
+    };
+  }
+
   async getRateLimit() {
     const client = await this.getOctokit();
     const response = await client.rest.rateLimit.get();

@@ -6,8 +6,10 @@ import { repositoryRepository } from '../repositories/repository.repository.js';
 export async function listPullRequests(req: Request, res: Response, next: NextFunction) {
   try {
     const { repository, repositoryId, project, projectId, developer, developerId, state, date_from, date_to, page, limit, per_page } = req.query;
+    const orgId = (req as any).organizationId;
 
     const result = await pullRequestRepository.findPullRequests({
+      organizationId: orgId,
       repositoryId: (repository || repositoryId) as string,
       projectId: (project || projectId) as string,
       developerId: (developer || developerId) as string,
@@ -37,7 +39,8 @@ export async function listPullRequests(req: Request, res: Response, next: NextFu
 export async function getPullRequestDetail(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const detail = await pullRequestRepository.findDetailById(id);
+    const orgId = (req as any).organizationId;
+    const detail = await pullRequestRepository.findDetailById(id, orgId);
 
     if (!detail) {
       return res.status(404).json({ success: false, error: 'Pull Request not found' });
@@ -57,6 +60,7 @@ export async function getRepositoryPullRequests(req: Request, res: Response, nex
   try {
     const { id } = req.params;
     const { developer, state, date_from, date_to, page, limit, per_page } = req.query;
+    const orgId = (req as any).organizationId;
 
     let repo = await repositoryRepository.findById(id);
     if (!repo) {
@@ -68,6 +72,7 @@ export async function getRepositoryPullRequests(req: Request, res: Response, nex
     }
 
     const result = await pullRequestRepository.findPullRequests({
+      organizationId: orgId,
       repositoryId: repo.id,
       developerId: developer as string,
       state: state as string,

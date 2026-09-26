@@ -1,6 +1,7 @@
 import { pool } from '../db/connection.js';
 
 export interface CodeChurnFilters {
+  organizationId?: string;
   projectId?: string;
   repositoryId?: string;
   developerId?: string;
@@ -77,6 +78,12 @@ export class CodeChurnService {
     const conditions: string[] = [];
     const params: any[] = [];
     let pIdx = 1;
+
+    if (filters.organizationId) {
+      conditions.push(`(r.organization_id = $${pIdx} OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $${pIdx}))`);
+      params.push(filters.organizationId);
+      pIdx++;
+    }
 
     if (filters.repositoryId) {
       conditions.push(`(c.repository_id = $${pIdx} OR r.full_name = $${pIdx} OR r.name = $${pIdx})`);

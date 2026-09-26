@@ -10,7 +10,8 @@ import crypto from 'crypto';
 // 1. GET /api/repositories
 export async function listRepositories(req: Request, res: Response, next: NextFunction) {
   try {
-    const repos = await repositoryRepository.findAll();
+    const orgId = (req as any).organizationId;
+    const repos = await repositoryRepository.findAll(orgId);
     res.json({ success: true, data: repos });
   } catch (err) {
     next(err);
@@ -21,12 +22,13 @@ export async function listRepositories(req: Request, res: Response, next: NextFu
 export async function validateRepositoryUrl(req: Request, res: Response, next: NextFunction) {
   try {
     const { url, repositoryUrl } = req.body;
+    const orgId = (req as any).organizationId;
     const targetUrl = url || repositoryUrl;
     if (!targetUrl) {
       return res.status(400).json({ success: false, error: 'Repository URL is required' });
     }
 
-    const validated = await githubService.validateRepository(targetUrl);
+    const validated = await githubService.validateRepository(targetUrl, orgId);
     res.json({ success: true, data: validated });
   } catch (err: any) {
     logger.warn('REPOSITORIES', `Validation failed for repository URL '${req.body?.url || req.body?.repositoryUrl}': ${err.message}`);
@@ -38,16 +40,17 @@ export async function validateRepositoryUrl(req: Request, res: Response, next: N
 export async function addRepository(req: Request, res: Response, next: NextFunction) {
   try {
     const { repositoryUrl, url, projectName, projectId } = req.body;
+    const orgId = (req as any).organizationId;
     const targetUrl = repositoryUrl || url;
     if (!targetUrl) {
       return res.status(400).json({ success: false, error: 'Repository URL is required' });
     }
 
-    // Validate repository access & fetch GitHub metadata
-    const validated = await githubService.validateRepository(targetUrl);
+    // Validate repository access & fetch GitHub metadata with tenant context
+    const validated = await githubService.validateRepository(targetUrl, orgId);
 
     // Prevent duplicate repository connection
-    const existing = await repositoryRepository.findByFullName(validated.fullName);
+    const existing = await repositoryRepository.findByFullName(validated.fullName, orgId);
     if (existing) {
       logger.info('REPOSITORIES', `Prevented duplicate repository connection for '${validated.fullName}'`);
       return res.status(409).json({
@@ -61,10 +64,10 @@ export async function addRepository(req: Request, res: Response, next: NextFunct
     // Resolve or create associated project
     let targetProjectId = projectId;
     if (!targetProjectId && projectName) {
-      let prj = await projectRepository.findByName(projectName);
+      let prj = await projectRepository.findByName(projectName, orgId);
       if (!prj) {
         const prjId = `prj-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
-        prj = await projectRepository.create(prjId, projectName);
+        prj = await projectRepository.create(prjId, projectName, undefined, undefined, orgId);
       }
       targetProjectId = prj.id;
     }
@@ -73,6 +76,7 @@ export async function addRepository(req: Request, res: Response, next: NextFunct
     const repository = await repositoryRepository.upsert({
       id: repoId,
       projectId: targetProjectId || null,
+      organizationId: orgId || null,
       githubRepositoryId: validated.githubRepositoryId,
       owner: validated.owner,
       name: validated.name,
@@ -103,7 +107,11 @@ export async function addRepository(req: Request, res: Response, next: NextFunct
 export async function getRepositoryDetail(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const repo = await repositoryRepository.findById(id);
+    const orgId = (req as any).organizationId;
+    let repo = await repositoryRepository.findById(id, orgId);
+    if (!repo) {
+      repo = await repositoryRepository.findByFullName(id, orgId);
+    }
     if (!repo) {
       return res.status(404).json({ success: false, error: 'Repository not found' });
     }
@@ -131,18 +139,29 @@ export async function getRepositoryDetail(req: Request, res: Response, next: Nex
 export async function triggerRepositorySync(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const repo = await repositoryRepository.findById(id);
+    const orgId = (req as any).organizationId;
+    let repo = await repositoryRepository.findById(id, orgId);
+    if (!repo) {
+      repo = await repositoryRepository.findByFullName(id, orgId);
+    }
     if (!repo) {
       return res.status(404).json({ success: false, error: 'Repository not found' });
     }
 
-    syncService.runFullHistoricalSync(repo.id).catch((err) => {
-      logger.error('SYNC', `Manual sync error for ${repo.full_name}: ${err.message}`);
-    });
+    const syncResult = await syncService.runFullHistoricalSync(repo.id, orgId);
 
-    res.json({ success: true, message: `Historical synchronization initiated for ${repo.full_name}` });
-  } catch (err) {
-    next(err);
+    res.json({
+      success: true,
+      status: syncResult.status,
+      repository: syncResult.repository,
+      synchronized: syncResult.synchronized,
+      counts: syncResult.counts,
+      startedAt: syncResult.startedAt,
+      completedAt: syncResult.completedAt,
+    });
+  } catch (err: any) {
+    logger.error('SYNC', `Manual sync error for ${req.params.id}: ${err.message}`);
+    res.status(500).json({ success: false, error: err.message || 'Synchronization failed' });
   }
 }
 
@@ -150,7 +169,11 @@ export async function triggerRepositorySync(req: Request, res: Response, next: N
 export async function getSyncStatus(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const repo = await repositoryRepository.findById(id);
+    const orgId = (req as any).organizationId;
+    let repo = await repositoryRepository.findById(id, orgId);
+    if (!repo) {
+      repo = await repositoryRepository.findByFullName(id, orgId);
+    }
     if (!repo) {
       return res.status(404).json({ success: false, error: 'Repository not found' });
     }
@@ -186,12 +209,21 @@ export async function getSyncStatus(req: Request, res: Response, next: NextFunct
 export async function removeRepository(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const deleted = await repositoryRepository.delete(id);
+    const orgId = (req as any).organizationId;
+    let repo = await repositoryRepository.findById(id, orgId);
+    if (!repo) {
+      repo = await repositoryRepository.findByFullName(id, orgId);
+    }
+    if (!repo) {
+      return res.status(404).json({ success: false, error: 'Repository not found' });
+    }
+
+    const deleted = await repositoryRepository.delete(repo.id);
     if (!deleted) {
       return res.status(404).json({ success: false, error: 'Repository not found' });
     }
 
-    logger.info('REPOSITORIES', `Removed repository association ${id} from monitoring system (GitHub repository preserved)`);
+    logger.info('REPOSITORIES', `Removed repository association ${repo.id} from monitoring system (GitHub repository preserved)`);
 
     res.json({ success: true, message: 'Repository removed from monitoring system successfully' });
   } catch (err) {

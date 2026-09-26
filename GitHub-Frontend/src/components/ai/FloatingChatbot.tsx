@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { useLayout } from '../../providers/layout-provider';
 import { useAuth } from '../../context/AuthContext';
+import { sendEngineeringAgentMessage } from '../../lib/api/ai';
 import {
   Bot,
   X,
@@ -77,7 +78,7 @@ export default function FloatingChatbot() {
   const [isTyping, setIsTyping] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isHiddenPage = pathname === '/ai' || pathname === '/';
@@ -138,7 +139,12 @@ export default function FloatingChatbot() {
   const messages = activeSession ? activeSession.messages : [];
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
   };
 
   useEffect(() => {
@@ -225,7 +231,7 @@ export default function FloatingChatbot() {
     );
   };
 
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string) => {
     const text = (textToSend || inputText).trim();
     if (!text || isTyping) return;
 
@@ -251,8 +257,32 @@ export default function FloatingChatbot() {
       textareaRef.current.style.height = 'auto';
     }
 
-    // Simulate realistic 600ms AI typing response
-    setTimeout(() => {
+    try {
+      // 1. Invoke FastAPI AI Services endpoint (/api/v1/chatbot/chat)
+      const res = await sendEngineeringAgentMessage(activeSessionId, text);
+      const answerContent = res?.data?.content || generateMockResponse(text);
+
+      const botMsg: ChatMessage = {
+        id: res?.data?.id || `bot-${Date.now()}`,
+        sender: 'bot',
+        text: answerContent,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+
+      setSessions((prevSessions) =>
+        prevSessions.map((session) => {
+          if (session.id === activeSessionId) {
+            return {
+              ...session,
+              updatedAt: new Date().toISOString(),
+              messages: [...session.messages, botMsg],
+            };
+          }
+          return session;
+        })
+      );
+    } catch (err) {
+      console.warn('[FloatingChatbot] Live AI endpoint unavailable, using smart local fallback:', err);
       const responseText = generateMockResponse(text);
       const botMsg: ChatMessage = {
         id: `bot-${Date.now()}`,
@@ -273,8 +303,9 @@ export default function FloatingChatbot() {
           return session;
         })
       );
+    } finally {
       setIsTyping(false);
-    }, 600);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -348,27 +379,35 @@ export default function FloatingChatbot() {
 
   return (
     <>
-      {/* Floating Chatbot Trigger Button (Bottom-Right) */}
+      {/* Floating AI Logo Trigger Button (Bottom-Right) */}
       {!isAIChatOpen && (
         <button
           type="button"
           onClick={() => setAIChatOpen(true)}
-          aria-label="Open Chatbot Assistant"
-          className="fixed bottom-6 right-6 z-40 flex items-center space-x-2.5 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-full shadow-2xl shadow-blue-600/40 ring-2 ring-blue-400/30 hover:ring-blue-300 transition-all duration-300 hover:scale-105 active:scale-95 group cursor-pointer"
+          aria-label="GitMonitor AI Assistant"
+          title="GitMonitor AI Assistant"
+          className="fixed bottom-6 right-6 z-40 p-3.5 bg-gradient-to-tr from-blue-600 via-indigo-600 to-sky-500 hover:from-blue-500 hover:to-indigo-400 text-white rounded-2xl shadow-2xl shadow-blue-600/50 ring-2 ring-blue-400/40 hover:ring-blue-300 transition-all duration-300 hover:scale-110 active:scale-95 group cursor-pointer flex items-center justify-center"
         >
           <div className="relative flex items-center justify-center">
-            <Bot className="w-5 h-5 text-white group-hover:rotate-12 transition-transform duration-300" />
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full ring-2 ring-slate-900 animate-pulse" />
+            <Sparkles className="w-6 h-6 text-white group-hover:rotate-12 transition-transform duration-300 animate-pulse" />
+            <span className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-emerald-400 rounded-full ring-2 ring-slate-900 shadow-sm" />
           </div>
-          <span className="font-semibold text-xs tracking-wide">Chatbot</span>
         </button>
       )}
 
-      {/* Floating Chat Window Panel */}
+      {/* Right-Side Docked / Mobile Drawer AI Chat Window Panel */}
       {isAIChatOpen && (
-        <div className="fixed bottom-4 right-4 z-50 w-[calc(100vw-2rem)] sm:w-[440px] h-[calc(100vh-2rem)] max-h-[640px] bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
-          {/* Header */}
-          <div className="px-4 py-3 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between shrink-0">
+        <>
+          {/* Mobile Backdrop Overlay */}
+          <div
+            className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-40 lg:hidden animate-in fade-in duration-200"
+            onClick={() => setAIChatOpen(false)}
+          />
+
+          {/* Panel Container: Docked on desktop, drawer on mobile */}
+          <aside className="fixed inset-y-0 right-0 z-50 w-full sm:w-[420px] lg:static lg:z-30 lg:w-96 xl:w-[420px] 2xl:w-[440px] lg:h-screen lg:sticky lg:top-0 bg-slate-900/95 backdrop-blur-md border-l border-slate-800 shadow-2xl flex flex-col shrink-0 overflow-hidden transition-all duration-300 animate-in slide-in-from-right-4">
+            {/* Header */}
+            <div className="px-4 py-3 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between shrink-0">
             <div className="flex items-center space-x-2.5 min-w-0">
               <div className="relative p-2 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-md shrink-0">
                 <Bot className="w-4 h-4" />
@@ -422,7 +461,7 @@ export default function FloatingChatbot() {
               <button
                 type="button"
                 onClick={() => setAIChatOpen(false)}
-                title="Minimize Chatbot"
+                title="Close AI Assistant"
                 className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
               >
                 <X className="w-4 h-4" />
@@ -434,7 +473,7 @@ export default function FloatingChatbot() {
           {activeTab === 'chat' && (
             <>
               {/* Messages Stream */}
-              <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-950/40">
+              <div ref={messagesContainerRef} className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-950/40">
                 {/* Welcome Card feature shortcuts if no user messages yet */}
                 {userMessagesCount === 0 && (
                   <div className="p-3.5 rounded-xl bg-slate-800/40 border border-slate-700/50 space-y-3">
@@ -522,7 +561,6 @@ export default function FloatingChatbot() {
                     </div>
                   </div>
                 )}
-                <div ref={messagesEndRef} />
               </div>
 
               {/* Suggested Prompts */}
@@ -556,7 +594,7 @@ export default function FloatingChatbot() {
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Ask Chatbot a question..."
+                    placeholder="Ask AI Assistant a question..."
                     style={{ outline: 'none', boxShadow: 'none', border: 'none', resize: 'none' }}
                     className="flex-1 bg-transparent border-0 outline-none ring-0 text-xs text-slate-100 placeholder:text-slate-500 px-2 py-1 max-h-24 focus:outline-none focus:ring-0 focus:border-none focus-visible:outline-none focus-visible:ring-0"
                   />
@@ -713,8 +751,9 @@ export default function FloatingChatbot() {
               </div>
             </div>
           )}
-        </div>
-      )}
-    </>
-  );
+        </aside>
+      </>
+    )}
+  </>
+);
 }

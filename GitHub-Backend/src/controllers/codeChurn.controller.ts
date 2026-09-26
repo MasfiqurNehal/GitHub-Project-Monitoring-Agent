@@ -18,7 +18,10 @@ export async function getCodeChurnAnalysis(req: Request, res: Response, next: Ne
       limit,
     } = req.query;
 
+    const orgId = (req as any).organizationId;
+
     const filters: CodeChurnFilters = {
+      organizationId: orgId,
       projectId: (projectId || project) as string,
       repositoryId: (repositoryId || repository) as string,
       developerId: (developerId || developer) as string,

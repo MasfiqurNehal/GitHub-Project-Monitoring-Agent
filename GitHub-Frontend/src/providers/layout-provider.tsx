@@ -29,7 +29,7 @@ const LayoutContext = createContext<LayoutContextType>(defaultContextValue);
 export function LayoutProvider({ children }: { children: React.ReactNode }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isAIChatOpen, setIsAIChatOpen] = useState(false);
+  const [isAIChatOpen, setIsAIChatOpen] = useState(true);
 
   const toggleSidebarCollapsed = useCallback(() => {
     setIsSidebarCollapsed((prev) => !prev);

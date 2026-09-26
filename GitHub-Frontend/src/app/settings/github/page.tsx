@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Header from '../../../components/layout/header';
 import ChatDrawer from '../../../components/ai/chat-drawer';
 import { useGitHub } from '../../../hooks/use-github';
@@ -22,12 +23,44 @@ import {
   Loader2,
   Building2,
   UserCheck,
+  Database,
+  Clock,
 } from 'lucide-react';
 import Link from 'next/link';
 
-export default function GitHubSettingsPage() {
+function GitHubSettingsContent() {
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [urlMessage, setUrlMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
+
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const connected = searchParams.get('connected');
+    const error = searchParams.get('error');
+
+    if (connected === 'true') {
+      setUrlMessage({
+        type: 'success',
+        text: 'GitMonitor AI GitHub App connected successfully!',
+      });
+    } else if (error) {
+      let errorMessage = 'An error occurred during GitHub connection.';
+      if (error === 'cancelled' || error === 'denied' || error === 'access_denied') {
+        errorMessage = 'GitHub App installation was cancelled or authorization was denied.';
+      } else if (error === 'invalid_state') {
+        errorMessage = 'Security validation failed (invalid state token). Please try connecting again.';
+      } else if (error === 'installation_failed' || error === 'invalid_installation') {
+        errorMessage = 'Failed to verify GitHub installation. Please try again.';
+      } else if (error === 'expired_session' || error === 'unauthorized') {
+        errorMessage = 'Your session expired during GitHub installation. Please log in again.';
+      } else if (error === 'github_api_error') {
+        errorMessage = 'GitHub API error occurred during installation.';
+      }
+      setUrlMessage({ type: 'error', text: errorMessage });
+    }
+  }, [searchParams]);
 
   const {
     accountInfo,
@@ -53,6 +86,17 @@ export default function GitHubSettingsPage() {
     removeRepo,
   } = useGitHub();
 
+  const handleConnect = async () => {
+    setConnectError(null);
+    try {
+      await connectAccount();
+    } catch (err: any) {
+      setConnectError(
+        err.message || 'Failed to initiate GitHub App connection. Please verify your backend server connection.'
+      );
+    }
+  };
+
   const handleSyncRepo = async (id: string) => {
     setSyncingId(id);
     try {
@@ -75,6 +119,48 @@ export default function GitHubSettingsPage() {
             Manage connected GitHub organization accounts, validate public/private codebases, and monitor repository activity.
           </p>
         </div>
+
+        {/* URL Banner Message (Success / Error) */}
+        {urlMessage && (
+          <div
+            className={`p-4 rounded-xl border text-xs flex items-center justify-between transition-all ${
+              urlMessage.type === 'success'
+                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                : 'bg-rose-500/10 border-rose-500/20 text-rose-300'
+            }`}
+          >
+            <div className="flex items-center space-x-2">
+              {urlMessage.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              )}
+              <span className="font-medium">{urlMessage.text}</span>
+            </div>
+            <button
+              onClick={() => setUrlMessage(null)}
+              className="text-slate-400 hover:text-white transition-colors text-base font-bold px-1"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        {/* Connection Failure Error Banner */}
+        {connectError && (
+          <div className="p-4 rounded-xl border bg-rose-500/10 border-rose-500/20 text-rose-300 text-xs flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span className="font-medium">{connectError}</span>
+            </div>
+            <button
+              onClick={() => setConnectError(null)}
+              className="text-slate-400 hover:text-white transition-colors text-base font-bold px-1"
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         {/* 1. GitHub Account Section */}
         <div className="bg-slate-900/80 border border-slate-800 p-6 rounded-2xl space-y-5">
@@ -104,8 +190,8 @@ export default function GitHubSettingsPage() {
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">
                   {accountInfo.isConnected
-                    ? `Connected as @${accountInfo.username || 'user'} (${accountInfo.organization || 'BetopiaLtd'})`
-                    : 'GitHub Connection Required to sync private and public repositories.'}
+                    ? `Connected as @${accountInfo.username || accountInfo.githubAccount?.login || 'user'} (${accountInfo.organization || 'BetopiaLtd'})`
+                    : 'GitHub App Connection Required to sync private and public repositories.'}
                 </p>
               </div>
             </div>
@@ -121,38 +207,58 @@ export default function GitHubSettingsPage() {
                 </button>
               ) : (
                 <button
-                  onClick={() => connectAccount()}
+                  onClick={handleConnect}
                   disabled={isConnecting}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-md transition-colors disabled:opacity-40 flex items-center space-x-2"
                 >
-                  <Link2 className="w-4 h-4" />
-                  <span>{isConnecting ? 'Connecting...' : 'Connect GitHub Account'}</span>
+                  {isConnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+                  <span>{isConnecting ? 'Redirecting to GitHub...' : 'Connect GitHub Account'}</span>
                 </button>
               )}
             </div>
           </div>
 
           {accountInfo.isConnected && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1 text-xs">
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center space-x-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1 text-xs">
+              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex items-center space-x-3">
                 <UserCheck className="w-4 h-4 text-blue-400 shrink-0" />
-                <div>
-                  <span className="text-slate-500 text-[10px] uppercase font-semibold block">GitHub User</span>
-                  <span className="font-semibold text-slate-200">@{accountInfo.username || 'betopia-lead'}</span>
+                <div className="min-w-0">
+                  <span className="text-slate-500 text-[10px] uppercase font-semibold block">GitHub Account</span>
+                  <span className="font-semibold text-slate-200 truncate block">
+                    @{accountInfo.username || accountInfo.githubAccount?.login || accountInfo.name || 'user'}
+                  </span>
                 </div>
               </div>
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center space-x-3">
+
+              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex items-center space-x-3">
                 <Building2 className="w-4 h-4 text-amber-400 shrink-0" />
-                <div>
+                <div className="min-w-0">
                   <span className="text-slate-500 text-[10px] uppercase font-semibold block">Organization</span>
-                  <span className="font-semibold text-slate-200">{accountInfo.organization || 'BetopiaLtd'}</span>
+                  <span className="font-semibold text-slate-200 truncate block">
+                    {accountInfo.organization || accountInfo.githubAccount?.type || 'Personal Account'}
+                  </span>
                 </div>
               </div>
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center space-x-3">
-                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                <div>
-                  <span className="text-slate-500 text-[10px] uppercase font-semibold block">OAuth Scopes</span>
-                  <span className="font-semibold text-slate-200">repo:read, read:org</span>
+
+              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex items-center space-x-3">
+                <Database className="w-4 h-4 text-emerald-400 shrink-0" />
+                <div className="min-w-0">
+                  <span className="text-slate-500 text-[10px] uppercase font-semibold block">Repository Access</span>
+                  <span className="font-semibold text-slate-200 block">
+                    {accountInfo.accessibleRepositoryCount ?? monitoredRepos.length} Repositories
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex items-center space-x-3">
+                <Clock className="w-4 h-4 text-purple-400 shrink-0" />
+                <div className="min-w-0">
+                  <span className="text-slate-500 text-[10px] uppercase font-semibold block">Last Sync</span>
+                  <span className="font-semibold text-slate-200 truncate block">
+                    {accountInfo.lastSynchronization
+                      ? new Date(accountInfo.lastSynchronization).toLocaleString()
+                      : 'Not synced yet'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -358,5 +464,13 @@ export default function GitHubSettingsPage() {
 
       <ChatDrawer isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} />
     </div>
+  );
+}
+
+export default function GitHubSettingsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 p-6 text-slate-400">Loading GitHub connection settings...</div>}>
+      <GitHubSettingsContent />
+    </Suspense>
   );
 }

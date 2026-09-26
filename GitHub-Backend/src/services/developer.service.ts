@@ -12,63 +12,66 @@ export class DeveloperService {
 
     const developerId = dev.id;
 
-    // Fetch associated projects
-    const projectsRes = await pool.query(
-      `SELECT DISTINCT p.id, p.name FROM projects p
-       JOIN repositories r ON r.project_id = p.id
-       JOIN repository_developers rd ON rd.repository_id = r.id
-       WHERE rd.developer_id = $1`,
-      [developerId]
-    );
-
-    // Fetch associated repositories
-    const reposRes = await pool.query(
-      `SELECT DISTINCT r.id, r.name, r.full_name FROM repositories r
-       JOIN repository_developers rd ON rd.repository_id = r.id
-       WHERE rd.developer_id = $1`,
-      [developerId]
-    );
-
-    const metrics = await developerRepository.getMetricsForDeveloper(developerId, dateFrom, dateTo);
-
-    const prStatsRes = await pool.query(
-      `SELECT 
-        COUNT(*) as total_prs,
-        COUNT(*) FILTER (WHERE UPPER(state) = 'OPEN') as open_prs,
-        COUNT(*) FILTER (WHERE UPPER(state) = 'MERGED' OR merged = true) as merged_prs,
-        COUNT(*) FILTER (WHERE UPPER(state) = 'CLOSED' AND merged = false) as closed_prs
-       FROM pull_requests WHERE author_developer_id = $1`,
-      [developerId]
-    );
-
-    const reviewStatsRes = await pool.query(
-      `SELECT 
-        COUNT(*) as total_reviews,
-        COUNT(*) FILTER (WHERE UPPER(state) = 'APPROVED') as approved,
-        COUNT(*) FILTER (WHERE UPPER(state) = 'CHANGES_REQUESTED') as changes_requested,
-        COUNT(*) FILTER (WHERE UPPER(state) = 'COMMENTED') as commented
-       FROM pull_request_reviews WHERE reviewer_developer_id = $1`,
-      [developerId]
-    );
-
-    const issueStatsRes = await pool.query(
-      `SELECT 
-        COUNT(*) as total_issues,
-        COUNT(*) FILTER (WHERE UPPER(state) = 'OPEN') as open_issues,
-        COUNT(*) FILTER (WHERE UPPER(state) = 'CLOSED') as closed_issues
-       FROM issues WHERE author_developer_id = $1`,
-      [developerId]
-    );
-
-    const timelineRes = await pool.query(
-      `SELECT ae.id, ae.occurred_at, ae.event_type, ae.metadata, r.name as repo_name
-       FROM activity_events ae
-       LEFT JOIN repositories r ON ae.repository_id = r.id
-       WHERE ae.developer_id = $1
-       ORDER BY ae.occurred_at DESC
-       LIMIT 50`,
-      [developerId]
-    );
+    // Execute all developer queries concurrently with Promise.all for maximum speed
+    const [
+      projectsRes,
+      reposRes,
+      metrics,
+      prStatsRes,
+      reviewStatsRes,
+      issueStatsRes,
+      timelineRes,
+    ] = await Promise.all([
+      pool.query(
+        `SELECT DISTINCT p.id, p.name FROM projects p
+         JOIN repositories r ON r.project_id = p.id
+         JOIN repository_developers rd ON rd.repository_id = r.id
+         WHERE rd.developer_id = $1`,
+        [developerId]
+      ),
+      pool.query(
+        `SELECT DISTINCT r.id, r.name, r.full_name FROM repositories r
+         JOIN repository_developers rd ON rd.repository_id = r.id
+         WHERE rd.developer_id = $1`,
+        [developerId]
+      ),
+      developerRepository.getMetricsForDeveloper(developerId, dateFrom, dateTo),
+      pool.query(
+        `SELECT 
+          COUNT(*) as total_prs,
+          COUNT(*) FILTER (WHERE UPPER(state) = 'OPEN') as open_prs,
+          COUNT(*) FILTER (WHERE UPPER(state) = 'MERGED' OR merged = true) as merged_prs,
+          COUNT(*) FILTER (WHERE UPPER(state) = 'CLOSED' AND merged = false) as closed_prs
+         FROM pull_requests WHERE author_developer_id = $1`,
+        [developerId]
+      ),
+      pool.query(
+        `SELECT 
+          COUNT(*) as total_reviews,
+          COUNT(*) FILTER (WHERE UPPER(state) = 'APPROVED') as approved,
+          COUNT(*) FILTER (WHERE UPPER(state) = 'CHANGES_REQUESTED') as changes_requested,
+          COUNT(*) FILTER (WHERE UPPER(state) = 'COMMENTED') as commented
+         FROM pull_request_reviews WHERE reviewer_developer_id = $1`,
+        [developerId]
+      ),
+      pool.query(
+        `SELECT 
+          COUNT(*) as total_issues,
+          COUNT(*) FILTER (WHERE UPPER(state) = 'OPEN') as open_issues,
+          COUNT(*) FILTER (WHERE UPPER(state) = 'CLOSED') as closed_issues
+         FROM issues WHERE author_developer_id = $1`,
+        [developerId]
+      ),
+      pool.query(
+        `SELECT ae.id, ae.occurred_at, ae.event_type, ae.metadata, r.name as repo_name
+         FROM activity_events ae
+         LEFT JOIN repositories r ON ae.repository_id = r.id
+         WHERE ae.developer_id = $1
+         ORDER BY ae.occurred_at DESC
+         LIMIT 50`,
+        [developerId]
+      ),
+    ]);
 
     return {
       developer: {
@@ -138,6 +141,7 @@ export class DeveloperService {
   async getFactualDeveloperAnalytics(
     developerIdOrLogin: string,
     filters: {
+      organizationId?: string;
       dateFrom?: string;
       dateTo?: string;
       repositoryId?: string;
@@ -166,6 +170,11 @@ export class DeveloperService {
     let commitWhere = 'WHERE (c.developer_id = $1)';
     let pIdx = 2;
 
+    if (filters.organizationId) {
+      commitWhere += ` AND (r.organization_id = $${pIdx} OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $${pIdx}))`;
+      commitParams.push(filters.organizationId);
+      pIdx++;
+    }
     if (filters.repositoryId) {
       commitWhere += ` AND (c.repository_id = $${pIdx} OR r.full_name = $${pIdx} OR r.name = $${pIdx})`;
       commitParams.push(filters.repositoryId);
@@ -187,129 +196,146 @@ export class DeveloperService {
       pIdx++;
     }
 
-    const commitRes = await pool.query(
-      `SELECT 
-        COUNT(*) as commits,
-        COALESCE(SUM(c.additions), 0) as additions,
-        COALESCE(SUM(c.deletions), 0) as deletions,
-        COALESCE(SUM(c.changed_files), 0) as changed_files
-       FROM commits c
-       JOIN repositories r ON r.id = c.repository_id
-       ${commitWhere}`,
-      commitParams
-    );
-
-    // 2. PR metrics
+    // 2. PR metrics parameters
     const prParams: any[] = [developerId];
     let prWhere = 'WHERE pr.author_developer_id = $1';
-    pIdx = 2;
+    let prIdx = 2;
+
+    if (filters.organizationId) {
+      prWhere += ` AND (r.organization_id = $${prIdx} OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $${prIdx}))`;
+      prParams.push(filters.organizationId);
+      prIdx++;
+    }
     if (filters.repositoryId) {
-      prWhere += ` AND (pr.repository_id = $${pIdx} OR r.full_name = $${pIdx} OR r.name = $${pIdx})`;
+      prWhere += ` AND (pr.repository_id = $${prIdx} OR r.full_name = $${prIdx} OR r.name = $${prIdx})`;
       prParams.push(filters.repositoryId);
-      pIdx++;
+      prIdx++;
     }
     if (filters.projectId) {
-      prWhere += ` AND r.project_id = $${pIdx}`;
+      prWhere += ` AND r.project_id = $${prIdx}`;
       prParams.push(filters.projectId);
-      pIdx++;
+      prIdx++;
     }
     if (dFrom) {
-      prWhere += ` AND pr.created_at >= $${pIdx}`;
+      prWhere += ` AND pr.created_at >= $${prIdx}`;
       prParams.push(dFrom);
-      pIdx++;
+      prIdx++;
     }
     if (dTo) {
-      prWhere += ` AND pr.created_at <= $${pIdx}`;
+      prWhere += ` AND pr.created_at <= $${prIdx}`;
       prParams.push(dTo);
-      pIdx++;
+      prIdx++;
     }
 
-    const prRes = await pool.query(
-      `SELECT 
-        COUNT(*) as pull_requests,
-        COUNT(*) FILTER (WHERE pr.merged = true OR UPPER(pr.state) = 'MERGED') as merged_prs
-       FROM pull_requests pr
-       JOIN repositories r ON r.id = pr.repository_id
-       ${prWhere}`,
-      prParams
-    );
-
-    // 3. Review metrics
+    // 3. Review metrics parameters
     const reviewParams: any[] = [developerId];
     let reviewWhere = 'WHERE prr.reviewer_developer_id = $1';
-    pIdx = 2;
+    let revIdx = 2;
+
+    if (filters.organizationId) {
+      reviewWhere += ` AND (r.organization_id = $${revIdx} OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $${revIdx}))`;
+      reviewParams.push(filters.organizationId);
+      revIdx++;
+    }
     if (filters.repositoryId) {
-      reviewWhere += ` AND (pr.repository_id = $${pIdx} OR r.full_name = $${pIdx} OR r.name = $${pIdx})`;
+      reviewWhere += ` AND (pr.repository_id = $${revIdx} OR r.full_name = $${revIdx} OR r.name = $${revIdx})`;
       reviewParams.push(filters.repositoryId);
-      pIdx++;
+      revIdx++;
     }
     if (filters.projectId) {
-      reviewWhere += ` AND r.project_id = $${pIdx}`;
+      reviewWhere += ` AND r.project_id = $${revIdx}`;
       reviewParams.push(filters.projectId);
-      pIdx++;
+      revIdx++;
     }
     if (dFrom) {
-      reviewWhere += ` AND prr.submitted_at >= $${pIdx}`;
+      reviewWhere += ` AND prr.submitted_at >= $${revIdx}`;
       reviewParams.push(dFrom);
-      pIdx++;
+      revIdx++;
     }
     if (dTo) {
-      reviewWhere += ` AND prr.submitted_at <= $${pIdx}`;
+      reviewWhere += ` AND prr.submitted_at <= $${revIdx}`;
       reviewParams.push(dTo);
-      pIdx++;
+      revIdx++;
     }
 
-    const reviewRes = await pool.query(
-      `SELECT COUNT(*) as reviews
-       FROM pull_request_reviews prr
-       JOIN pull_requests pr ON pr.id = prr.pull_request_id
-       JOIN repositories r ON r.id = pr.repository_id
-       ${reviewWhere}`,
-      reviewParams
-    );
-
-    // 4. Issue metrics
+    // 4. Issue metrics parameters
     const issueParams: any[] = [developerId];
     let issueWhere = 'WHERE i.author_developer_id = $1';
-    pIdx = 2;
+    let issIdx = 2;
+
+    if (filters.organizationId) {
+      issueWhere += ` AND (r.organization_id = $${issIdx} OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $${issIdx}))`;
+      issueParams.push(filters.organizationId);
+      issIdx++;
+    }
     if (filters.repositoryId) {
-      issueWhere += ` AND (i.repository_id = $${pIdx} OR r.full_name = $${pIdx} OR r.name = $${pIdx})`;
+      issueWhere += ` AND (i.repository_id = $${issIdx} OR r.full_name = $${issIdx} OR r.name = $${issIdx})`;
       issueParams.push(filters.repositoryId);
-      pIdx++;
+      issIdx++;
     }
     if (filters.projectId) {
-      issueWhere += ` AND r.project_id = $${pIdx}`;
+      issueWhere += ` AND r.project_id = $${issIdx}`;
       issueParams.push(filters.projectId);
-      pIdx++;
+      issIdx++;
     }
     if (dFrom) {
-      issueWhere += ` AND i.created_at >= $${pIdx}`;
+      issueWhere += ` AND i.created_at >= $${issIdx}`;
       issueParams.push(dFrom);
-      pIdx++;
+      issIdx++;
     }
     if (dTo) {
-      issueWhere += ` AND i.created_at <= $${pIdx}`;
+      issueWhere += ` AND i.created_at <= $${issIdx}`;
       issueParams.push(dTo);
-      pIdx++;
+      issIdx++;
     }
 
-    const issueRes = await pool.query(
-      `SELECT COUNT(*) as issues
-       FROM issues i
-       JOIN repositories r ON r.id = i.repository_id
-       ${issueWhere}`,
-      issueParams
-    );
-
-    // 5. Activity Timeline
-    const timelineResult = await activityRepository.findActivityFeed({
-      developerId,
-      repositoryId: filters.repositoryId,
-      projectId: filters.projectId,
-      from: dFrom,
-      to: dTo,
-      limit: 100,
-    });
+    // Execute all factual analytics queries concurrently with Promise.all
+    const [commitRes, prRes, reviewRes, issueRes, timelineResult] = await Promise.all([
+      pool.query(
+        `SELECT 
+          COUNT(*) as commits,
+          COALESCE(SUM(c.additions), 0) as additions,
+          COALESCE(SUM(c.deletions), 0) as deletions,
+          COALESCE(SUM(c.changed_files), 0) as changed_files
+         FROM commits c
+         JOIN repositories r ON r.id = c.repository_id
+         ${commitWhere}`,
+        commitParams
+      ),
+      pool.query(
+        `SELECT 
+          COUNT(*) as pull_requests,
+          COUNT(*) FILTER (WHERE pr.merged = true OR UPPER(pr.state) = 'MERGED') as merged_prs
+         FROM pull_requests pr
+         JOIN repositories r ON r.id = pr.repository_id
+         ${prWhere}`,
+        prParams
+      ),
+      pool.query(
+        `SELECT COUNT(*) as reviews
+         FROM pull_request_reviews prr
+         JOIN pull_requests pr ON pr.id = prr.pull_request_id
+         JOIN repositories r ON r.id = pr.repository_id
+         ${reviewWhere}`,
+        reviewParams
+      ),
+      pool.query(
+        `SELECT COUNT(*) as issues
+         FROM issues i
+         JOIN repositories r ON r.id = i.repository_id
+         ${issueWhere}`,
+        issueParams
+      ),
+      activityRepository.findActivityFeed({
+        organizationId: filters.organizationId,
+        developerId,
+        repositoryId: filters.repositoryId,
+        projectId: filters.projectId,
+        from: dFrom,
+        to: dTo,
+        limit: 100,
+      }),
+    ]);
 
     const cRow = commitRes.rows[0] || {};
     const prRow = prRes.rows[0] || {};

@@ -45,7 +45,11 @@ export class ProjectRepository {
     }));
   }
 
-  async findById(id: string): Promise<ProjectRow | null> {
+  async findById(id: string, organizationId?: string): Promise<ProjectRow | null> {
+    if (organizationId) {
+      const res = await pool.query('SELECT * FROM projects WHERE id = $1 AND organization_id = $2', [id, organizationId]);
+      return res.rows[0] || null;
+    }
     const res = await pool.query('SELECT * FROM projects WHERE id = $1', [id]);
     return res.rows[0] || null;
   }
@@ -64,13 +68,13 @@ export class ProjectRepository {
       `INSERT INTO projects (id, name, description, organization, organization_id, status, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, 'ACTIVE', NOW(), NOW())
        RETURNING *`,
-      [id, name, description || null, organization || null, organizationId || 'org-masfiqurnehal']
+      [id, name, description || null, organization || null, organizationId || null]
     );
     return res.rows[0];
   }
 
-  async update(id: string, data: { name?: string; description?: string; organization?: string; status?: string }): Promise<ProjectRow | null> {
-    const current = await this.findById(id);
+  async update(id: string, data: { name?: string; description?: string; organization?: string; status?: string }, organizationId?: string): Promise<ProjectRow | null> {
+    const current = await this.findById(id, organizationId);
     if (!current) return null;
 
     const name = data.name !== undefined ? data.name : current.name;
@@ -78,23 +82,37 @@ export class ProjectRepository {
     const organization = data.organization !== undefined ? data.organization : current.organization;
     const status = data.status !== undefined ? data.status : current.status;
 
-    const res = await pool.query(
-      `UPDATE projects 
-       SET name = $1, description = $2, organization = $3, status = $4, updated_at = NOW()
-       WHERE id = $5
-       RETURNING *`,
-      [name, description, organization, status, id]
-    );
+    let query = `UPDATE projects SET name = $1, description = $2, organization = $3, status = $4, updated_at = NOW() WHERE id = $5`;
+    const params: any[] = [name, description, organization, status, id];
+
+    if (organizationId) {
+      query += ` AND organization_id = $6`;
+      params.push(organizationId);
+    }
+    query += ` RETURNING *`;
+
+    const res = await pool.query(query, params);
     return res.rows[0] || null;
   }
 
-  async delete(id: string): Promise<boolean> {
+  async delete(id: string, organizationId?: string): Promise<boolean> {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      const project = await this.findById(id, organizationId);
+      if (!project) {
+        await client.query('ROLLBACK');
+        return false;
+      }
       // Set project_id = NULL on linked repositories to preserve monitoring records and GitHub repositories
       await client.query('UPDATE repositories SET project_id = NULL WHERE project_id = $1', [id]);
-      const res = await client.query('DELETE FROM projects WHERE id = $1', [id]);
+      let delQuery = 'DELETE FROM projects WHERE id = $1';
+      const delParams: any[] = [id];
+      if (organizationId) {
+        delQuery += ' AND organization_id = $2';
+        delParams.push(organizationId);
+      }
+      const res = await client.query(delQuery, delParams);
       await client.query('COMMIT');
       return (res.rowCount || 0) > 0;
     } catch (err) {

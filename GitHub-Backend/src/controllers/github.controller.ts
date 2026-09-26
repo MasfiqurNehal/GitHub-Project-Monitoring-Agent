@@ -7,12 +7,13 @@ import { config } from '../config/index.js';
 export async function validateRepository(req: Request, res: Response, next: NextFunction) {
   try {
     const { url, repositoryUrl } = req.body;
+    const orgId = (req as any).organizationId;
     const targetUrl = url || repositoryUrl;
     if (!targetUrl) {
       return res.status(400).json({ success: false, error: 'Repository URL is required' });
     }
 
-    const data = await githubService.validateRepository(targetUrl);
+    const data = await githubService.validateRepository(targetUrl, orgId);
     res.json({ success: true, data });
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message || 'Validation failed' });
@@ -22,7 +23,8 @@ export async function validateRepository(req: Request, res: Response, next: Next
 export async function getGitHubStatus(req: Request, res: Response, next: NextFunction) {
   try {
     const isAppConfigured = githubAppService.isAppConfigured();
-    const installations = await githubInstallationRepository.findAll();
+    const orgId = (req as any).organizationId;
+    const installations = await githubInstallationRepository.findAll(orgId);
 
     res.json({
       success: true,
@@ -43,7 +45,8 @@ export async function getGitHubStatus(req: Request, res: Response, next: NextFun
 
 export async function listInstallations(req: Request, res: Response, next: NextFunction) {
   try {
-    const installations = await githubInstallationRepository.findAll();
+    const orgId = (req as any).organizationId;
+    const installations = await githubInstallationRepository.findAll(orgId);
     res.json({ success: true, data: installations });
   } catch (err) {
     next(err);
@@ -53,7 +56,8 @@ export async function listInstallations(req: Request, res: Response, next: NextF
 export async function getInstallationDetail(req: Request, res: Response, next: NextFunction) {
   try {
     const { installationId } = req.params;
-    const inst = await githubInstallationRepository.findByInstallationId(parseInt(installationId, 10));
+    const orgId = (req as any).organizationId;
+    const inst = await githubInstallationRepository.findByInstallationId(parseInt(installationId, 10), orgId);
     if (!inst) {
       return res.status(404).json({ success: false, error: `GitHub Installation ${installationId} not found` });
     }

@@ -24,7 +24,20 @@ export interface DeveloperMetrics {
 }
 
 export class DeveloperRepository {
-  async findAll(): Promise<DeveloperRow[]> {
+  async findAll(organizationId?: string): Promise<DeveloperRow[]> {
+    if (organizationId) {
+      const res = await pool.query(
+        `SELECT * FROM developers 
+         WHERE organization_id = $1 OR id IN (
+           SELECT DISTINCT rd.developer_id FROM repository_developers rd
+           JOIN repositories r ON r.id = rd.repository_id
+           WHERE r.organization_id = $1 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $1)
+         )
+         ORDER BY login ASC`,
+        [organizationId]
+      );
+      return res.rows;
+    }
     const res = await pool.query('SELECT * FROM developers ORDER BY login ASC');
     return res.rows;
   }
@@ -41,6 +54,7 @@ export class DeveloperRepository {
 
   async upsert(data: {
     id: string;
+    organizationId?: string | null;
     githubUserId?: number | string | null;
     login: string;
     name?: string | null;
@@ -50,9 +64,10 @@ export class DeveloperRepository {
     type?: string;
   }): Promise<DeveloperRow> {
     const query = `
-      INSERT INTO developers (id, github_user_id, login, name, avatar_url, html_url, email, type, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+      INSERT INTO developers (id, organization_id, github_user_id, login, name, avatar_url, html_url, email, type, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
       ON CONFLICT (login) DO UPDATE SET
+        organization_id = COALESCE(EXCLUDED.organization_id, developers.organization_id),
         github_user_id = COALESCE(EXCLUDED.github_user_id, developers.github_user_id),
         name = COALESCE(EXCLUDED.name, developers.name),
         avatar_url = COALESCE(EXCLUDED.avatar_url, developers.avatar_url),
@@ -64,6 +79,7 @@ export class DeveloperRepository {
 
     const values = [
       data.id,
+      data.organizationId || null,
       data.githubUserId || null,
       data.login,
       data.name || null,
@@ -163,15 +179,29 @@ export class DeveloperRepository {
     };
   }
 
-  async findWithMetrics(options: { dateFrom?: string; dateTo?: string; page?: number; limit?: number }) {
+  async findWithMetrics(options: { organizationId?: string; dateFrom?: string; dateTo?: string; page?: number; limit?: number }) {
     const page = Math.max(1, Number(options.page) || 1);
     const limit = Math.max(1, Math.min(100, Number(options.limit) || 20));
     const offset = (page - 1) * limit;
 
-    const countRes = await pool.query('SELECT COUNT(*) FROM developers');
+    const whereClause = options.organizationId
+      ? `WHERE organization_id = $1 OR id IN (
+           SELECT DISTINCT rd.developer_id FROM repository_developers rd
+           JOIN repositories r ON r.id = rd.repository_id
+           WHERE r.organization_id = $1 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $1)
+         )`
+      : '';
+    const params = options.organizationId ? [options.organizationId] : [];
+
+    const countRes = await pool.query(`SELECT COUNT(*) FROM developers ${whereClause}`, params);
     const total = parseInt(countRes.rows[0].count, 10);
 
-    const devRes = await pool.query('SELECT * FROM developers ORDER BY login ASC LIMIT $1 OFFSET $2', [limit, offset]);
+    const devQuery = options.organizationId
+      ? `SELECT * FROM developers ${whereClause} ORDER BY login ASC LIMIT $2 OFFSET $3`
+      : `SELECT * FROM developers ORDER BY login ASC LIMIT $1 OFFSET $2`;
+    const devParams = options.organizationId ? [options.organizationId, limit, offset] : [limit, offset];
+
+    const devRes = await pool.query(devQuery, devParams);
     const developers = devRes.rows;
 
     const results = [];

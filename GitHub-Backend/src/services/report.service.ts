@@ -11,6 +11,7 @@ export interface ReportFilters {
   projectId?: string;
   repositoryId?: string;
   developerId?: string;
+  organizationId?: string;
 }
 
 export interface ReportMetadata {
@@ -183,6 +184,12 @@ export class ReportService {
     params.push(dTo);
     pIdx++;
 
+    if (filters.organizationId) {
+      whereConditions.push(`(r.organization_id = $${pIdx} OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $${pIdx}))`);
+      params.push(filters.organizationId);
+      pIdx++;
+    }
+
     if (filters.projectId || scope.projectId) {
       whereConditions.push(`r.project_id = $${pIdx}`);
       params.push(filters.projectId || scope.projectId);
@@ -217,58 +224,211 @@ export class ReportService {
       .replace(/c\.developer_id/g, 'prr.reviewer_developer_id')
       .replace(/c\./g, 'prr.');
 
-    // 1. Commits Summary Query
-    const commitsRes = await pool.query(
-      `SELECT 
-        COUNT(*) as total_commits,
-        COALESCE(SUM(c.additions), 0) as total_additions,
-        COALESCE(SUM(c.deletions), 0) as total_deletions,
-        COUNT(DISTINCT c.developer_id) as active_devs,
-        COUNT(DISTINCT c.repository_id) as active_repos
-       FROM commits c
-       JOIN repositories r ON c.repository_id = r.id
-       LEFT JOIN developers d ON c.developer_id = d.id
-       ${commitWhereSql}`,
-      params
-    );
-
-    // 2. PRs Summary Query
-    const prsRes = await pool.query(
-      `SELECT 
-        COUNT(*) as total_prs,
-        COUNT(*) FILTER (WHERE pr.merged = true OR UPPER(pr.state) = 'MERGED') as merged_prs,
-        COUNT(*) FILTER (WHERE UPPER(pr.state) = 'OPEN') as open_prs
-       FROM pull_requests pr
-       JOIN repositories r ON pr.repository_id = r.id
-       LEFT JOIN developers d ON pr.author_developer_id = d.id
-       ${prWhereSql}`,
-      params
-    );
-
-    // 3. Issues Summary Query
-    const issuesRes = await pool.query(
-      `SELECT 
-        COUNT(*) as total_issues,
-        COUNT(*) FILTER (WHERE UPPER(i.state) = 'CLOSED') as closed_issues,
-        COUNT(*) FILTER (WHERE UPPER(i.state) = 'OPEN') as open_issues
-       FROM issues i
-       JOIN repositories r ON i.repository_id = r.id
-       LEFT JOIN developers d ON i.author_developer_id = d.id
-       ${issueWhereSql}`,
-      params
-    );
-
-    // 4. Reviews Summary Query
-    const reviewsRes = await pool.query(
-      `SELECT 
-        COUNT(*) as total_reviews
-       FROM pull_request_reviews prr
-       JOIN pull_requests pr ON prr.pull_request_id = pr.id
-       JOIN repositories r ON pr.repository_id = r.id
-       LEFT JOIN developers d ON prr.reviewer_developer_id = d.id
-       ${prrWhereSql}`,
-      params
-    );
+    // Execute all report breakdown, summary, trend, and churn queries concurrently with Promise.all
+    const [
+      commitsRes,
+      prsRes,
+      issuesRes,
+      reviewsRes,
+      projectBreakdownRes,
+      repoBreakdownRes,
+      devBreakdownRes,
+      commitTrendRes,
+      prTrendRes,
+      topCommitsRes,
+      recentPrsRes,
+      recentIssuesRes,
+      churnData,
+    ] = await Promise.all([
+      // 1. Commits Summary Query
+      pool.query(
+        `SELECT 
+          COUNT(*) as total_commits,
+          COALESCE(SUM(c.additions), 0) as total_additions,
+          COALESCE(SUM(c.deletions), 0) as total_deletions,
+          COUNT(DISTINCT c.developer_id) as active_devs,
+          COUNT(DISTINCT c.repository_id) as active_repos
+         FROM commits c
+         JOIN repositories r ON c.repository_id = r.id
+         LEFT JOIN developers d ON c.developer_id = d.id
+         ${commitWhereSql}`,
+        params
+      ),
+      // 2. PRs Summary Query
+      pool.query(
+        `SELECT 
+          COUNT(*) as total_prs,
+          COUNT(*) FILTER (WHERE pr.merged = true OR UPPER(pr.state) = 'MERGED') as merged_prs,
+          COUNT(*) FILTER (WHERE UPPER(pr.state) = 'OPEN') as open_prs
+         FROM pull_requests pr
+         JOIN repositories r ON pr.repository_id = r.id
+         LEFT JOIN developers d ON pr.author_developer_id = d.id
+         ${prWhereSql}`,
+        params
+      ),
+      // 3. Issues Summary Query
+      pool.query(
+        `SELECT 
+          COUNT(*) as total_issues,
+          COUNT(*) FILTER (WHERE UPPER(i.state) = 'CLOSED') as closed_issues,
+          COUNT(*) FILTER (WHERE UPPER(i.state) = 'OPEN') as open_issues
+         FROM issues i
+         JOIN repositories r ON i.repository_id = r.id
+         LEFT JOIN developers d ON i.author_developer_id = d.id
+         ${issueWhereSql}`,
+        params
+      ),
+      // 4. Reviews Summary Query
+      pool.query(
+        `SELECT 
+          COUNT(*) as total_reviews
+         FROM pull_request_reviews prr
+         JOIN pull_requests pr ON prr.pull_request_id = pr.id
+         JOIN repositories r ON pr.repository_id = r.id
+         LEFT JOIN developers d ON prr.reviewer_developer_id = d.id
+         ${prrWhereSql}`,
+        params
+      ),
+      // 5. Project Breakdown
+      pool.query(
+        `SELECT 
+          p.id as project_id,
+          p.name as project_name,
+          COUNT(DISTINCT c.id) as commits,
+          COALESCE(SUM(c.additions), 0) as additions,
+          COALESCE(SUM(c.deletions), 0) as deletions
+         FROM projects p
+         JOIN repositories r ON r.project_id = p.id
+         LEFT JOIN commits c ON c.repository_id = r.id AND c.committed_at >= $1 AND c.committed_at <= $2
+         GROUP BY p.id, p.name
+         ORDER BY commits DESC`,
+        [dFrom, dTo]
+      ),
+      // 6. Repository Breakdown
+      pool.query(
+        `SELECT 
+          r.id as repository_id,
+          r.name,
+          r.full_name,
+          COUNT(DISTINCT c.id) as commits,
+          COALESCE(SUM(c.additions), 0) as additions,
+          COALESCE(SUM(c.deletions), 0) as deletions,
+          COUNT(DISTINCT c.developer_id) as active_developers
+         FROM repositories r
+         LEFT JOIN commits c ON c.repository_id = r.id AND c.committed_at >= $1 AND c.committed_at <= $2
+         ${scope.projectId ? 'WHERE r.project_id = $3' : ''}
+         GROUP BY r.id, r.name, r.full_name
+         ORDER BY commits DESC`,
+        scope.projectId ? [dFrom, dTo, scope.projectId] : [dFrom, dTo]
+      ),
+      // 7. Developer Breakdown
+      pool.query(
+        `SELECT 
+          d.id as developer_id,
+          d.login as username,
+          d.name,
+          d.avatar_url,
+          COUNT(DISTINCT c.id) as commits,
+          COALESCE(SUM(c.additions), 0) as additions,
+          COALESCE(SUM(c.deletions), 0) as deletions
+         FROM developers d
+         JOIN commits c ON c.developer_id = d.id
+         JOIN repositories r ON c.repository_id = r.id
+         ${commitWhereSql}
+         GROUP BY d.id, d.login, d.name, d.avatar_url
+         ORDER BY commits DESC, additions DESC`,
+        params
+      ),
+      // 8. Commit Trend
+      pool.query(
+        `SELECT 
+          TO_CHAR(c.committed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') as date_key,
+          COUNT(*) as commits,
+          COALESCE(SUM(c.additions), 0) as additions,
+          COALESCE(SUM(c.deletions), 0) as deletions
+         FROM commits c
+         JOIN repositories r ON c.repository_id = r.id
+         LEFT JOIN developers d ON c.developer_id = d.id
+         ${commitWhereSql}
+         GROUP BY date_key`,
+        params
+      ),
+      // 9. PR Trend
+      pool.query(
+        `SELECT 
+          TO_CHAR(pr.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') as date_key,
+          COUNT(*) as prs
+         FROM pull_requests pr
+         JOIN repositories r ON pr.repository_id = r.id
+         LEFT JOIN developers d ON pr.author_developer_id = d.id
+         ${prWhereSql}
+         GROUP BY date_key`,
+        params
+      ),
+      // 10. Top Commits
+      pool.query(
+        `SELECT 
+          c.github_commit_sha as sha,
+          c.message,
+          c.committed_at as "committedAt",
+          c.additions,
+          c.deletions,
+          COALESCE(d.name, d.login, 'Unknown') as author,
+          r.name as repository
+         FROM commits c
+         JOIN repositories r ON c.repository_id = r.id
+         LEFT JOIN developers d ON c.developer_id = d.id
+         ${commitWhereSql}
+         ORDER BY c.committed_at DESC
+         LIMIT 10`,
+        params
+      ),
+      // 11. Recent PRs
+      pool.query(
+        `SELECT 
+          pr.id,
+          pr.number,
+          pr.title,
+          pr.state,
+          pr.created_at as "createdAt",
+          COALESCE(d.name, d.login, 'Unknown') as author,
+          r.name as repository
+         FROM pull_requests pr
+         JOIN repositories r ON pr.repository_id = r.id
+         LEFT JOIN developers d ON pr.author_developer_id = d.id
+         ${prWhereSql}
+         ORDER BY pr.created_at DESC
+         LIMIT 10`,
+        params
+      ),
+      // 12. Recent Issues
+      pool.query(
+        `SELECT 
+          i.id,
+          i.number,
+          i.title,
+          i.state,
+          i.created_at as "createdAt",
+          COALESCE(d.name, d.login, 'Unknown') as author,
+          r.name as repository
+         FROM issues i
+         JOIN repositories r ON i.repository_id = r.id
+         LEFT JOIN developers d ON i.author_developer_id = d.id
+         ${issueWhereSql}
+         ORDER BY i.created_at DESC
+         LIMIT 10`,
+        params
+      ),
+      // 13. Code Churn Summary
+      codeChurnService.analyzeCodeChurn({
+        projectId: scope.projectId || filters.projectId,
+        repositoryId: scope.repositoryId || filters.repositoryId,
+        developerId: scope.developerId || filters.developerId,
+        dateFrom: fromIso,
+        dateTo: toIso,
+        limit: 10,
+      }).catch(() => null),
+    ]);
 
     const cRow = commitsRes.rows[0] || {};
     const prRow = prsRes.rows[0] || {};
@@ -307,22 +467,6 @@ export class ReportService {
       activeRepositoriesCount,
     };
 
-    // 5. Project Breakdown
-    const projectBreakdownRes = await pool.query(
-      `SELECT 
-        p.id as project_id,
-        p.name as project_name,
-        COUNT(DISTINCT c.id) as commits,
-        COALESCE(SUM(c.additions), 0) as additions,
-        COALESCE(SUM(c.deletions), 0) as deletions
-       FROM projects p
-       JOIN repositories r ON r.project_id = p.id
-       LEFT JOIN commits c ON c.repository_id = r.id AND c.committed_at >= $1 AND c.committed_at <= $2
-       GROUP BY p.id, p.name
-       ORDER BY commits DESC`,
-      [dFrom, dTo]
-    );
-
     const projectBreakdown: ReportProjectBreakdown[] = projectBreakdownRes.rows.map((row) => ({
       projectId: row.project_id,
       projectName: row.project_name,
@@ -332,24 +476,6 @@ export class ReportService {
       pullRequests: 0,
       issues: 0,
     }));
-
-    // 6. Repository Breakdown
-    const repoBreakdownRes = await pool.query(
-      `SELECT 
-        r.id as repository_id,
-        r.name,
-        r.full_name,
-        COUNT(DISTINCT c.id) as commits,
-        COALESCE(SUM(c.additions), 0) as additions,
-        COALESCE(SUM(c.deletions), 0) as deletions,
-        COUNT(DISTINCT c.developer_id) as active_developers
-       FROM repositories r
-       LEFT JOIN commits c ON c.repository_id = r.id AND c.committed_at >= $1 AND c.committed_at <= $2
-       ${scope.projectId ? 'WHERE r.project_id = $3' : ''}
-       GROUP BY r.id, r.name, r.full_name
-       ORDER BY commits DESC`,
-      scope.projectId ? [dFrom, dTo, scope.projectId] : [dFrom, dTo]
-    );
 
     const repositoryBreakdown: ReportRepositoryBreakdown[] = repoBreakdownRes.rows.map((row) => ({
       repositoryId: row.repository_id,
@@ -362,25 +488,6 @@ export class ReportService {
       issues: 0,
       activeDevelopers: parseInt(row.active_developers, 10),
     }));
-
-    // 7. Developer Breakdown
-    const devBreakdownRes = await pool.query(
-      `SELECT 
-        d.id as developer_id,
-        d.login as username,
-        d.name,
-        d.avatar_url,
-        COUNT(DISTINCT c.id) as commits,
-        COALESCE(SUM(c.additions), 0) as additions,
-        COALESCE(SUM(c.deletions), 0) as deletions
-       FROM developers d
-       JOIN commits c ON c.developer_id = d.id
-       JOIN repositories r ON c.repository_id = r.id
-       ${commitWhereSql}
-       GROUP BY d.id, d.login, d.name, d.avatar_url
-       ORDER BY commits DESC, additions DESC`,
-      params
-    );
 
     const developerBreakdown: ReportDeveloperBreakdown[] = devBreakdownRes.rows.map((row) => ({
       developerId: row.developer_id,
@@ -415,20 +522,6 @@ export class ReportService {
       curr.setDate(curr.getDate() + 1);
     }
 
-    const commitTrendRes = await pool.query(
-      `SELECT 
-        TO_CHAR(c.committed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') as date_key,
-        COUNT(*) as commits,
-        COALESCE(SUM(c.additions), 0) as additions,
-        COALESCE(SUM(c.deletions), 0) as deletions
-       FROM commits c
-       JOIN repositories r ON c.repository_id = r.id
-       LEFT JOIN developers d ON c.developer_id = d.id
-       ${commitWhereSql}
-       GROUP BY date_key`,
-      params
-    );
-
     for (const row of commitTrendRes.rows) {
       if (row.date_key && dailyMap.has(row.date_key)) {
         const item = dailyMap.get(row.date_key)!;
@@ -438,18 +531,6 @@ export class ReportService {
       }
     }
 
-    const prTrendRes = await pool.query(
-      `SELECT 
-        TO_CHAR(pr.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') as date_key,
-        COUNT(*) as prs
-       FROM pull_requests pr
-       JOIN repositories r ON pr.repository_id = r.id
-       LEFT JOIN developers d ON pr.author_developer_id = d.id
-       ${prWhereSql}
-       GROUP BY date_key`,
-      params
-    );
-
     for (const row of prTrendRes.rows) {
       if (row.date_key && dailyMap.has(row.date_key)) {
         dailyMap.get(row.date_key)!.pullRequests = parseInt(row.prs, 10);
@@ -458,78 +539,7 @@ export class ReportService {
 
     const dailyTrend = Array.from(dailyMap.values());
 
-    // 9. Top Commits
-    const topCommitsRes = await pool.query(
-      `SELECT 
-        c.github_commit_sha as sha,
-        c.message,
-        c.committed_at as "committedAt",
-        c.additions,
-        c.deletions,
-        COALESCE(d.name, d.login, 'Unknown') as author,
-        r.name as repository
-       FROM commits c
-       JOIN repositories r ON c.repository_id = r.id
-       LEFT JOIN developers d ON c.developer_id = d.id
-       ${commitWhereSql}
-       ORDER BY c.committed_at DESC
-       LIMIT 10`,
-      params
-    );
-
-    // 10. Recent PRs
-    const recentPrsRes = await pool.query(
-      `SELECT 
-        pr.id,
-        pr.number,
-        pr.title,
-        pr.state,
-        pr.created_at as "createdAt",
-        COALESCE(d.name, d.login, 'Unknown') as author,
-        r.name as repository
-       FROM pull_requests pr
-       JOIN repositories r ON pr.repository_id = r.id
-       LEFT JOIN developers d ON pr.author_developer_id = d.id
-       ${prWhereSql}
-       ORDER BY pr.created_at DESC
-       LIMIT 10`,
-      params
-    );
-
-    // 11. Recent Issues
-    const recentIssuesRes = await pool.query(
-      `SELECT 
-        i.id,
-        i.number,
-        i.title,
-        i.state,
-        i.created_at as "createdAt",
-        COALESCE(d.name, d.login, 'Unknown') as author,
-        r.name as repository
-       FROM issues i
-       JOIN repositories r ON i.repository_id = r.id
-       LEFT JOIN developers d ON i.author_developer_id = d.id
-       ${issueWhereSql}
-       ORDER BY i.created_at DESC
-       LIMIT 10`,
-      params
-    );
-
-    // 12. Code Churn Summary
-    let codeChurnSummary = undefined;
-    try {
-      const churnData = await codeChurnService.analyzeCodeChurn({
-        projectId: scope.projectId || filters.projectId,
-        repositoryId: scope.repositoryId || filters.repositoryId,
-        developerId: scope.developerId || filters.developerId,
-        dateFrom: fromIso,
-        dateTo: toIso,
-        limit: 10,
-      });
-      codeChurnSummary = churnData.summary;
-    } catch (e) {
-      // Graceful fallback if churn table empty
-    }
+    const codeChurnSummary = churnData?.summary;
 
     const reportId = `rep-${reportType.toLowerCase()}-${Date.now()}`;
 

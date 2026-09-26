@@ -9,6 +9,7 @@ export async function getRepositoryCommits(req: Request, res: Response, next: Ne
   try {
     const { id } = req.params;
     const { date_from, date_to, developer, page, limit, per_page } = req.query;
+    const orgId = (req as any).organizationId;
 
     // Verify repository exists
     let repo = await repositoryRepository.findById(id);
@@ -22,6 +23,7 @@ export async function getRepositoryCommits(req: Request, res: Response, next: Ne
 
     const pageSize = Number(limit || per_page || 20);
     const result = await commitRepository.findCommits({
+      organizationId: orgId,
       repositoryId: repo.id,
       developerId: developer as string,
       dateFrom: date_from as string,
@@ -49,7 +51,8 @@ export async function getRepositoryCommits(req: Request, res: Response, next: Ne
 export async function getCommitDetail(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const commit = await commitRepository.findByIdOrSha(id);
+    const orgId = (req as any).organizationId;
+    const commit = await commitRepository.findByIdOrSha(id, orgId);
 
     if (!commit) {
       return res.status(404).json({ success: false, error: 'Commit not found' });
@@ -69,6 +72,7 @@ export async function getDeveloperCommits(req: Request, res: Response, next: Nex
   try {
     const { id } = req.params;
     const { date_from, date_to, repository, project, page, limit, per_page } = req.query;
+    const orgId = (req as any).organizationId;
 
     // Verify developer exists
     let dev = await developerRepository.findById(id);
@@ -82,6 +86,7 @@ export async function getDeveloperCommits(req: Request, res: Response, next: Nex
 
     const pageSize = Number(limit || per_page || 20);
     const result = await commitRepository.findCommits({
+      organizationId: orgId,
       developerId: dev.id,
       repositoryId: repository as string,
       projectId: project as string,
@@ -110,13 +115,14 @@ export async function getDeveloperCommits(req: Request, res: Response, next: Nex
 export async function getCommitChanges(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const commit = await commitRepository.findByIdOrSha(id);
+    const orgId = (req as any).organizationId;
+    const commit = await commitRepository.findByIdOrSha(id, orgId);
 
     if (!commit) {
       return res.status(404).json({ success: false, error: 'Commit not found' });
     }
 
-    const files = await commitRepository.findCommitFiles(id);
+    const files = await commitRepository.findCommitFiles(id, orgId);
 
     res.json({
       success: true,

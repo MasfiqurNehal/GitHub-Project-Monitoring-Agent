@@ -9,7 +9,9 @@ import { developerService } from '../services/developer.service.js';
 export async function listDevelopers(req: Request, res: Response, next: NextFunction) {
   try {
     const { date_from, date_to, page, limit, per_page } = req.query;
+    const orgId = (req as any).organizationId;
     const result = await developerRepository.findWithMetrics({
+      organizationId: orgId,
       dateFrom: date_from as string,
       dateTo: date_to as string,
       page: Number(page) || 1,
@@ -53,6 +55,7 @@ export async function getDeveloperActivity(req: Request, res: Response, next: Ne
   try {
     const { id } = req.params;
     const { date_from, date_to, page, limit, per_page } = req.query;
+    const orgId = (req as any).organizationId;
 
     let dev = await developerRepository.findById(id);
     if (!dev) {
@@ -63,6 +66,7 @@ export async function getDeveloperActivity(req: Request, res: Response, next: Ne
     }
 
     const activity = await activityRepository.findActivityFeed({
+      organizationId: orgId,
       developerId: dev.id,
       from: date_from ? new Date(date_from as string) : undefined,
       to: date_to ? new Date(date_to as string) : undefined,
@@ -89,6 +93,7 @@ export async function getDeveloperPullRequests(req: Request, res: Response, next
   try {
     const { id } = req.params;
     const { date_from, date_to, repository, state, page, limit, per_page } = req.query;
+    const orgId = (req as any).organizationId;
 
     let dev = await developerRepository.findById(id);
     if (!dev) {
@@ -99,6 +104,7 @@ export async function getDeveloperPullRequests(req: Request, res: Response, next
     }
 
     const result = await pullRequestRepository.findByDeveloper(dev.id, {
+      organizationId: orgId,
       repositoryId: repository as string,
       state: state as string,
       dateFrom: date_from as string,
@@ -127,6 +133,7 @@ export async function getDeveloperIssues(req: Request, res: Response, next: Next
   try {
     const { id } = req.params;
     const { date_from, date_to, repository, state, page, limit, per_page } = req.query;
+    const orgId = (req as any).organizationId;
 
     let dev = await developerRepository.findById(id);
     if (!dev) {
@@ -137,6 +144,7 @@ export async function getDeveloperIssues(req: Request, res: Response, next: Next
     }
 
     const result = await issueRepository.findByDeveloper(dev.id, {
+      organizationId: orgId,
       repositoryId: repository as string,
       state: state as string,
       dateFrom: date_from as string,
@@ -165,6 +173,7 @@ export async function getDeveloperReviews(req: Request, res: Response, next: Nex
   try {
     const { id } = req.params;
     const { date_from, date_to, repository, state, page, limit, per_page } = req.query;
+    const orgId = (req as any).organizationId;
 
     let dev = await developerRepository.findById(id);
     if (!dev) {
@@ -175,6 +184,7 @@ export async function getDeveloperReviews(req: Request, res: Response, next: Nex
     }
 
     const result = await pullRequestRepository.findReviewsByDeveloper(dev.id, {
+      organizationId: orgId,
       repositoryId: repository as string,
       state: state as string,
       dateFrom: date_from as string,
@@ -203,8 +213,10 @@ export async function getFactualDeveloperAnalytics(req: Request, res: Response, 
   try {
     const { id } = req.params;
     const { date_from, from, dateFrom, date_to, to, dateTo, repository, repositoryId, project, projectId } = req.query;
+    const orgId = (req as any).organizationId;
 
     const filters = {
+      organizationId: orgId,
       dateFrom: (date_from || from || dateFrom) as string | undefined,
       dateTo: (date_to || to || dateTo) as string | undefined,
       repositoryId: (repository || repositoryId) as string | undefined,

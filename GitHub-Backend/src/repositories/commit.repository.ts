@@ -33,6 +33,7 @@ export interface CommitFileRow {
 }
 
 export interface CommitFilterOptions {
+  organizationId?: string;
   repositoryId?: string;
   developerId?: string;
   projectId?: string;
@@ -120,20 +121,29 @@ export class CommitRepository {
     }
   }
 
-  async findCommitFiles(commitIdOrSha: string): Promise<CommitFileRow[]> {
-    const res = await pool.query(
-      `SELECT cf.* 
-       FROM commit_files cf
-       JOIN commits c ON c.id = cf.commit_id
-       WHERE c.id = $1 OR c.github_commit_sha = $1
-       ORDER BY cf.filename ASC`,
-      [commitIdOrSha]
-    );
+  async findCommitFiles(commitIdOrSha: string, organizationId?: string): Promise<CommitFileRow[]> {
+    let query = `
+      SELECT cf.* 
+      FROM commit_files cf
+      JOIN commits c ON c.id = cf.commit_id
+      JOIN repositories r ON r.id = c.repository_id
+      WHERE (c.id = $1 OR c.github_commit_sha = $1)
+    `;
+    const params: any[] = [commitIdOrSha];
+
+    if (organizationId) {
+      query += ` AND (r.organization_id = $2 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $2))`;
+      params.push(organizationId);
+    }
+
+    query += ` ORDER BY cf.filename ASC`;
+
+    const res = await pool.query(query, params);
     return res.rows;
   }
 
-  async findByIdOrSha(idOrSha: string): Promise<any | null> {
-    const query = `
+  async findByIdOrSha(idOrSha: string, organizationId?: string): Promise<any | null> {
+    let query = `
       SELECT 
         c.*,
         r.full_name as repository_name,
@@ -144,9 +154,16 @@ export class CommitRepository {
       FROM commits c
       JOIN repositories r ON r.id = c.repository_id
       LEFT JOIN developers d ON d.id = c.developer_id
-      WHERE c.id = $1 OR c.github_commit_sha = $1
+      WHERE (c.id = $1 OR c.github_commit_sha = $1)
     `;
-    const res = await pool.query(query, [idOrSha]);
+    const params: any[] = [idOrSha];
+
+    if (organizationId) {
+      query += ` AND (r.organization_id = $2 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $2))`;
+      params.push(organizationId);
+    }
+
+    const res = await pool.query(query, params);
     return res.rows[0] || null;
   }
 
@@ -158,6 +175,12 @@ export class CommitRepository {
     const conditions: string[] = [];
     const params: any[] = [];
     let paramIdx = 1;
+
+    if (options.organizationId) {
+      conditions.push(`(r.organization_id = $${paramIdx} OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $${paramIdx}))`);
+      params.push(options.organizationId);
+      paramIdx++;
+    }
 
     if (options.repositoryId) {
       conditions.push(`(c.repository_id = $${paramIdx} OR r.full_name = $${paramIdx} OR r.name = $${paramIdx})`);

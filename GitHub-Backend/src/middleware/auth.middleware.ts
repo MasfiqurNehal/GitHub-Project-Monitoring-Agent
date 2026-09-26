@@ -25,13 +25,8 @@ export function tenantAuthMiddleware(req: AuthenticatedRequest, res: Response, n
     const payload = authService.verifyAccessToken(token);
     if (payload) {
       req.user = payload;
-      req.organizationId = payload.organizationId || 'org-masfiqurnehal';
+      req.organizationId = payload.organizationId;
     }
-  }
-
-  // Default fallback for legacy unauthenticated requests
-  if (!req.organizationId) {
-    req.organizationId = 'org-masfiqurnehal';
   }
 
   next();

@@ -6,14 +6,41 @@ export interface DashboardFilters {
   developerId?: string;
   dateFrom?: string;
   dateTo?: string;
+  organizationId?: string;
 }
 
 export class AnalyticsService {
+  private cache = new Map<string, { data: any; expiresAt: number }>();
+
+  private getCached<T>(key: string): T | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) {
+      this.cache.delete(key);
+      return null;
+    }
+    return entry.data as T;
+  }
+
+  private setCache<T>(key: string, data: T, ttlMs: number = 20000): void {
+    this.cache.set(key, { data, expiresAt: Date.now() + ttlMs });
+  }
+
+  public clearCache(): void {
+    this.cache.clear();
+  }
+
   // Helper to build parameterized SQL WHERE clause based on filters
   private buildCommitWhere(filters: DashboardFilters) {
     const conditions: string[] = [];
     const params: any[] = [];
     let pIdx = 1;
+
+    if (filters.organizationId) {
+      conditions.push(`(r.organization_id = $${pIdx} OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $${pIdx}))`);
+      params.push(filters.organizationId);
+      pIdx++;
+    }
 
     if (filters.repositoryId) {
       conditions.push(`(c.repository_id = $${pIdx} OR r.full_name = $${pIdx} OR r.name = $${pIdx})`);
@@ -57,62 +84,239 @@ export class AnalyticsService {
     return { whereSql, params };
   }
 
-  // 1. Overview API
+  // 1. Overview API with parallel query execution and in-memory caching
   async getDashboardOverview(filters: DashboardFilters) {
+    const cacheKey = `overview_${JSON.stringify(filters)}`;
+    const cached = this.getCached<any>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const { whereSql: commitWhere, params: commitParams } = this.buildCommitWhere(filters);
     const prWhere = commitWhere.replace(/c\.committed_at/g, 'pr.created_at').replace(/c\./g, 'pr.');
     const issueWhere = commitWhere.replace(/c\.committed_at/g, 'i.created_at').replace(/c\./g, 'i.');
     const prrWhere = commitWhere.replace(/c\.committed_at/g, 'prr.submitted_at').replace(/c\./g, 'prr.');
 
-    // 1. KPI Counts
-    const projectsRes = await pool.query('SELECT COUNT(*) FROM projects');
-    const reposRes = await pool.query('SELECT COUNT(*) FROM repositories');
-
-    const commitsRes = await pool.query(
-      `SELECT 
-        COUNT(*) as total_commits, 
-        COALESCE(SUM(c.additions), 0) as lines_added, 
-        COALESCE(SUM(c.deletions), 0) as lines_deleted,
-        COUNT(DISTINCT c.developer_id) as active_devs
-       FROM commits c
-       JOIN repositories r ON r.id = c.repository_id
-       LEFT JOIN developers d ON d.id = c.developer_id
-       ${commitWhere}`,
-      commitParams
-    );
-
-    const prsRes = await pool.query(
-      `SELECT 
-        COUNT(*) as total_prs,
-        COUNT(*) FILTER (WHERE pr.merged = true OR UPPER(pr.state) = 'MERGED') as merged_prs,
-        COUNT(*) FILTER (WHERE UPPER(pr.state) = 'OPEN') as open_prs
-       FROM pull_requests pr
-       JOIN repositories r ON r.id = pr.repository_id
-       LEFT JOIN developers d ON d.id = pr.author_developer_id
-       ${prWhere}`,
-      commitParams
-    );
-
-    const issuesRes = await pool.query(
-      `SELECT 
-        COUNT(*) as issues_opened,
-        COUNT(*) FILTER (WHERE UPPER(i.state) = 'CLOSED') as issues_closed
-       FROM issues i
-       JOIN repositories r ON r.id = i.repository_id
-       LEFT JOIN developers d ON d.id = i.author_developer_id
-       ${issueWhere}`,
-      commitParams
-    );
-
-    const reviewsRes = await pool.query(
-      `SELECT COUNT(*) as total_reviews
-       FROM pull_request_reviews prr
-       JOIN pull_requests pr ON pr.id = prr.pull_request_id
-       JOIN repositories r ON r.id = pr.repository_id
-       LEFT JOIN developers d ON d.id = prr.reviewer_developer_id
-       ${prrWhere}`,
-      commitParams
-    );
+    // Execute all independent queries concurrently in parallel with Promise.all
+    const [
+      projectsRes,
+      reposRes,
+      commitsRes,
+      prsRes,
+      issuesRes,
+      reviewsRes,
+      commitTrendRes,
+      prTrendRes,
+      reviewTrendRes,
+      codeChangesRes,
+      issueTrendRes,
+      devActRes,
+      projOverviewRes,
+      reposData,
+      activityFeedRes,
+    ] = await Promise.all([
+      filters.organizationId
+        ? pool.query('SELECT COUNT(*) FROM projects WHERE organization_id = $1', [filters.organizationId])
+        : pool.query('SELECT COUNT(*) FROM projects'),
+      filters.organizationId
+        ? pool.query('SELECT COUNT(*) FROM repositories WHERE organization_id = $1 OR project_id IN (SELECT id FROM projects WHERE organization_id = $1)', [filters.organizationId])
+        : pool.query('SELECT COUNT(*) FROM repositories'),
+      pool.query(
+        `SELECT 
+          COUNT(*) as total_commits, 
+          COALESCE(SUM(c.additions), 0) as lines_added, 
+          COALESCE(SUM(c.deletions), 0) as lines_deleted,
+          COUNT(DISTINCT c.developer_id) as active_devs
+         FROM commits c
+         JOIN repositories r ON r.id = c.repository_id
+         LEFT JOIN developers d ON d.id = c.developer_id
+         ${commitWhere}`,
+        commitParams
+      ),
+      pool.query(
+        `SELECT 
+          COUNT(*) as total_prs,
+          COUNT(*) FILTER (WHERE pr.merged = true OR UPPER(pr.state) = 'MERGED') as merged_prs,
+          COUNT(*) FILTER (WHERE UPPER(pr.state) = 'OPEN') as open_prs
+         FROM pull_requests pr
+         JOIN repositories r ON r.id = pr.repository_id
+         LEFT JOIN developers d ON d.id = pr.author_developer_id
+         ${prWhere}`,
+        commitParams
+      ),
+      pool.query(
+        `SELECT 
+          COUNT(*) as issues_opened,
+          COUNT(*) FILTER (WHERE UPPER(i.state) = 'CLOSED') as issues_closed
+         FROM issues i
+         JOIN repositories r ON r.id = i.repository_id
+         LEFT JOIN developers d ON d.id = i.author_developer_id
+         ${issueWhere}`,
+        commitParams
+      ),
+      pool.query(
+        `SELECT COUNT(*) as total_reviews
+         FROM pull_request_reviews prr
+         JOIN pull_requests pr ON pr.id = prr.pull_request_id
+         JOIN repositories r ON r.id = pr.repository_id
+         LEFT JOIN developers d ON d.id = prr.reviewer_developer_id
+         ${prrWhere}`,
+        commitParams
+      ),
+      pool.query(
+        `SELECT TO_CHAR(c.committed_at, 'YYYY-MM-DD') as date, COUNT(*) as commits
+         FROM commits c
+         JOIN repositories r ON r.id = c.repository_id
+         LEFT JOIN developers d ON d.id = c.developer_id
+         ${commitWhere}
+         GROUP BY TO_CHAR(c.committed_at, 'YYYY-MM-DD')
+         ORDER BY date ASC LIMIT 30`,
+        commitParams
+      ),
+      pool.query(
+        `SELECT TO_CHAR(pr.created_at, 'YYYY-MM-DD') as date, COUNT(*) as prs
+         FROM pull_requests pr
+         JOIN repositories r ON r.id = pr.repository_id
+         LEFT JOIN developers d ON d.id = pr.author_developer_id
+         ${prWhere}
+         GROUP BY TO_CHAR(pr.created_at, 'YYYY-MM-DD')
+         ORDER BY date ASC LIMIT 30`,
+        commitParams
+      ),
+      pool.query(
+        `SELECT TO_CHAR(prr.submitted_at, 'YYYY-MM-DD') as date, COUNT(*) as reviews
+         FROM pull_request_reviews prr
+         JOIN pull_requests pr ON pr.id = prr.pull_request_id
+         JOIN repositories r ON r.id = pr.repository_id
+         LEFT JOIN developers d ON d.id = prr.reviewer_developer_id
+         ${prrWhere}
+         GROUP BY TO_CHAR(prr.submitted_at, 'YYYY-MM-DD')
+         ORDER BY date ASC LIMIT 30`,
+        commitParams
+      ),
+      pool.query(
+        `SELECT 
+          TO_CHAR(c.committed_at, 'YYYY-MM-DD') as date,
+          COALESCE(SUM(c.additions), 0) as additions,
+          COALESCE(SUM(c.deletions), 0) as deletions
+         FROM commits c
+         JOIN repositories r ON r.id = c.repository_id
+         LEFT JOIN developers d ON d.id = c.developer_id
+         ${commitWhere}
+         GROUP BY TO_CHAR(c.committed_at, 'YYYY-MM-DD')
+         ORDER BY date ASC LIMIT 30`,
+        commitParams
+      ),
+      pool.query(
+        `SELECT 
+          TO_CHAR(i.created_at, 'YYYY-MM-DD') as date,
+          COUNT(*) FILTER (WHERE UPPER(i.state) = 'OPEN') as opened,
+          COUNT(*) FILTER (WHERE UPPER(i.state) = 'CLOSED') as closed
+         FROM issues i
+         JOIN repositories r ON r.id = i.repository_id
+         LEFT JOIN developers d ON d.id = i.author_developer_id
+         ${issueWhere}
+         GROUP BY TO_CHAR(i.created_at, 'YYYY-MM-DD')
+         ORDER BY date ASC LIMIT 30`,
+        commitParams
+      ),
+      filters.organizationId
+        ? pool.query(
+            `SELECT 
+              d.id, d.name, d.login, d.avatar_url,
+              COUNT(DISTINCT c.id) as commits,
+              COUNT(DISTINCT pr.id) as prs,
+              COUNT(DISTINCT prr.id) as reviews,
+              COALESCE(SUM(c.additions), 0) as lines_added,
+              COALESCE(SUM(c.deletions), 0) as lines_deleted
+             FROM developers d
+             LEFT JOIN commits c ON c.developer_id = d.id
+             LEFT JOIN pull_requests pr ON pr.author_developer_id = d.id
+             LEFT JOIN pull_request_reviews prr ON prr.reviewer_developer_id = d.id
+             WHERE d.organization_id = $1 OR d.id IN (
+               SELECT DISTINCT rd.developer_id FROM repository_developers rd
+               JOIN repositories r ON r.id = rd.repository_id
+               WHERE r.organization_id = $1 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $1)
+             )
+             GROUP BY d.id, d.name, d.login, d.avatar_url
+             ORDER BY commits DESC
+             LIMIT 10`,
+            [filters.organizationId]
+          )
+        : pool.query(
+            `SELECT 
+              d.id, d.name, d.login, d.avatar_url,
+              COUNT(DISTINCT c.id) as commits,
+              COUNT(DISTINCT pr.id) as prs,
+              COUNT(DISTINCT prr.id) as reviews,
+              COALESCE(SUM(c.additions), 0) as lines_added,
+              COALESCE(SUM(c.deletions), 0) as lines_deleted
+             FROM developers d
+             LEFT JOIN commits c ON c.developer_id = d.id
+             LEFT JOIN pull_requests pr ON pr.author_developer_id = d.id
+             LEFT JOIN pull_request_reviews prr ON prr.reviewer_developer_id = d.id
+             GROUP BY d.id, d.name, d.login, d.avatar_url
+             ORDER BY commits DESC
+             LIMIT 10`
+          ),
+      filters.organizationId
+        ? pool.query(
+            `SELECT 
+              p.id, p.name, p.status, p.updated_at,
+              COUNT(DISTINCT r.id) as repositories_count,
+              COUNT(DISTINCT c.id) as commits_count,
+              COUNT(DISTINCT pr.id) as prs_count,
+              COUNT(DISTINCT i.id) as issues_count
+             FROM projects p
+             LEFT JOIN repositories r ON r.project_id = p.id
+             LEFT JOIN commits c ON c.repository_id = r.id
+             LEFT JOIN pull_requests pr ON pr.repository_id = r.id
+             LEFT JOIN issues i ON i.repository_id = r.id
+             WHERE p.organization_id = $1
+             GROUP BY p.id, p.name, p.status, p.updated_at
+             ORDER BY p.updated_at DESC`,
+            [filters.organizationId]
+          )
+        : pool.query(
+            `SELECT 
+              p.id, p.name, p.status, p.updated_at,
+              COUNT(DISTINCT r.id) as repositories_count,
+              COUNT(DISTINCT c.id) as commits_count,
+              COUNT(DISTINCT pr.id) as prs_count,
+              COUNT(DISTINCT i.id) as issues_count
+             FROM projects p
+             LEFT JOIN repositories r ON r.project_id = p.id
+             LEFT JOIN commits c ON c.repository_id = r.id
+             LEFT JOIN pull_requests pr ON pr.repository_id = r.id
+             LEFT JOIN issues i ON i.repository_id = r.id
+             GROUP BY p.id, p.name, p.status, p.updated_at
+             ORDER BY p.updated_at DESC`
+          ),
+      this.getDashboardRepositories(filters),
+      filters.organizationId
+        ? pool.query(
+            `SELECT 
+              ae.id, ae.event_type as type, ae.occurred_at, ae.metadata,
+              r.name as repo_name, d.login as author, d.avatar_url as author_avatar
+             FROM activity_events ae
+             JOIN repositories r ON r.id = ae.repository_id
+             LEFT JOIN developers d ON d.id = ae.developer_id
+             WHERE r.organization_id = $1 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $1)
+             ORDER BY ae.occurred_at DESC
+             LIMIT 10`,
+            [filters.organizationId]
+          )
+        : pool.query(
+            `SELECT 
+              ae.id, ae.event_type as type, ae.occurred_at, ae.metadata,
+              r.name as repo_name, d.login as author, d.avatar_url as author_avatar
+             FROM activity_events ae
+             JOIN repositories r ON r.id = ae.repository_id
+             LEFT JOIN developers d ON d.id = ae.developer_id
+             ORDER BY ae.occurred_at DESC
+             LIMIT 10`
+          ),
+    ]);
 
     const cRow = commitsRes.rows[0] || {};
     const pRow = prsRes.rows[0] || {};
@@ -134,41 +338,7 @@ export class AnalyticsService {
       totalReviews: parseInt(rRow.total_reviews || '0', 10),
     };
 
-    // 2. Activity Trend (commits, prs, reviews by date)
-    const commitTrendRes = await pool.query(
-      `SELECT TO_CHAR(c.committed_at, 'YYYY-MM-DD') as date, COUNT(*) as commits
-       FROM commits c
-       JOIN repositories r ON r.id = c.repository_id
-       LEFT JOIN developers d ON d.id = c.developer_id
-       ${commitWhere}
-       GROUP BY TO_CHAR(c.committed_at, 'YYYY-MM-DD')
-       ORDER BY date ASC LIMIT 30`,
-      commitParams
-    );
-
-    const prTrendRes = await pool.query(
-      `SELECT TO_CHAR(pr.created_at, 'YYYY-MM-DD') as date, COUNT(*) as prs
-       FROM pull_requests pr
-       JOIN repositories r ON r.id = pr.repository_id
-       LEFT JOIN developers d ON d.id = pr.author_developer_id
-       ${prWhere}
-       GROUP BY TO_CHAR(pr.created_at, 'YYYY-MM-DD')
-       ORDER BY date ASC LIMIT 30`,
-      commitParams
-    );
-
-    const reviewTrendRes = await pool.query(
-      `SELECT TO_CHAR(prr.submitted_at, 'YYYY-MM-DD') as date, COUNT(*) as reviews
-       FROM pull_request_reviews prr
-       JOIN pull_requests pr ON pr.id = prr.pull_request_id
-       JOIN repositories r ON r.id = pr.repository_id
-       LEFT JOIN developers d ON d.id = prr.reviewer_developer_id
-       ${prrWhere}
-       GROUP BY TO_CHAR(prr.submitted_at, 'YYYY-MM-DD')
-       ORDER BY date ASC LIMIT 30`,
-      commitParams
-    );
-
+    // Activity Trend (commits, prs, reviews by date)
     const trendMap = new Map<string, { date: string; commits: number; prs: number; reviews: number }>();
     for (const r of commitTrendRes.rows) {
       trendMap.set(r.date, { date: r.date, commits: parseInt(r.commits, 10), prs: 0, reviews: 0 });
@@ -185,66 +355,21 @@ export class AnalyticsService {
     }
     const activityTrend = Array.from(trendMap.values()).sort((a, b) => a.date.localeCompare(b.date));
 
-    // 3. Code Changes Trend
-    const codeChangesRes = await pool.query(
-      `SELECT 
-        TO_CHAR(c.committed_at, 'YYYY-MM-DD') as date,
-        COALESCE(SUM(c.additions), 0) as additions,
-        COALESCE(SUM(c.deletions), 0) as deletions
-       FROM commits c
-       JOIN repositories r ON r.id = c.repository_id
-       LEFT JOIN developers d ON d.id = c.developer_id
-       ${commitWhere}
-       GROUP BY TO_CHAR(c.committed_at, 'YYYY-MM-DD')
-       ORDER BY date ASC LIMIT 30`,
-      commitParams
-    );
+    // Code Changes Trend
     const codeChangesTrend = codeChangesRes.rows.map((r) => ({
       date: r.date,
       additions: parseInt(r.additions, 10),
       deletions: parseInt(r.deletions, 10),
     }));
 
-    // 4. Issue Trend
-    const issueTrendRes = await pool.query(
-      `SELECT 
-        TO_CHAR(i.created_at, 'YYYY-MM-DD') as date,
-        COUNT(*) FILTER (WHERE UPPER(i.state) = 'OPEN') as opened,
-        COUNT(*) FILTER (WHERE UPPER(i.state) = 'CLOSED') as closed
-       FROM issues i
-       JOIN repositories r ON r.id = i.repository_id
-       LEFT JOIN developers d ON d.id = i.author_developer_id
-       ${issueWhere}
-       GROUP BY TO_CHAR(i.created_at, 'YYYY-MM-DD')
-       ORDER BY date ASC LIMIT 30`,
-      commitParams
-    );
+    // Issue Trend
     const issueTrend = issueTrendRes.rows.map((r) => ({
       date: r.date,
       opened: parseInt(r.opened, 10),
       closed: parseInt(r.closed, 10),
     }));
 
-    // 5. Developer Activity
-    const devActRes = await pool.query(
-      `SELECT 
-        d.id,
-        d.name,
-        d.login,
-        d.avatar_url,
-        COUNT(DISTINCT c.id) as commits,
-        COUNT(DISTINCT pr.id) as prs,
-        COUNT(DISTINCT prr.id) as reviews,
-        COALESCE(SUM(c.additions), 0) as lines_added,
-        COALESCE(SUM(c.deletions), 0) as lines_deleted
-       FROM developers d
-       LEFT JOIN commits c ON c.developer_id = d.id
-       LEFT JOIN pull_requests pr ON pr.author_developer_id = d.id
-       LEFT JOIN pull_request_reviews prr ON prr.reviewer_developer_id = d.id
-       GROUP BY d.id, d.name, d.login, d.avatar_url
-       ORDER BY commits DESC
-       LIMIT 10`
-    );
+    // Developer Activity
     const developerActivity = devActRes.rows.map((r) => ({
       id: r.id,
       name: r.name || r.login,
@@ -257,25 +382,7 @@ export class AnalyticsService {
       linesDeleted: parseInt(r.lines_deleted, 10),
     }));
 
-    // 6. Project Overview
-    const projOverviewRes = await pool.query(
-      `SELECT 
-        p.id,
-        p.name,
-        p.status,
-        p.updated_at,
-        COUNT(DISTINCT r.id) as repositories_count,
-        COUNT(DISTINCT c.id) as commits_count,
-        COUNT(DISTINCT pr.id) as prs_count,
-        COUNT(DISTINCT i.id) as issues_count
-       FROM projects p
-       LEFT JOIN repositories r ON r.project_id = p.id
-       LEFT JOIN commits c ON c.repository_id = r.id
-       LEFT JOIN pull_requests pr ON pr.repository_id = r.id
-       LEFT JOIN issues i ON i.repository_id = r.id
-       GROUP BY p.id, p.name, p.status, p.updated_at
-       ORDER BY p.updated_at DESC`
-    );
+    // Project Overview
     const projectOverview = projOverviewRes.rows.map((r) => ({
       id: r.id,
       name: r.name,
@@ -287,8 +394,8 @@ export class AnalyticsService {
       updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : new Date().toISOString(),
     }));
 
-    // 7. Repository Overview
-    const repoOverview = (await this.getDashboardRepositories(filters)).repositories.map((r) => ({
+    // Repository Overview
+    const repositoryOverview = (reposData.repositories || []).map((r) => ({
       id: r.id,
       name: r.name,
       fullName: r.fullName,
@@ -299,18 +406,7 @@ export class AnalyticsService {
       lastSyncedAt: r.lastSyncedAt ? new Date(r.lastSyncedAt).toISOString() : null,
     }));
 
-    // 8. Recent Activity
-    const activityFeedRes = await pool.query(
-      `SELECT 
-        ae.id, ae.event_type as type, ae.occurred_at, ae.metadata,
-        r.name as repo_name, d.login as author, d.avatar_url as author_avatar
-       FROM activity_events ae
-       JOIN repositories r ON r.id = ae.repository_id
-       LEFT JOIN developers d ON d.id = ae.developer_id
-       ORDER BY ae.occurred_at DESC
-       LIMIT 10`
-    );
-
+    // Recent Activity
     let recentActivity = activityFeedRes.rows.map((r) => ({
       id: r.id,
       type: (r.type === 'push' || r.type === 'commit' ? 'commit' : r.type.includes('pr') ? 'pull_request' : r.type.includes('issue') ? 'issue' : 'review') as any,
@@ -324,14 +420,25 @@ export class AnalyticsService {
     }));
 
     if (recentActivity.length === 0) {
-      const recentCommitsRes = await pool.query(
-        `SELECT c.id, c.message, c.committed_at, c.commit_url, r.name as repo_name, d.login as author, d.avatar_url as author_avatar, c.additions, c.deletions
-         FROM commits c
-         JOIN repositories r ON r.id = c.repository_id
-         LEFT JOIN developers d ON d.id = c.developer_id
-         ORDER BY c.committed_at DESC
-         LIMIT 10`
-      );
+      const recentCommitsRes = filters.organizationId
+        ? await pool.query(
+            `SELECT c.id, c.message, c.committed_at, c.commit_url, r.name as repo_name, d.login as author, d.avatar_url as author_avatar, c.additions, c.deletions
+             FROM commits c
+             JOIN repositories r ON r.id = c.repository_id
+             LEFT JOIN developers d ON d.id = c.developer_id
+             WHERE r.organization_id = $1 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $1)
+             ORDER BY c.committed_at DESC
+             LIMIT 10`,
+            [filters.organizationId]
+          )
+        : await pool.query(
+            `SELECT c.id, c.message, c.committed_at, c.commit_url, r.name as repo_name, d.login as author, d.avatar_url as author_avatar, c.additions, c.deletions
+             FROM commits c
+             JOIN repositories r ON r.id = c.repository_id
+             LEFT JOIN developers d ON d.id = c.developer_id
+             ORDER BY c.committed_at DESC
+             LIMIT 10`
+          );
       recentActivity = recentCommitsRes.rows.map((c) => ({
         id: c.id,
         type: 'commit',
@@ -346,16 +453,73 @@ export class AnalyticsService {
       }));
     }
 
-    return {
+    const overviewResult = {
       kpi,
       activityTrend,
       codeChangesTrend,
       issueTrend,
       developerActivity,
       projectOverview,
-      repositoryOverview: repoOverview,
+      repositoryOverview,
       recentActivity,
     };
+
+    // Cache the aggregated overview result for 20 seconds
+    this.setCache(cacheKey, overviewResult, 20000);
+    return overviewResult;
+  }
+
+  // Engineering Signals API (Attention signals: inactive repos & stale PRs)
+  async getEngineeringSignals(filters: DashboardFilters = {}) {
+    const cacheKey = `signals_${JSON.stringify(filters)}`;
+    const cached = this.getCached<any>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const orgWhere = filters.organizationId
+      ? `WHERE (r.organization_id = $1 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $1))`
+      : '';
+    const orgParams = filters.organizationId ? [filters.organizationId] : [];
+
+    const [inactiveReposRes, stalePRsRes] = await Promise.all([
+      pool.query(`
+        SELECT r.id, r.name, r.full_name, MAX(c.committed_at) as last_activity
+        FROM repositories r
+        LEFT JOIN commits c ON c.repository_id = r.id
+        ${orgWhere}
+        GROUP BY r.id, r.name, r.full_name
+        HAVING MAX(c.committed_at) < NOW() - INTERVAL '7 days' OR MAX(c.committed_at) IS NULL
+        LIMIT 10
+      `, orgParams),
+      pool.query(`
+        SELECT pr.id, pr.title, pr.number, r.name as repo_name, pr.created_at
+        FROM pull_requests pr
+        JOIN repositories r ON r.id = pr.repository_id
+        WHERE UPPER(pr.state) = 'OPEN' AND pr.created_at < NOW() - INTERVAL '7 days'
+        ${filters.organizationId ? `AND (r.organization_id = $1 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $1))` : ''}
+        LIMIT 10
+      `, orgParams),
+    ]);
+
+    const signalsResult = {
+      inactiveRepositories: inactiveReposRes.rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        fullName: r.full_name,
+        lastActivity: r.last_activity ? new Date(r.last_activity).toISOString() : 'No recent commits',
+      })),
+      stalePullRequests: stalePRsRes.rows.map((p) => ({
+        id: p.id,
+        title: p.title,
+        number: p.number,
+        repoName: p.repo_name,
+        createdAt: new Date(p.created_at).toISOString(),
+      })),
+    };
+
+    this.setCache(cacheKey, signalsResult, 30000);
+    return signalsResult;
   }
 
   // 2. Activity Dashboard API
@@ -596,7 +760,13 @@ export class AnalyticsService {
 
   // 7. Repositories Dashboard API
   async getDashboardRepositories(filters: DashboardFilters) {
-    const repoOverviewRes = await pool.query(`
+    const orgWhere = filters.organizationId
+      ? `WHERE (r.organization_id = $1 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $1))`
+      : '';
+    const orgParams = filters.organizationId ? [filters.organizationId] : [];
+
+    const repoOverviewRes = await pool.query(
+      `
       SELECT 
         r.id,
         r.name,
@@ -612,9 +782,12 @@ export class AnalyticsService {
       LEFT JOIN commits c ON c.repository_id = r.id
       LEFT JOIN pull_requests pr ON pr.repository_id = r.id
       LEFT JOIN issues i ON i.repository_id = r.id
+      ${orgWhere}
       GROUP BY r.id, r.name, r.full_name, r.language, r.last_synced_at
       ORDER BY r.full_name ASC
-    `);
+    `,
+      orgParams
+    );
 
     return {
       repositories: repoOverviewRes.rows.map((r) => ({

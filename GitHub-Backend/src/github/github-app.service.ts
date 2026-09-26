@@ -18,6 +18,55 @@ export class GitHubAppService {
     return Boolean(config.githubAppId && config.githubPrivateKey);
   }
 
+  // Generate secure state token for GitHub App installation redirect
+  createInstallationState(organizationId: string, userId?: string): string {
+    const payload = JSON.stringify({
+      organizationId,
+      userId: userId || null,
+      timestamp: Date.now(),
+      nonce: crypto.randomBytes(8).toString('hex'),
+    });
+    const signature = crypto
+      .createHmac('sha256', config.jwtSecret)
+      .update(payload)
+      .digest('hex');
+    return Buffer.from(JSON.stringify({ payload, signature })).toString('base64url');
+  }
+
+  // Verify state token from GitHub callback
+  verifyInstallationState(stateToken: string): { organizationId: string; userId?: string } | null {
+    try {
+      if (!stateToken) return null;
+      const jsonStr = Buffer.from(stateToken, 'base64url').toString('utf8');
+      const { payload, signature } = JSON.parse(jsonStr);
+
+      const expectedSignature = crypto
+        .createHmac('sha256', config.jwtSecret)
+        .update(payload)
+        .digest('hex');
+
+      if (signature !== expectedSignature) {
+        logger.warn('GITHUB_APP', 'Invalid state token signature in installation callback');
+        return null;
+      }
+
+      const parsedPayload = JSON.parse(payload);
+      // State valid for 60 minutes
+      if (Date.now() - parsedPayload.timestamp > 60 * 60 * 1000) {
+        logger.warn('GITHUB_APP', 'Expired state token in installation callback');
+        return null;
+      }
+
+      return {
+        organizationId: parsedPayload.organizationId,
+        userId: parsedPayload.userId || undefined,
+      };
+    } catch (err: any) {
+      logger.warn('GITHUB_APP', `Failed to verify installation state token: ${err.message}`);
+      return null;
+    }
+  }
+
   // Get App-level Authentication (JWT)
   getAppAuth() {
     if (!this.isAppConfigured()) {

@@ -7,7 +7,7 @@ import { useLayout } from '../../providers/layout-provider';
 import {
   X,
   Bot,
-  ShieldCheck,
+  Github,
   LayoutDashboard,
   FolderKanban,
   GitBranch,
@@ -107,17 +107,21 @@ export function MobileSidebar() {
           <div className="overflow-y-auto flex-1">
             {/* Header */}
             <div className="p-5 border-b border-slate-800 flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20 shrink-0">
-                  <Bot className="w-5 h-5" />
+              <Link
+                href="/dashboard"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center space-x-3 group min-w-0"
+                title="GitHub Monitoring Dashboard"
+              >
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20 group-hover:scale-105 transition-all shrink-0">
+                  <Github className="w-5 h-5" />
                 </div>
                 <div>
-                  <h1 className="font-bold text-white text-sm leading-tight">GitHub Monitoring</h1>
-                  <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
-                    <ShieldCheck className="w-3 h-3 text-emerald-400" /> Executive Console
-                  </p>
+                  <h1 className="font-bold text-white text-sm leading-tight group-hover:text-blue-400 transition-colors">
+                    GitHub Monitoring
+                  </h1>
                 </div>
-              </div>
+              </Link>
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(false)}

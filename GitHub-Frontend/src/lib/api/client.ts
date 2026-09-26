@@ -43,19 +43,53 @@ export async function fetchApi<T>(
   options?: RequestInit
 ): Promise<{ success: boolean; data: T; message?: string; error?: string }> {
   const url = getApiUrl(endpoint);
+  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
 
   const defaultHeaders: HeadersInit = {
     'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
   try {
-    const response = await fetch(url, {
+    let response = await fetch(url, {
       ...options,
       headers: {
         ...defaultHeaders,
         ...options?.headers,
       },
     });
+
+    // If 401 Unauthorized, attempt transparent token refresh once
+    if (response.status === 401 && typeof window !== 'undefined' && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/refresh')) {
+      const storedRefreshToken = localStorage.getItem('refresh_token');
+      if (storedRefreshToken) {
+        try {
+          const refreshRes = await fetch(getApiUrl('/auth/refresh'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: storedRefreshToken }),
+          });
+          const refreshBody = await refreshRes.json();
+          if (refreshRes.ok && refreshBody?.data?.accessToken) {
+            localStorage.setItem('auth_token', refreshBody.data.accessToken);
+            if (refreshBody.data.refreshToken) {
+              localStorage.setItem('refresh_token', refreshBody.data.refreshToken);
+            }
+            // Retry original request with fresh token
+            response = await fetch(url, {
+              ...options,
+              headers: {
+                ...defaultHeaders,
+                Authorization: `Bearer ${refreshBody.data.accessToken}`,
+                ...options?.headers,
+              },
+            });
+          }
+        } catch (e) {
+          // Token refresh failed, continue with original 401
+        }
+      }
+    }
 
     const body = await response.json().catch(() => ({}));
 
@@ -87,7 +121,11 @@ export async function fetchApi<T>(
   }
 }
 
-const AI_API_BASE_URL = (process.env.NEXT_PUBLIC_AI_API_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '');
+const AI_API_BASE_URL = (
+  process.env.NEXT_PUBLIC_AI_SERVICE_URL ||
+  process.env.NEXT_PUBLIC_AI_API_URL ||
+  'http://localhost:8000/api/v1'
+).replace(/\/$/, '').replace(/\/api$/, '/api/v1');
 
 export function getAiApiUrl(endpoint: string): string {
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;

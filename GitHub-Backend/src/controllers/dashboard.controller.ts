@@ -5,6 +5,7 @@ function parseFilters(req: Request): DashboardFilters & { preset?: string } {
   const { project, projectId, repository, repositoryId, developer, developerId, date_from, from, dateFrom, date_to, to, dateTo, preset } = req.query;
 
   return {
+    organizationId: (req as any).organizationId as string | undefined,
     projectId: (project || projectId) as string | undefined,
     repositoryId: (repository || repositoryId) as string | undefined,
     developerId: (developer || developerId) as string | undefined,
@@ -101,4 +102,16 @@ export async function getDailyAnalytics(req: Request, res: Response, next: NextF
     next(err);
   }
 }
+
+// 9. GET /api/dashboard/signals
+export async function getDashboardSignals(req: Request, res: Response, next: NextFunction) {
+  try {
+    const filters = parseFilters(req);
+    const data = await analyticsService.getEngineeringSignals(filters);
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
 

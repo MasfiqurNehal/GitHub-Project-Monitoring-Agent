@@ -1,4 +1,5 @@
 import { GitHubClient } from '../github/github-client.js';
+import { githubInstallationRepository } from '../repositories/githubInstallation.repository.js';
 import { repositoryRepository } from '../repositories/repository.repository.js';
 import { developerRepository } from '../repositories/developer.repository.js';
 import { commitRepository } from '../repositories/commit.repository.js';
@@ -9,35 +10,77 @@ import { syncJobRepository } from '../repositories/syncJob.repository.js';
 import { logger } from '../utils/logger.js';
 import crypto from 'crypto';
 
+export interface SyncCounts {
+  developers: number;
+  commits: number;
+  pullRequests: number;
+  issues: number;
+  reviews: number;
+  activities: number;
+}
+
+export interface SyncResult {
+  success: boolean;
+  status: 'COMPLETED' | 'FAILED';
+  repository: {
+    id: string;
+    name: string;
+    fullName: string;
+    owner: string;
+    isPrivate: boolean;
+    defaultBranch: string;
+  };
+  synchronized: boolean;
+  counts: SyncCounts;
+  startedAt: string;
+  completedAt: string;
+}
+
 export class SyncService {
-  private githubClient: GitHubClient;
+  async runFullHistoricalSync(repositoryId: string, organizationId?: string): Promise<SyncResult> {
+    const startedAt = new Date();
 
-  constructor() {
-    this.githubClient = new GitHubClient();
-  }
-
-  async runFullHistoricalSync(repositoryId: string): Promise<{ success: boolean; recordsProcessed: number }> {
-    const repo = await repositoryRepository.findById(repositoryId);
+    // 1. Tenant-isolated repository lookup
+    const repo = await repositoryRepository.findById(repositoryId, organizationId);
     if (!repo) {
-      throw new Error(`Repository with ID ${repositoryId} not found`);
+      throw new Error(`Repository with ID ${repositoryId} not found or access denied.`);
     }
 
+    const targetOrgId = organizationId || repo.organization_id || undefined;
+
+    // 2. Resolve GitHub App Installation for this tenant
+    const installations = await githubInstallationRepository.findAll(targetOrgId);
+    const activeInst = installations.find((i) => i.status === 'ACTIVE');
+    const installationId = repo.github_installation_id ? Number(repo.github_installation_id) : activeInst?.github_installation_id;
+
+    const githubClient = new GitHubClient({ installationId });
+
     const jobId = `job-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
-    await syncJobRepository.create(jobId, repo.id, 'historical_sync');
+    await syncJobRepository.create(jobId, repo.id, 'historical_sync', targetOrgId);
     await repositoryRepository.updateSyncStatus(repo.id, 'SYNCING');
 
-    let totalProcessed = 0;
+    const counts: SyncCounts = {
+      developers: 0,
+      commits: 0,
+      pullRequests: 0,
+      issues: 0,
+      reviews: 0,
+      activities: 0,
+    };
+
     const sinceDate = repo.last_synced_at ? repo.last_synced_at.toISOString() : undefined;
 
     try {
-      logger.info('SYNC', `Starting historical sync for ${repo.full_name} [Incremental since: ${sinceDate || 'BEGINNING'}]...`);
+      logger.info('SYNC', `Starting historical sync for ${repo.full_name} [Tenant: ${targetOrgId || 'default'}, Inst: ${installationId || 'none'}]...`);
 
       // 1. Sync Repository Metadata
-      const repoMeta = await this.githubClient.validateRepositoryAccess(repo.owner, repo.name);
+      const repoMeta = await githubClient.validateRepositoryAccess(repo.owner, repo.name);
       if (repoMeta.success && repoMeta.data) {
         await repositoryRepository.upsert({
           id: repo.id,
+          organizationId: targetOrgId,
           githubRepositoryId: repoMeta.data.githubRepositoryId,
+          githubInstallationId: installationId || null,
           owner: repoMeta.data.owner,
           name: repoMeta.data.name,
           fullName: repoMeta.data.fullName,
@@ -50,26 +93,27 @@ export class SyncService {
           forks: repoMeta.data.forks,
           openIssuesCount: repoMeta.data.openIssuesCount,
         });
-        totalProcessed++;
       }
 
-      // 2. Sync Contributors
+      // 2. Sync Contributors & Developers
       try {
-        const contributors = await this.githubClient.getContributors(repo.owner, repo.name);
+        const contributors = await githubClient.getContributors(repo.owner, repo.name);
         for (const contrib of contributors) {
           if (!contrib.login) continue;
           const devId = `dev-${contrib.id || contrib.login}`;
           const dev = await developerRepository.upsert({
             id: devId,
+            organizationId: targetOrgId,
             githubUserId: contrib.id,
             login: contrib.login,
+            name: contrib.login,
             avatarUrl: contrib.avatar_url,
             htmlUrl: contrib.html_url,
             type: contrib.type,
           });
 
           await developerRepository.linkToRepository(repo.id, dev.id);
-          totalProcessed++;
+          counts.developers++;
         }
       } catch (err: any) {
         logger.warn('SYNC', `Contributors fetch warning for ${repo.full_name}: ${err.message}`);
@@ -79,9 +123,9 @@ export class SyncService {
       let commitPage = 1;
       let hasMoreCommits = true;
 
-      while (hasMoreCommits && commitPage <= 10) {
+      while (hasMoreCommits && commitPage <= 20) {
         try {
-          const commits = await this.githubClient.getCommits(repo.owner, repo.name, sinceDate, commitPage, 100);
+          const commits = await githubClient.getCommits(repo.owner, repo.name, sinceDate, commitPage, 100);
           if (!commits || commits.length === 0) {
             hasMoreCommits = false;
             break;
@@ -92,6 +136,7 @@ export class SyncService {
             if (c.author?.login) {
               const dev = await developerRepository.upsert({
                 id: `dev-${c.author.id || c.author.login}`,
+                organizationId: targetOrgId,
                 githubUserId: c.author.id,
                 login: c.author.login,
                 avatarUrl: c.author.avatar_url,
@@ -109,7 +154,7 @@ export class SyncService {
             let changedFilesCount = 0;
 
             try {
-              const detail = await this.githubClient.getCommitDetail(repo.owner, repo.name, c.sha);
+              const detail = await githubClient.getCommitDetail(repo.owner, repo.name, c.sha);
               additions = detail.stats?.additions || 0;
               deletions = detail.stats?.deletions || 0;
               changedFilesCount = detail.files?.length || 0;
@@ -160,7 +205,8 @@ export class SyncService {
               },
             });
 
-            totalProcessed++;
+            counts.commits++;
+            counts.activities++;
           }
 
           if (commits.length < 100) hasMoreCommits = false;
@@ -175,9 +221,9 @@ export class SyncService {
       let prPage = 1;
       let hasMorePRs = true;
 
-      while (hasMorePRs && prPage <= 5) {
+      while (hasMorePRs && prPage <= 10) {
         try {
-          const prs = await this.githubClient.getPullRequests(repo.owner, repo.name, 'all', prPage, 100);
+          const prs = await githubClient.getPullRequests(repo.owner, repo.name, 'all', prPage, 100);
           if (!prs || prs.length === 0) {
             hasMorePRs = false;
             break;
@@ -188,6 +234,7 @@ export class SyncService {
             if (pr.user?.login) {
               const dev = await developerRepository.upsert({
                 id: `dev-${pr.user.id || pr.user.login}`,
+                organizationId: targetOrgId,
                 githubUserId: pr.user.id,
                 login: pr.user.login,
                 avatarUrl: pr.user.avatar_url,
@@ -219,14 +266,16 @@ export class SyncService {
               mergedAt,
               htmlUrl: pr.html_url,
             });
+            counts.pullRequests++;
 
             try {
-              const reviews = await this.githubClient.getPullRequestReviews(repo.owner, repo.name, pr.number);
+              const reviews = await githubClient.getPullRequestReviews(repo.owner, repo.name, pr.number);
               for (const r of reviews) {
                 let reviewerDevId: string | null = null;
                 if (r.user?.login) {
                   const dev = await developerRepository.upsert({
                     id: `dev-${r.user.id || r.user.login}`,
+                    organizationId: targetOrgId,
                     githubUserId: r.user.id,
                     login: r.user.login,
                     avatarUrl: r.user.avatar_url,
@@ -244,6 +293,7 @@ export class SyncService {
                   submittedAt: new Date(r.submitted_at || Date.now()),
                   htmlUrl: r.html_url,
                 });
+                counts.reviews++;
               }
             } catch (err: any) {}
 
@@ -261,8 +311,7 @@ export class SyncService {
                 state: pr.state,
               },
             });
-
-            totalProcessed++;
+            counts.activities++;
           }
 
           if (prs.length < 100) hasMorePRs = false;
@@ -276,9 +325,9 @@ export class SyncService {
       let issuePage = 1;
       let hasMoreIssues = true;
 
-      while (hasMoreIssues && issuePage <= 5) {
+      while (hasMoreIssues && issuePage <= 10) {
         try {
-          const issues = await this.githubClient.getIssues(repo.owner, repo.name, 'all', issuePage, 100);
+          const issues = await githubClient.getIssues(repo.owner, repo.name, 'all', issuePage, 100);
           if (!issues || issues.length === 0) {
             hasMoreIssues = false;
             break;
@@ -289,6 +338,7 @@ export class SyncService {
             if (issue.user?.login) {
               const dev = await developerRepository.upsert({
                 id: `dev-${issue.user.id || issue.user.login}`,
+                organizationId: targetOrgId,
                 githubUserId: issue.user.id,
                 login: issue.user.login,
                 avatarUrl: issue.user.avatar_url,
@@ -300,6 +350,7 @@ export class SyncService {
             if (issue.assignee?.login) {
               const aDev = await developerRepository.upsert({
                 id: `dev-${issue.assignee.id || issue.assignee.login}`,
+                organizationId: targetOrgId,
                 githubUserId: issue.assignee.id,
                 login: issue.assignee.login,
                 avatarUrl: issue.assignee.avatar_url,
@@ -318,15 +369,30 @@ export class SyncService {
               title: issue.title,
               body: issue.body || null,
               state: issue.state ? issue.state.toUpperCase() : 'OPEN',
-              labels: issue.labels ? issue.labels.map((l: any) => typeof l === 'string' ? l : l.name) : [],
+              labels: issue.labels ? issue.labels.map((l: any) => (typeof l === 'string' ? l : l.name)) : [],
               closedAt: issue.closed_at ? new Date(issue.closed_at) : null,
               createdAt: new Date(issue.created_at),
               updatedAt: new Date(issue.updated_at),
               commentsCount: issue.comments,
               htmlUrl: issue.html_url,
             });
+            counts.issues++;
 
-            totalProcessed++;
+            await activityRepository.create({
+              id: `act-iss-${issue.id}`,
+              repositoryId: repo.id,
+              developerId: authorDevId,
+              eventType: issue.state === 'closed' ? 'ISSUE_CLOSED' : 'ISSUE_OPENED',
+              entityType: 'ISSUE',
+              entityId: String(issue.number),
+              occurredAt: issue.closed_at ? new Date(issue.closed_at) : new Date(issue.created_at),
+              metadata: {
+                issueNumber: issue.number,
+                title: issue.title,
+                state: issue.state,
+              },
+            });
+            counts.activities++;
           }
 
           if (issues.length < 100) hasMoreIssues = false;
@@ -337,11 +403,29 @@ export class SyncService {
       }
 
       // Mark Repository & Job Completed
-      await repositoryRepository.updateSyncStatus(repo.id, 'SYNCED', new Date());
+      const totalProcessed = counts.commits + counts.pullRequests + counts.issues + counts.reviews;
+      const completedAt = new Date();
+      await repositoryRepository.updateSyncStatus(repo.id, 'SYNCED', completedAt);
       await syncJobRepository.complete(jobId, totalProcessed);
 
       logger.info('SYNC', `Completed historical sync for ${repo.full_name}. Processed ${totalProcessed} records.`);
-      return { success: true, recordsProcessed: totalProcessed };
+
+      return {
+        success: true,
+        status: 'COMPLETED',
+        repository: {
+          id: repo.id,
+          name: repo.name,
+          fullName: repo.full_name,
+          owner: repo.owner,
+          isPrivate: repo.is_private,
+          defaultBranch: repo.default_branch,
+        },
+        synchronized: true,
+        counts,
+        startedAt: startedAt.toISOString(),
+        completedAt: completedAt.toISOString(),
+      };
     } catch (err: any) {
       logger.error('SYNC', `Failed historical sync for ${repo.full_name}: ${err.message}`, err);
       await repositoryRepository.updateSyncStatus(repo.id, 'FAILED');

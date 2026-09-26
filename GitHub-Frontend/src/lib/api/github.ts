@@ -3,37 +3,62 @@ import { GitHubAccountInfo, ValidatedRepositoryInfo, MonitoredRepository } from 
 
 export async function fetchGitHubConnectionStatus(): Promise<{ success: boolean; data: GitHubAccountInfo }> {
   try {
-    const res = await fetchApi<any>('/github/connection');
+    const res = await fetchApi<any>('/github/connection/status');
+    const data = res.data || {};
+    const isConnected = Boolean(data.connected ?? data.isConnected ?? false);
+    const account = data.githubAccount || data.account || {};
+
     return {
       success: true,
       data: {
-        isConnected: Boolean(res.data?.isConnected ?? res.data?.connected ?? true),
-        username: res.data?.username || res.data?.login || 'MasfiqurNehal',
-        name: res.data?.name || 'Masfiqur Nehal',
-        avatarUrl: res.data?.avatarUrl || res.data?.avatar_url || 'https://github.com/MasfiqurNehal.png',
-        organization: res.data?.organization || 'Personal',
-        connectedAt: res.data?.connectedAt || res.data?.connected_at || new Date().toISOString(),
-        scopes: res.data?.scopes || ['repo', 'read:org', 'read:user'],
+        isConnected,
+        connected: isConnected,
+        username: account.login || data.username || data.name || null,
+        name: data.name || account.login || data.username || null,
+        avatarUrl: account.avatarUrl || data.avatarUrl || (account.login ? `https://github.com/${account.login}.png` : null),
+        organization: data.organization || (account.type === 'Organization' ? account.login : null),
+        installationId: data.installationId || account.installationId || null,
+        accessibleRepositoryCount: data.accessibleRepositoryCount ?? 0,
+        lastSynchronization: data.lastSynchronization || null,
+        connectionStatus: data.connectionStatus || data.status || (isConnected ? 'ACTIVE' : 'NOT_CONNECTED'),
+        connectedAt: data.connectedAt || account.installedAt || null,
+        scopes: ['repo:read', 'read:org'],
+        githubAccount: account.login ? {
+          id: account.id,
+          login: account.login,
+          type: account.type,
+          avatarUrl: account.avatarUrl || `https://github.com/${account.login}.png`,
+        } : null,
       },
     };
   } catch (err) {
     return {
       success: true,
       data: {
-        isConnected: true,
-        username: 'MasfiqurNehal',
-        name: 'Masfiqur Nehal',
-        avatarUrl: 'https://github.com/MasfiqurNehal.png',
-        organization: 'GitHub App Monitored',
-        connectedAt: new Date().toISOString(),
-        scopes: ['repo', 'read:org', 'read:user'],
+        isConnected: false,
+        connected: false,
+        username: null,
+        name: null,
+        avatarUrl: null,
+        organization: null,
+        installationId: null,
+        accessibleRepositoryCount: 0,
+        lastSynchronization: null,
+        connectionStatus: 'NOT_CONNECTED',
+        connectedAt: null,
+        scopes: [],
+        githubAccount: null,
       },
     };
   }
 }
 
 export async function connectGitHubAccount(): Promise<{ success: boolean; data: any }> {
-  const res = await fetchApi<any>('/github/install');
+  const res = await fetchApi<any>('/github/app/install');
+  const targetUrl = res.data?.installationUrl || res.data?.installUrl;
+  if (targetUrl && typeof window !== 'undefined') {
+    window.location.href = targetUrl;
+  }
   return {
     success: true,
     data: res.data,

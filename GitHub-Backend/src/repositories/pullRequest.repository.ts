@@ -28,6 +28,7 @@ export interface PullRequestRow {
 }
 
 export interface PullRequestFilterOptions {
+  organizationId?: string;
   projectId?: string;
   repositoryId?: string;
   developerId?: string;
@@ -150,6 +151,12 @@ export class PullRequestRepository {
     const conditions: string[] = [];
     const params: any[] = [];
     let pIdx = 1;
+
+    if (options.organizationId) {
+      conditions.push(`(r.organization_id = $${pIdx} OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $${pIdx}))`);
+      params.push(options.organizationId);
+      pIdx++;
+    }
 
     if (options.repositoryId) {
       conditions.push(`(pr.repository_id = $${pIdx} OR r.full_name = $${pIdx} OR r.name = $${pIdx})`);
@@ -301,15 +308,22 @@ export class PullRequestRepository {
     };
   }
 
-  async findDetailById(idOrNumber: string): Promise<any | null> {
-    const prRes = await pool.query(
-      `SELECT pr.*, r.name as repo_name, r.full_name as repo_full_name, d.id as author_id, d.login as author_login, d.name as author_name, d.avatar_url as author_avatar_url, d.html_url as author_html_url
-       FROM pull_requests pr
-       LEFT JOIN repositories r ON pr.repository_id = r.id
-       LEFT JOIN developers d ON pr.author_developer_id = d.id
-       WHERE pr.id = $1 OR CAST(pr.number AS TEXT) = $1 OR CAST(pr.github_pr_id AS TEXT) = $1`,
-      [idOrNumber]
-    );
+  async findDetailById(idOrNumber: string, organizationId?: string): Promise<any | null> {
+    let query = `
+      SELECT pr.*, r.name as repo_name, r.full_name as repo_full_name, d.id as author_id, d.login as author_login, d.name as author_name, d.avatar_url as author_avatar_url, d.html_url as author_html_url
+      FROM pull_requests pr
+      LEFT JOIN repositories r ON pr.repository_id = r.id
+      LEFT JOIN developers d ON pr.author_developer_id = d.id
+      WHERE (pr.id = $1 OR CAST(pr.number AS TEXT) = $1 OR CAST(pr.github_pr_id AS TEXT) = $1)
+    `;
+    const params: any[] = [idOrNumber];
+
+    if (organizationId) {
+      query += ` AND (r.organization_id = $2 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $2))`;
+      params.push(organizationId);
+    }
+
+    const prRes = await pool.query(query, params);
 
     if (prRes.rows.length === 0) return null;
     const row = prRes.rows[0];
@@ -384,14 +398,14 @@ export class PullRequestRepository {
     };
   }
 
-  async findByDeveloper(developerId: string, options: { repositoryId?: string; state?: string; dateFrom?: string; dateTo?: string; page?: number; limit?: number }) {
+  async findByDeveloper(developerId: string, options: { organizationId?: string; repositoryId?: string; state?: string; dateFrom?: string; dateTo?: string; page?: number; limit?: number }) {
     return this.findPullRequests({
       ...options,
       developerId,
     });
   }
 
-  async findReviewsByDeveloper(developerId: string, options: { repositoryId?: string; state?: string; dateFrom?: string; dateTo?: string; page?: number; limit?: number }) {
+  async findReviewsByDeveloper(developerId: string, options: { organizationId?: string; repositoryId?: string; state?: string; dateFrom?: string; dateTo?: string; page?: number; limit?: number }) {
     const page = Math.max(1, Number(options.page) || 1);
     const limit = Math.max(1, Math.min(100, Number(options.limit) || 20));
     const offset = (page - 1) * limit;
@@ -399,6 +413,12 @@ export class PullRequestRepository {
     const conditions: string[] = ['(prr.reviewer_developer_id = $1 OR d.login = $1)'];
     const params: any[] = [developerId];
     let pIdx = 2;
+
+    if (options.organizationId) {
+      conditions.push(`(r.organization_id = $${pIdx} OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $${pIdx}))`);
+      params.push(options.organizationId);
+      pIdx++;
+    }
 
     if (options.repositoryId) {
       conditions.push(`(pr.repository_id = $${pIdx} OR r.full_name = $${pIdx})`);

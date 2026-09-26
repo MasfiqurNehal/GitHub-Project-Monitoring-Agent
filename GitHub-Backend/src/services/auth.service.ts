@@ -75,7 +75,7 @@ export class AuthService {
           if (cleanEmail === 'admin1@masfiqurnehal.com') orgId = 'org-masfiqurnehal';
           else if (cleanEmail === 'admin@betopia.com') orgId = 'org-betopia-1';
           else if (cleanEmail === 'admin2@betopia.com') orgId = 'org-betopia-2';
-          else orgId = `org-${cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+          else orgId = `org-${cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 24)}`;
         }
 
         const orgName = (u as any).organization || `${userName}'s Organization`;
@@ -213,7 +213,18 @@ export class AuthService {
       if (cleanEmail === 'admin1@masfiqurnehal.com') dbOrgId = 'org-masfiqurnehal';
       else if (cleanEmail === 'admin@betopia.com') dbOrgId = 'org-betopia-1';
       else if (cleanEmail === 'admin2@betopia.com') dbOrgId = 'org-betopia-2';
-      else dbOrgId = `org-${cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+      else dbOrgId = `org-${cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 24)}`;
+    }
+
+    try {
+      await pool.query(
+        `INSERT INTO saas_organizations (id, name, slug, plan, updated_at)
+         VALUES ($1, $2, $3, 'enterprise', NOW())
+         ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated_at = NOW()`,
+        [dbOrgId, `${dbName}'s Organization`, dbOrgId]
+      );
+    } catch (err: any) {
+      logger.warn('AUTH_SERVICE', `Could not create/update saas_organization in DB: ${err.message}`);
     }
 
     // 3. Log login attempt in Neon DB (user_login_logs)
@@ -246,12 +257,14 @@ export class AuthService {
 
     // 5. Fetch full user profile from Neon DB (with avatarUrl, designation, companyName, phoneNumber, contactEmail)
     const fullProfile = await this.getUserProfile(dbUserId);
-    const userToReturn = fullProfile || {
-      id: dbUserId,
-      email: cleanEmail,
-      name: dbName,
-      role: dbRole,
-      organizationId: dbOrgId,
+    const userToReturn = {
+      ...(fullProfile || {
+        id: dbUserId,
+        email: cleanEmail,
+        name: dbName,
+        role: dbRole,
+      }),
+      organizationId: fullProfile?.organizationId || dbOrgId,
     };
 
     // 6. Generate Access Token (3 Days) & Refresh Token (30 Days)
@@ -424,6 +437,22 @@ export class AuthService {
     const userRole = account.role || 'client_user';
     const githubLogin = cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_');
 
+    let orgId = account.organizationId;
+    if (!orgId) {
+      orgId = `org-${cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 24)}`;
+    }
+
+    try {
+      await pool.query(
+        `INSERT INTO saas_organizations (id, name, slug, plan, updated_at)
+         VALUES ($1, $2, $3, 'enterprise', NOW())
+         ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated_at = NOW()`,
+        [orgId, `${userName}'s Organization`, orgId]
+      );
+    } catch (err: any) {
+      logger.warn('AUTH_SERVICE', `Could not create saas_organization in DB: ${err.message}`);
+    }
+
     await pool.query(
       `INSERT INTO users (id, github_login, name, email, role, password_hash, organization_id, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
@@ -432,8 +461,9 @@ export class AuthService {
          name = EXCLUDED.name,
          role = EXCLUDED.role,
          password_hash = EXCLUDED.password_hash,
+         organization_id = EXCLUDED.organization_id,
          updated_at = NOW()`,
-      [userId, githubLogin, userName, cleanEmail, userRole, account.password || 'password', account.organizationId || null]
+      [userId, githubLogin, userName, cleanEmail, userRole, account.password || 'password', orgId]
     );
 
     return {
@@ -441,6 +471,7 @@ export class AuthService {
       email: cleanEmail,
       name: userName,
       role: userRole,
+      organizationId: orgId,
     };
   }
 

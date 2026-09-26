@@ -133,7 +133,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
               {message.actions.map((act, idx) => (
                 <Link
                   key={idx}
-                  href={act.href}
+                  href={act.href || '#'}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 text-xs font-bold transition-all shadow-sm"
                 >
                   {renderActionIcon(act.type)}

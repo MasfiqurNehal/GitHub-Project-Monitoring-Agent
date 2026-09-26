@@ -48,6 +48,7 @@ export class ActivityRepository {
   }
 
   async findActivityFeed(filters: {
+    organizationId?: string;
     projectId?: string;
     repositoryId?: string;
     developerId?: string;
@@ -64,6 +65,12 @@ export class ActivityRepository {
     const conditions: string[] = [];
     const params: any[] = [];
     let paramIdx = 1;
+
+    if (filters.organizationId) {
+      conditions.push(`(r.organization_id = $${paramIdx} OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $${paramIdx}))`);
+      params.push(filters.organizationId);
+      paramIdx++;
+    }
 
     if (filters.repositoryId) {
       conditions.push(`(ca.repository_id = $${paramIdx} OR r.full_name = $${paramIdx} OR r.name = $${paramIdx})`);

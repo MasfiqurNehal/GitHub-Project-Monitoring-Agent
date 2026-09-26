@@ -19,6 +19,7 @@ export interface IssueRow {
 }
 
 export interface IssueFilterOptions {
+  organizationId?: string;
   projectId?: string;
   repositoryId?: string;
   developerId?: string;
@@ -116,6 +117,12 @@ export class IssueRepository {
     const conditions: string[] = [];
     const params: any[] = [];
     let pIdx = 1;
+
+    if (options.organizationId) {
+      conditions.push(`(r.organization_id = $${pIdx} OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $${pIdx}))`);
+      params.push(options.organizationId);
+      pIdx++;
+    }
 
     if (options.repositoryId) {
       conditions.push(`(i.repository_id = $${pIdx} OR r.full_name = $${pIdx} OR r.name = $${pIdx})`);
@@ -241,10 +248,10 @@ export class IssueRepository {
     };
   }
 
-  async findDetailById(idOrNumber: string): Promise<any | null> {
+  async findDetailById(idOrNumber: string, organizationId?: string): Promise<any | null> {
     await this.ensureSchema();
-    const issueRes = await pool.query(
-      `SELECT 
+    let query = `
+      SELECT 
         i.*,
         r.name as repo_name,
         r.full_name as repo_full_name,
@@ -262,9 +269,16 @@ export class IssueRepository {
        LEFT JOIN repositories r ON i.repository_id = r.id
        LEFT JOIN developers da ON i.author_developer_id = da.id
        LEFT JOIN developers das ON i.assignee_developer_id = das.id
-       WHERE i.id = $1 OR CAST(i.number AS TEXT) = $1 OR CAST(i.github_issue_id AS TEXT) = $1`,
-      [idOrNumber]
-    );
+       WHERE (i.id = $1 OR CAST(i.number AS TEXT) = $1 OR CAST(i.github_issue_id AS TEXT) = $1)
+    `;
+    const params: any[] = [idOrNumber];
+
+    if (organizationId) {
+      query += ` AND (r.organization_id = $2 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $2))`;
+      params.push(organizationId);
+    }
+
+    const issueRes = await pool.query(query, params);
 
     if (issueRes.rows.length === 0) return null;
     const row = issueRes.rows[0];
@@ -309,7 +323,7 @@ export class IssueRepository {
     };
   }
 
-  async findByDeveloper(developerId: string, options: { repositoryId?: string; state?: string; dateFrom?: string; dateTo?: string; page?: number; limit?: number }) {
+  async findByDeveloper(developerId: string, options: { organizationId?: string; repositoryId?: string; state?: string; dateFrom?: string; dateTo?: string; page?: number; limit?: number }) {
     return this.findIssues({
       ...options,
       developerId,

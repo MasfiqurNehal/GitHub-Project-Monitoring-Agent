@@ -13,12 +13,12 @@ export interface SyncJobRow {
 }
 
 export class SyncJobRepository {
-  async create(id: string, repositoryId: string, jobType: string): Promise<SyncJobRow> {
+  async create(id: string, repositoryId: string, jobType: string, organizationId?: string | null): Promise<SyncJobRow> {
     const res = await pool.query(
-      `INSERT INTO sync_jobs (id, repository_id, job_type, status, started_at, created_at)
-       VALUES ($1, $2, $3, 'running', NOW(), NOW())
+      `INSERT INTO sync_jobs (id, repository_id, organization_id, job_type, status, started_at, created_at)
+       VALUES ($1, $2, $3, $4, 'running', NOW(), NOW())
        RETURNING *`,
-      [id, repositoryId, jobType]
+      [id, repositoryId, organizationId || null, jobType]
     );
     return res.rows[0];
   }
