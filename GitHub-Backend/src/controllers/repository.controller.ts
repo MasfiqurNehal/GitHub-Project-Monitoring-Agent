@@ -106,8 +106,8 @@ export async function addRepository(req: Request, res: Response, next: NextFunct
 
     logger.info('REPOSITORIES', `Successfully connected repository '${repository.full_name}' to Neon DB`);
 
-    // Initiate async historical sync
-    syncService.runFullHistoricalSync(repository.id).catch((err) => {
+    // Initiate async historical sync with organization context
+    syncService.runFullHistoricalSync(repository.id, orgId).catch((err) => {
       logger.error('SYNC', `Async sync error for ${repository.full_name}: ${err.message}`);
     });
 
@@ -222,7 +222,8 @@ export async function removeRepository(req: Request, res: Response, next: NextFu
       return res.status(404).json({ success: false, error: 'Repository not found' });
     }
 
-    const deleted = await repositoryRepository.delete(repo.id);
+    const deleted = await repositoryRepository.delete(repo.id, orgId);
+
     if (!deleted) {
       return res.status(404).json({ success: false, error: 'Repository not found' });
     }

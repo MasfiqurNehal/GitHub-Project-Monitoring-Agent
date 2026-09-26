@@ -6,6 +6,7 @@ export class DeveloperService {
   async getDeveloperDetail(
     developerIdOrLogin: string,
     filters: {
+      organizationId?: string;
       dateFrom?: string;
       dateTo?: string;
       projectId?: string;
@@ -13,11 +14,12 @@ export class DeveloperService {
       activityType?: string;
     } = {}
   ) {
-    let dev = await developerRepository.findById(developerIdOrLogin);
+    let dev = await developerRepository.findById(developerIdOrLogin, filters.organizationId);
     if (!dev) {
-      dev = await developerRepository.findByLogin(developerIdOrLogin);
+      dev = await developerRepository.findByLogin(developerIdOrLogin, filters.organizationId);
     }
     if (!dev) return null;
+
 
     const developerId = dev.id;
     const { dateFrom, dateTo, projectId, repositoryId, activityType } = filters;
@@ -344,11 +346,12 @@ export class DeveloperService {
       projectId?: string;
     }
   ) {
-    let dev = await developerRepository.findById(developerIdOrLogin);
+    let dev = await developerRepository.findById(developerIdOrLogin, filters.organizationId);
     if (!dev) {
-      dev = await developerRepository.findByLogin(developerIdOrLogin);
+      dev = await developerRepository.findByLogin(developerIdOrLogin, filters.organizationId);
     }
     if (!dev) return null;
+
 
     const developerId = dev.id;
 

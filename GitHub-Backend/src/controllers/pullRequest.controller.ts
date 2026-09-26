@@ -62,10 +62,11 @@ export async function getRepositoryPullRequests(req: Request, res: Response, nex
     const { developer, state, date_from, date_to, page, limit, per_page } = req.query;
     const orgId = (req as any).organizationId;
 
-    let repo = await repositoryRepository.findById(id);
+    let repo = await repositoryRepository.findById(id, orgId);
     if (!repo) {
-      repo = await repositoryRepository.findByFullName(id);
+      repo = await repositoryRepository.findByFullName(id, orgId);
     }
+
 
     if (!repo) {
       return res.status(404).json({ success: false, error: 'Repository not found' });

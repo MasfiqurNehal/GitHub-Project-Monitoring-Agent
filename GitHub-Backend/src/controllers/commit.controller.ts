@@ -12,9 +12,9 @@ export async function getRepositoryCommits(req: Request, res: Response, next: Ne
     const orgId = (req as any).organizationId;
 
     // Verify repository exists
-    let repo = await repositoryRepository.findById(id);
+    let repo = await repositoryRepository.findById(id, orgId);
     if (!repo) {
-      repo = await repositoryRepository.findByFullName(id);
+      repo = await repositoryRepository.findByFullName(id, orgId);
     }
 
     if (!repo) {
@@ -75,10 +75,11 @@ export async function getDeveloperCommits(req: Request, res: Response, next: Nex
     const orgId = (req as any).organizationId;
 
     // Verify developer exists
-    let dev = await developerRepository.findById(id);
+    let dev = await developerRepository.findById(id, orgId);
     if (!dev) {
-      dev = await developerRepository.findByLogin(id);
+      dev = await developerRepository.findByLogin(id, orgId);
     }
+
 
     if (!dev) {
       return res.status(404).json({ success: false, error: 'Developer not found' });

@@ -15,19 +15,19 @@ import * as webhookController from '../controllers/webhook.controller.js';
 import * as telemetryController from '../controllers/telemetry.controller.js';
 import * as codeChurnController from '../controllers/codeChurn.controller.js';
 import * as authController from '../controllers/auth.controller.js';
+import { requireTenantAuth } from '../middleware/auth.middleware.js';
 
 export const apiRouter = Router();
 
-// Authentication & SaaS Credentials Endpoints
+// Public Authentication & Health Check Endpoints
 apiRouter.post('/auth/login', authController.login);
 apiRouter.post('/auth/refresh', authController.refreshToken);
-apiRouter.get('/auth/me', authController.getMe);
-apiRouter.put('/auth/profile', authController.updateProfile);
-apiRouter.post('/auth/logout', authController.logout);
-apiRouter.post('/auth/users', authController.createUser);
-apiRouter.get('/auth/logins', authController.getLoginLogs);
 
-// 1. Health Checks
+// GitHub Webhooks & Telemetry (Public / Signature Verified)
+apiRouter.post('/webhooks/github', webhookController.handleGitHubWebhook);
+apiRouter.post('/webhook/github', webhookController.handleGitHubWebhook);
+apiRouter.post('/telemetry/log', telemetryController.logTelemetry);
+
 apiRouter.get('/health', async (req, res) => {
   const dbHealth = await checkDatabaseHealth();
   if (dbHealth.isHealthy) {
@@ -55,9 +55,20 @@ apiRouter.get('/health/database', async (req, res) => {
   }
 });
 
+// Enforce Tenant Authorization for all protected application routes
+apiRouter.use(requireTenantAuth as any);
+
+// Protected User Auth Endpoints
+apiRouter.get('/auth/me', authController.getMe);
+apiRouter.put('/auth/profile', authController.updateProfile);
+apiRouter.post('/auth/logout', authController.logout);
+apiRouter.post('/auth/users', authController.createUser);
+apiRouter.get('/auth/logins', authController.getLoginLogs);
+
 // 2. Dashboard & Analytics Endpoints
 apiRouter.get('/dashboard/summary', dashboardController.getDashboardSummary);
 apiRouter.get('/dashboard/activity-trends', dashboardController.getActivityTrends);
+
 apiRouter.get('/dashboard/overview', dashboardController.getDashboardOverview);
 apiRouter.get('/dashboard/signals', dashboardController.getDashboardSignals);
 apiRouter.get('/dashboard/activity', dashboardController.getDashboardActivity);
@@ -158,9 +169,3 @@ apiRouter.post('/settings/github/installations/:installationId/token', githubCon
 apiRouter.post('/settings/github/validate-repo', githubConnectionController.validateGithubRepository);
 apiRouter.get('/settings/github/monitored-repos', repositoryController.listRepositories);
 
-// 12. GitHub Webhooks Ingestion
-apiRouter.post('/webhooks/github', webhookController.handleGitHubWebhook);
-apiRouter.post('/webhook/github', webhookController.handleGitHubWebhook);
-
-// 13. Frontend Telemetry & UI Logging
-apiRouter.post('/telemetry/log', telemetryController.logTelemetry);

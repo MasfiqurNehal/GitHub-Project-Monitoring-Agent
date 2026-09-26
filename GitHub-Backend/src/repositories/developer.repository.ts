@@ -42,15 +42,40 @@ export class DeveloperRepository {
     return res.rows;
   }
 
-  async findById(id: string): Promise<DeveloperRow | null> {
+  async findById(id: string, organizationId?: string): Promise<DeveloperRow | null> {
+    if (organizationId) {
+      const res = await pool.query(
+        `SELECT * FROM developers 
+         WHERE id = $1 AND (organization_id = $2 OR id IN (
+           SELECT DISTINCT rd.developer_id FROM repository_developers rd
+           JOIN repositories r ON r.id = rd.repository_id
+           WHERE r.organization_id = $2 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $2)
+         ))`,
+        [id, organizationId]
+      );
+      return res.rows[0] || null;
+    }
     const res = await pool.query('SELECT * FROM developers WHERE id = $1', [id]);
     return res.rows[0] || null;
   }
 
-  async findByLogin(login: string): Promise<DeveloperRow | null> {
+  async findByLogin(login: string, organizationId?: string): Promise<DeveloperRow | null> {
+    if (organizationId) {
+      const res = await pool.query(
+        `SELECT * FROM developers 
+         WHERE LOWER(login) = LOWER($1) AND (organization_id = $2 OR id IN (
+           SELECT DISTINCT rd.developer_id FROM repository_developers rd
+           JOIN repositories r ON r.id = rd.repository_id
+           WHERE r.organization_id = $2 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $2)
+         ))`,
+        [login, organizationId]
+      );
+      return res.rows[0] || null;
+    }
     const res = await pool.query('SELECT * FROM developers WHERE LOWER(login) = LOWER($1)', [login]);
     return res.rows[0] || null;
   }
+
 
   async upsert(data: {
     id: string;

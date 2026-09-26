@@ -198,10 +198,17 @@ export class RepositoryRepository {
     );
   }
 
-  async delete(id: string): Promise<boolean> {
-    const res = await pool.query('DELETE FROM repositories WHERE id = $1', [id]);
+  async delete(id: string, organizationId?: string): Promise<boolean> {
+    let query = 'DELETE FROM repositories WHERE id = $1';
+    const params: any[] = [id];
+    if (organizationId) {
+      query += ' AND (organization_id = $2 OR project_id IN (SELECT id FROM projects WHERE organization_id = $2))';
+      params.push(organizationId);
+    }
+    const res = await pool.query(query, params);
     return (res.rowCount || 0) > 0;
   }
 }
 
 export const repositoryRepository = new RepositoryRepository();
+

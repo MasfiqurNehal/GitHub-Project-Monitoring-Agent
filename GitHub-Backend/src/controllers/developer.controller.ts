@@ -41,8 +41,10 @@ export async function getDeveloperDetail(req: Request, res: Response, next: Next
   try {
     const { id } = req.params;
     const { date_from, from, dateFrom, date_to, to, dateTo, project, projectId, repository, repositoryId, type, activityType } = req.query;
+    const orgId = (req as any).organizationId;
     
     const filters = {
+      organizationId: orgId,
       dateFrom: (date_from || from || dateFrom) as string | undefined,
       dateTo: (date_to || to || dateTo) as string | undefined,
       projectId: (project || projectId) as string | undefined,
@@ -69,9 +71,9 @@ export async function getDeveloperActivity(req: Request, res: Response, next: Ne
     const { date_from, date_to, page, limit, per_page } = req.query;
     const orgId = (req as any).organizationId;
 
-    let dev = await developerRepository.findById(id);
+    let dev = await developerRepository.findById(id, orgId);
     if (!dev) {
-      dev = await developerRepository.findByLogin(id);
+      dev = await developerRepository.findByLogin(id, orgId);
     }
     if (!dev) {
       return res.status(404).json({ success: false, error: 'Developer not found' });
@@ -107,9 +109,9 @@ export async function getDeveloperPullRequests(req: Request, res: Response, next
     const { date_from, date_to, repository, state, page, limit, per_page } = req.query;
     const orgId = (req as any).organizationId;
 
-    let dev = await developerRepository.findById(id);
+    let dev = await developerRepository.findById(id, orgId);
     if (!dev) {
-      dev = await developerRepository.findByLogin(id);
+      dev = await developerRepository.findByLogin(id, orgId);
     }
     if (!dev) {
       return res.status(404).json({ success: false, error: 'Developer not found' });
@@ -147,9 +149,9 @@ export async function getDeveloperIssues(req: Request, res: Response, next: Next
     const { date_from, date_to, repository, state, page, limit, per_page } = req.query;
     const orgId = (req as any).organizationId;
 
-    let dev = await developerRepository.findById(id);
+    let dev = await developerRepository.findById(id, orgId);
     if (!dev) {
-      dev = await developerRepository.findByLogin(id);
+      dev = await developerRepository.findByLogin(id, orgId);
     }
     if (!dev) {
       return res.status(404).json({ success: false, error: 'Developer not found' });
@@ -187,13 +189,14 @@ export async function getDeveloperReviews(req: Request, res: Response, next: Nex
     const { date_from, date_to, repository, state, page, limit, per_page } = req.query;
     const orgId = (req as any).organizationId;
 
-    let dev = await developerRepository.findById(id);
+    let dev = await developerRepository.findById(id, orgId);
     if (!dev) {
-      dev = await developerRepository.findByLogin(id);
+      dev = await developerRepository.findByLogin(id, orgId);
     }
     if (!dev) {
       return res.status(404).json({ success: false, error: 'Developer not found' });
     }
+
 
     const result = await pullRequestRepository.findReviewsByDeveloper(dev.id, {
       organizationId: orgId,

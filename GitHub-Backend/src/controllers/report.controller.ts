@@ -31,7 +31,9 @@ function extractFilters(req: Request): ReportFilters {
 export async function listReports(req: Request, res: Response, next: NextFunction) {
   try {
     const { periodType, projectId, repositoryId, developerId, search } = req.query;
+    const orgId = (req as any).organizationId;
     const reports = await reportService.listReports({
+      organizationId: orgId,
       periodType: periodType as string,
       projectId: projectId as string,
       repositoryId: repositoryId as string,
@@ -117,12 +119,14 @@ export async function getDeveloperReport(req: Request, res: Response, next: Next
 export async function generateReport(req: Request, res: Response, next: NextFunction) {
   try {
     const { periodType, projectId } = req.body;
-    const report = await reportService.generateReport(periodType, projectId);
+    const orgId = (req as any).organizationId;
+    const report = await reportService.generateReport(periodType, projectId, orgId);
     res.json({ success: true, data: report });
   } catch (err) {
     next(err);
   }
 }
+
 
 // 9. GET /api/reports/:id
 export async function getReportDetail(req: Request, res: Response, next: NextFunction) {

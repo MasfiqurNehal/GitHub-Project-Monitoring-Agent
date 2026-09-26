@@ -114,7 +114,8 @@ export class ReportService {
   /**
    * List historical or preset available reports
    */
-  async listReports(filters: { periodType?: string; projectId?: string; repositoryId?: string; developerId?: string; search?: string }) {
+  async listReports(filters: { periodType?: string; projectId?: string; repositoryId?: string; developerId?: string; search?: string; organizationId?: string }) {
+
     const now = new Date();
     const reports = [
       {
@@ -638,7 +639,7 @@ export class ReportService {
    * Project Report
    */
   async getProjectReport(projectId: string, filters: ReportFilters): Promise<StructuredReport> {
-    const project = await projectRepository.findById(projectId);
+    const project = await projectRepository.findById(projectId, filters.organizationId);
     const projectName = project ? project.name : projectId;
 
     let dTo = filters.dateTo ? new Date(filters.dateTo) : new Date();
@@ -654,9 +655,9 @@ export class ReportService {
    * Repository Report
    */
   async getRepositoryReport(repositoryId: string, filters: ReportFilters): Promise<StructuredReport> {
-    let repo = await repositoryRepository.findById(repositoryId);
+    let repo = await repositoryRepository.findById(repositoryId, filters.organizationId);
     if (!repo) {
-      repo = await repositoryRepository.findByFullName(repositoryId);
+      repo = await repositoryRepository.findByFullName(repositoryId, filters.organizationId);
     }
 
     const repoName = repo ? repo.name : repositoryId;
@@ -676,9 +677,9 @@ export class ReportService {
    * Developer Report
    */
   async getDeveloperReport(developerId: string, filters: ReportFilters): Promise<StructuredReport> {
-    let dev = await developerRepository.findById(developerId);
+    let dev = await developerRepository.findById(developerId, filters.organizationId);
     if (!dev) {
-      dev = await developerRepository.findByLogin(developerId);
+      dev = await developerRepository.findByLogin(developerId, filters.organizationId);
     }
 
     const devUsername = dev ? dev.login : developerId;
@@ -701,17 +702,18 @@ export class ReportService {
   /**
    * Legacy generateReport wrapper
    */
-  async generateReport(periodType: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM' = 'WEEKLY', projectId?: string) {
+  async generateReport(periodType: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM' = 'WEEKLY', projectId?: string, organizationId?: string) {
     if (periodType === 'DAILY') {
-      return this.getDailyReport({ projectId });
+      return this.getDailyReport({ projectId, organizationId });
     } else if (periodType === 'MONTHLY') {
-      return this.getMonthlyReport({ projectId });
+      return this.getMonthlyReport({ projectId, organizationId });
     } else if (projectId) {
-      return this.getProjectReport(projectId, {});
+      return this.getProjectReport(projectId, { organizationId });
     } else {
-      return this.getWeeklyReport({});
+      return this.getWeeklyReport({ organizationId });
     }
   }
 }
 
 export const reportService = new ReportService();
+

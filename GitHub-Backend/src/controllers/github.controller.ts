@@ -70,9 +70,15 @@ export async function getInstallationDetail(req: Request, res: Response, next: N
 export async function generateInstallationToken(req: Request, res: Response, next: NextFunction) {
   try {
     const { installationId } = req.params;
+    const orgId = (req as any).organizationId;
     const instId = parseInt(installationId, 10);
     if (isNaN(instId)) {
       return res.status(400).json({ success: false, error: 'Invalid installation ID' });
+    }
+
+    const inst = await githubInstallationRepository.findByInstallationId(instId, orgId);
+    if (!inst) {
+      return res.status(404).json({ success: false, error: `GitHub Installation ${installationId} not found` });
     }
 
     const token = await githubAppService.getInstallationToken(instId);
@@ -90,6 +96,7 @@ export async function generateInstallationToken(req: Request, res: Response, nex
     res.status(400).json({ success: false, error: err.message || 'Failed to generate installation token' });
   }
 }
+
 
 export async function syncInstallations(req: Request, res: Response, next: NextFunction) {
   try {

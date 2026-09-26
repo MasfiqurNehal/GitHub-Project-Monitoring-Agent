@@ -31,3 +31,17 @@ export function tenantAuthMiddleware(req: AuthenticatedRequest, res: Response, n
 
   next();
 }
+
+export function requireTenantAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  if (!req.user || !req.organizationId) {
+    return res.status(401).json({
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Authentication required. Missing or invalid organization session/JWT token.',
+      },
+    });
+  }
+  next();
+}
+
