@@ -58,10 +58,25 @@ export class GitHubService {
     if (existingRepo) {
       if (organizationId && existingRepo.organization_id && existingRepo.organization_id !== organizationId) {
         throw new Error('Repository belongs to another tenant.');
-      } else {
-        throw new Error('Repository already monitored.');
       }
+      return {
+        url: existingRepo.html_url || `https://github.com/${fullName}`,
+        owner: existingRepo.owner || owner,
+        name: existingRepo.name || repo,
+        fullName: existingRepo.full_name || fullName,
+        githubRepositoryId: existingRepo.github_repository_id,
+        isPrivate: existingRepo.is_private || false,
+        defaultBranch: existingRepo.default_branch || 'main',
+        hasReadAccess: true,
+        language: existingRepo.language || 'Codebase',
+        starsCount: existingRepo.stars || 0,
+        description: existingRepo.description || null,
+        openIssuesCount: existingRepo.open_issues_count || 0,
+        alreadyMonitored: true,
+        installationId: existingRepo.github_installation_id || null,
+      };
     }
+
 
     // 3. Determine current GitHub connection for tenant
     const installations = await githubInstallationRepository.findAll(organizationId);
