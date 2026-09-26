@@ -77,6 +77,8 @@ apiRouter.get('/projects/:id', projectController.getProjectDetail);
 apiRouter.patch('/projects/:id', projectController.updateProject);
 apiRouter.delete('/projects/:id', projectController.deleteProject);
 apiRouter.get('/projects/:id/repositories', projectController.getProjectRepositories);
+apiRouter.post('/projects/:id/repositories', projectController.addRepositoryToProject);
+apiRouter.delete('/projects/:id/repositories/:repositoryId', projectController.removeRepositoryFromProject);
 
 // 4. Repositories Endpoints
 apiRouter.get('/repositories', repositoryController.listRepositories);

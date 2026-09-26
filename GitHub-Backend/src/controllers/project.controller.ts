@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { projectRepository } from '../repositories/project.repository.js';
 import { repositoryRepository } from '../repositories/repository.repository.js';
+import { githubService } from '../services/github.service.js';
 import { pool } from '../db/connection.js';
 import { logger } from '../utils/logger.js';
 import crypto from 'crypto';
@@ -52,10 +53,14 @@ export async function getProjectDetail(req: Request, res: Response, next: NextFu
     let recentActivity: any[] = [];
     let pullRequests: any[] = [];
     let issues: any[] = [];
+    let commits: any[] = [];
+
+    let commitStats = { totalCommits: 0, additions: 0, deletions: 0, netChanges: 0 };
+    let prStats = { totalPRs: 0, openPRs: 0, mergedPRs: 0, closedPRs: 0 };
+    let issueStats = { totalIssues: 0, openIssues: 0, closedIssues: 0 };
 
     if (repoIds.length > 0) {
-      // Execute all 4 queries concurrently with Promise.all
-      const [devsRes, actRes, prRes, issRes] = await Promise.all([
+      const [devsRes, actRes, prRes, issRes, cmtRes, statsRes] = await Promise.all([
         pool.query(
           `SELECT DISTINCT d.* FROM developers d
            JOIN repository_developers rd ON d.id = rd.developer_id
@@ -89,23 +94,92 @@ export async function getProjectDetail(req: Request, res: Response, next: NextFu
            ORDER BY i.created_at DESC LIMIT 20`,
           [repoIds]
         ),
+        pool.query(
+          `SELECT c.*, r.name as repo_name, d.login as author_login, d.avatar_url as author_avatar
+           FROM commits c
+           LEFT JOIN repositories r ON c.repository_id = r.id
+           LEFT JOIN developers d ON c.developer_id = d.id
+           WHERE c.repository_id = ANY($1::text[])
+           ORDER BY c.committed_at DESC LIMIT 20`,
+          [repoIds]
+        ),
+        pool.query(
+          `SELECT 
+             COUNT(DISTINCT c.id) as total_commits,
+             COALESCE(SUM(c.additions), 0) as additions,
+             COALESCE(SUM(c.deletions), 0) as deletions,
+             COUNT(DISTINCT pr.id) as total_prs,
+             COUNT(DISTINCT CASE WHEN pr.state = 'OPEN' THEN pr.id END) as open_prs,
+             COUNT(DISTINCT CASE WHEN pr.merged_at IS NOT NULL THEN pr.id END) as merged_prs,
+             COUNT(DISTINCT CASE WHEN pr.state = 'CLOSED' AND pr.merged_at IS NULL THEN pr.id END) as closed_prs,
+             COUNT(DISTINCT i.id) as total_issues,
+             COUNT(DISTINCT CASE WHEN i.state = 'OPEN' THEN i.id END) as open_issues,
+             COUNT(DISTINCT CASE WHEN i.state = 'CLOSED' THEN i.id END) as closed_issues
+           FROM repositories r
+           LEFT JOIN commits c ON c.repository_id = r.id
+           LEFT JOIN pull_requests pr ON pr.repository_id = r.id
+           LEFT JOIN issues i ON i.repository_id = r.id
+           WHERE r.id = ANY($1::text[])`,
+          [repoIds]
+        ),
       ]);
 
       developers = devsRes.rows;
       recentActivity = actRes.rows;
       pullRequests = prRes.rows;
       issues = issRes.rows;
+      commits = cmtRes.rows;
+
+      const s = statsRes.rows[0] || {};
+      const additions = parseInt(s.additions || '0', 10);
+      const deletions = parseInt(s.deletions || '0', 10);
+
+      commitStats = {
+        totalCommits: parseInt(s.total_commits || '0', 10),
+        additions,
+        deletions,
+        netChanges: additions - deletions,
+      };
+
+      prStats = {
+        totalPRs: parseInt(s.total_prs || '0', 10),
+        openPRs: parseInt(s.open_prs || '0', 10),
+        mergedPRs: parseInt(s.merged_prs || '0', 10),
+        closedPRs: parseInt(s.closed_prs || '0', 10),
+      };
+
+      issueStats = {
+        totalIssues: parseInt(s.total_issues || '0', 10),
+        openIssues: parseInt(s.open_issues || '0', 10),
+        closedIssues: parseInt(s.closed_issues || '0', 10),
+      };
     }
 
     res.json({
       success: true,
       data: {
-        project,
+        project: {
+          ...project,
+          metrics: {
+            repositoriesCount: repositories.length,
+            developersCount: developers.length,
+            commitsCount: commitStats.totalCommits,
+            prsCount: prStats.totalPRs,
+            issuesCount: issueStats.totalIssues,
+            linesAdded: commitStats.additions,
+            linesDeleted: commitStats.deletions,
+          },
+        },
         repositories,
         developers,
-        recentActivity,
+        commits,
         pullRequests,
         issues,
+        commitStats,
+        prStats,
+        issueStats,
+        recentActivity,
+        activitySummary: recentActivity,
       },
     });
   } catch (err) {
@@ -161,6 +235,87 @@ export async function getProjectRepositories(req: Request, res: Response, next: 
 
     const repositories = await repositoryRepository.findByProjectId(project.id);
     res.json({ success: true, data: repositories });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// 7. POST /api/projects/:id/repositories
+export async function addRepositoryToProject(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    const { repositoryId, url, repositoryUrl } = req.body;
+    const orgId = (req as any).organizationId;
+
+    const project = await projectRepository.findById(id, orgId);
+    if (!project) {
+      return res.status(404).json({ success: false, error: 'Project not found' });
+    }
+
+    if (repositoryId) {
+      const repo = await repositoryRepository.findById(repositoryId, orgId);
+      if (!repo) {
+        return res.status(404).json({ success: false, error: 'Repository not found' });
+      }
+
+      await pool.query('UPDATE repositories SET project_id = $1 WHERE id = $2', [project.id, repo.id]);
+      const updatedRepo = await repositoryRepository.findById(repo.id, orgId);
+      logger.info('PROJECTS', `Attached repository '${repo.full_name}' to project '${project.name}'`);
+      return res.json({ success: true, data: updatedRepo });
+    }
+
+    const targetUrl = url || repositoryUrl;
+    if (!targetUrl) {
+      return res.status(400).json({ success: false, error: 'repositoryId or repository URL is required' });
+    }
+
+    const validated = await githubService.validateRepository(targetUrl, orgId);
+    const repoId = `repo-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+    const repository = await repositoryRepository.upsert({
+      id: repoId,
+      projectId: project.id,
+      organizationId: orgId,
+      githubRepositoryId: validated.githubRepositoryId,
+      githubInstallationId: validated.installationId || null,
+      owner: validated.owner,
+      name: validated.name,
+      fullName: validated.fullName,
+      htmlUrl: validated.url,
+      defaultBranch: validated.defaultBranch,
+      isPrivate: validated.isPrivate,
+      description: validated.description || undefined,
+      language: validated.language,
+      stars: validated.starsCount,
+    });
+
+    logger.info('PROJECTS', `Validated & attached repository '${repository.full_name}' to project '${project.name}'`);
+    res.status(201).json({ success: true, data: repository });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message || 'Failed to attach repository to project' });
+  }
+}
+
+// 8. DELETE /api/projects/:id/repositories/:repositoryId
+export async function removeRepositoryFromProject(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id, repositoryId } = req.params;
+    const orgId = (req as any).organizationId;
+
+    const project = await projectRepository.findById(id, orgId);
+    if (!project) {
+      return res.status(404).json({ success: false, error: 'Project not found' });
+    }
+
+    const repo = await repositoryRepository.findById(repositoryId, orgId);
+    if (!repo || repo.project_id !== project.id) {
+      return res.status(404).json({ success: false, error: 'Repository association not found in this project' });
+    }
+
+    // Unlink project association (NEVER delete actual repository or GitHub repository)
+    await pool.query('UPDATE repositories SET project_id = NULL WHERE id = $1', [repo.id]);
+
+    logger.info('PROJECTS', `Unlinked repository '${repo.full_name}' from project '${project.name}' (GitHub repo preserved)`);
+    res.json({ success: true, message: 'Repository unlinked from project successfully' });
   } catch (err) {
     next(err);
   }
