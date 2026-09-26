@@ -37,7 +37,15 @@ export default function DevelopersPage() {
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
 
-  const { developers, isLoading } = useDevelopers();
+  const listFilters = useMemo(() => ({
+    projectId: selectedProjectId,
+    repositoryId: selectedRepositoryId,
+    search: searchQuery || undefined,
+    dateFrom: fromDate || undefined,
+    dateTo: toDate || undefined,
+  }), [selectedProjectId, selectedRepositoryId, searchQuery, fromDate, toDate]);
+
+  const { developers, isLoading } = useDevelopers(listFilters);
   const { projects } = useProjects();
   const { repositories } = useRepositories();
 

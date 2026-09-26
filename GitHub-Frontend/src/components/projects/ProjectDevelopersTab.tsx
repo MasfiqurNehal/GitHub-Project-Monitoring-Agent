@@ -1,6 +1,4 @@
-'use client';
-
-import React from 'react';
+import Link from 'next/link';
 import { DeveloperContributionItem } from '../../types';
 import { Users, GitCommit, GitPullRequest, MessageSquare, FileCode } from 'lucide-react';
 
@@ -17,13 +15,21 @@ export function ProjectDevelopersTab({ developers }: ProjectDevelopersTabProps) 
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {developers.map((dev) => (
-          <div key={dev.id} className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-4 hover:border-slate-700/80 transition-all">
+          <Link 
+            key={dev.id} 
+            href={`/developers/${dev.id}`}
+            className="bg-slate-900/80 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-5 space-y-4 transition-all group block"
+          >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-slate-200 text-sm">
-                {dev.name ? dev.name[0] : dev.login[0].toUpperCase()}
+              <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-slate-200 text-sm overflow-hidden group-hover:border-purple-500/50 transition-colors">
+                {dev.avatarUrl ? (
+                  <img src={dev.avatarUrl} alt={dev.login} className="w-full h-full object-cover" />
+                ) : (
+                  dev.name ? dev.name[0] : dev.login[0].toUpperCase()
+                )}
               </div>
               <div>
-                <h4 className="text-sm font-bold text-white">{dev.name || dev.login}</h4>
+                <h4 className="text-sm font-bold text-white group-hover:text-purple-400 transition-colors">{dev.name || dev.login}</h4>
                 <p className="text-[11px] text-slate-400">@{dev.login}</p>
               </div>
             </div>
@@ -57,7 +63,7 @@ export function ProjectDevelopersTab({ developers }: ProjectDevelopersTabProps) 
                 +{dev.linesAdded.toLocaleString()} <span className="text-rose-400">-{dev.linesDeleted.toLocaleString()}</span>
               </span>
             </div>
-          </div>
+          </Link>
         ))}
       </div>
     </div>

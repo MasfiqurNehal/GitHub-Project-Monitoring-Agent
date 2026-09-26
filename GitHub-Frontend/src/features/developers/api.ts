@@ -10,6 +10,15 @@ export async function getDevelopers(filters: {
   return await fetchDevelopers(filters);
 }
 
-export async function getDeveloperDetail(developerId: string): Promise<ApiResponse<DeveloperDetailData>> {
-  return await fetchDeveloperDetails(developerId);
+export async function getDeveloperDetail(
+  developerId: string,
+  filters: {
+    projectId?: string;
+    repositoryId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    activityType?: string;
+  } = {}
+): Promise<ApiResponse<DeveloperDetailData>> {
+  return await fetchDeveloperDetails(developerId, filters);
 }

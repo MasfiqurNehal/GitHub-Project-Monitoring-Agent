@@ -15,10 +15,19 @@ export function useDevelopers(filters: { projectId?: string; repositoryId?: stri
   };
 }
 
-export function useDeveloper(developerId: string) {
+export function useDeveloper(
+  developerId: string,
+  filters: {
+    projectId?: string;
+    repositoryId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    activityType?: string;
+  } = {}
+) {
   const detailQuery = useQuery({
-    queryKey: ['developer-detail', developerId],
-    queryFn: () => getDeveloperDetail(developerId),
+    queryKey: ['developer-detail', developerId, filters],
+    queryFn: () => getDeveloperDetail(developerId, filters),
     enabled: !!developerId,
   });
 

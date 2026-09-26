@@ -44,6 +44,21 @@ export interface CommitFilterOptions {
 }
 
 export class CommitRepository {
+  private schemaEnsured = false;
+
+  private async ensureSchema() {
+    if (this.schemaEnsured) return;
+    try {
+      await pool.query(`
+        ALTER TABLE commits ALTER COLUMN id TYPE VARCHAR(64);
+        ALTER TABLE commit_files ALTER COLUMN commit_id TYPE VARCHAR(64);
+      `);
+      this.schemaEnsured = true;
+    } catch (err) {
+      this.schemaEnsured = true;
+    }
+  }
+
   async upsert(data: {
     id: string;
     repositoryId: string;
@@ -60,6 +75,7 @@ export class CommitRepository {
     parentCount?: number;
     isMergeCommit?: boolean;
   }): Promise<CommitRow> {
+    await this.ensureSchema();
     const query = `
       INSERT INTO commits (
         id, repository_id, github_commit_sha, developer_id, branch,

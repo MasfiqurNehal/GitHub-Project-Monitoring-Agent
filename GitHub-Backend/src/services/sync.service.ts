@@ -57,8 +57,13 @@ export class SyncService {
 
     const githubClient = new GitHubClient({ installationId });
 
+    // 3. Determine Initial Sync vs Incremental Sync
+    const isInitialSync = !repo.last_synced_at || repo.sync_status !== 'SYNCED';
+    const syncMode = isInitialSync ? 'historical' : 'incremental';
+    const sinceDate = isInitialSync || !repo.last_synced_at ? undefined : new Date(repo.last_synced_at).toISOString();
+
     const jobId = `job-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
-    await syncJobRepository.create(jobId, repo.id, 'historical_sync', targetOrgId);
+    await syncJobRepository.create(jobId, repo.id, `${syncMode}_sync`, targetOrgId);
     await repositoryRepository.updateSyncStatus(repo.id, 'SYNCING');
 
     const counts: SyncCounts = {
@@ -71,11 +76,16 @@ export class SyncService {
       activities: 0,
     };
 
-    const sinceDate = repo.last_synced_at ? repo.last_synced_at.toISOString() : undefined;
+    logger.info('SYNC', `[SYNC] Starting ${isInitialSync ? 'initial historical' : 'incremental'} sync`);
+    logger.info('SYNC', `[SYNC] Repository: ${repo.full_name}`);
+    logger.info('SYNC', `[SYNC] Mode: ${syncMode}`);
+    if (sinceDate) {
+      logger.info('SYNC', `[SYNC] Since: ${sinceDate}`);
+    }
+
+    let totalCommitsFetched = 0;
 
     try {
-      logger.info('SYNC', `Starting historical sync for ${repo.full_name} [Tenant: ${targetOrgId || 'default'}, Inst: ${installationId || 'none'}]...`);
-
       // 1. Sync Repository Metadata
       let currentDefaultBranch = repo.default_branch || 'main';
       const repoMeta = await githubClient.validateRepositoryAccess(repo.owner, repo.name);
@@ -120,7 +130,7 @@ export class SyncService {
         logger.warn('SYNC', `Branches fetch warning for ${repo.full_name}: ${err.message}`);
       }
 
-      // 3. Sync Contributors & Developers
+      // 3. Sync Contributors & Developers from GitHub
       try {
         const contributors = await githubClient.getContributors(repo.owner, repo.name);
         for (const contrib of contributors) {
@@ -131,10 +141,11 @@ export class SyncService {
             organizationId: targetOrgId,
             githubUserId: contrib.id,
             login: contrib.login,
-            name: contrib.login,
+            name: contrib.name || contrib.login,
             avatarUrl: contrib.avatar_url,
-            htmlUrl: contrib.html_url,
-            type: contrib.type,
+            htmlUrl: contrib.html_url || `https://github.com/${contrib.login}`,
+            email: contrib.email || null,
+            type: contrib.type || 'User',
           });
 
           await developerRepository.linkToRepository(repo.id, dev.id);
@@ -144,17 +155,20 @@ export class SyncService {
         logger.warn('SYNC', `Contributors fetch warning for ${repo.full_name}: ${err.message}`);
       }
 
-      // 3. Paginated Sync for Commits
+      // 4. Paginated Sync for Commits
       let commitPage = 1;
       let hasMoreCommits = true;
 
       while (hasMoreCommits && commitPage <= 20) {
         try {
+          logger.info('SYNC', `[SYNC] Fetching commits page ${commitPage}`);
           const commits = await githubClient.getCommits(repo.owner, repo.name, sinceDate, commitPage, 100);
           if (!commits || commits.length === 0) {
             hasMoreCommits = false;
             break;
           }
+
+          totalCommitsFetched += commits.length;
 
           for (const c of commits) {
             let devId: string | null = null;
@@ -164,8 +178,10 @@ export class SyncService {
                 organizationId: targetOrgId,
                 githubUserId: c.author.id,
                 login: c.author.login,
+                name: c.commit?.author?.name || c.author.login,
                 avatarUrl: c.author.avatar_url,
-                htmlUrl: c.author.html_url,
+                htmlUrl: c.author.html_url || `https://github.com/${c.author.login}`,
+                email: c.commit?.author?.email || null,
               });
               await developerRepository.linkToRepository(repo.id, dev.id);
               devId = dev.id;
@@ -186,7 +202,7 @@ export class SyncService {
 
               if (detail.files && detail.files.length > 0) {
                 const commitFiles = detail.files.map((f: any) => ({
-                  id: `cf-${crypto.randomUUID()}`,
+                  id: crypto.randomUUID(),
                   filename: f.filename,
                   status: f.status,
                   additions: f.additions,
@@ -242,7 +258,7 @@ export class SyncService {
         }
       }
 
-      // 4. Paginated Sync for Pull Requests
+      // 5. Paginated Sync for Pull Requests
       let prPage = 1;
       let hasMorePRs = true;
 
@@ -262,9 +278,12 @@ export class SyncService {
                 organizationId: targetOrgId,
                 githubUserId: pr.user.id,
                 login: pr.user.login,
+                name: pr.user.login,
                 avatarUrl: pr.user.avatar_url,
+                htmlUrl: pr.user.html_url || `https://github.com/${pr.user.login}`,
               });
               authorDevId = dev.id;
+              await developerRepository.linkToRepository(repo.id, dev.id);
             }
 
             const prId = `pr-${repo.id}-${pr.number}`;
@@ -303,9 +322,12 @@ export class SyncService {
                     organizationId: targetOrgId,
                     githubUserId: r.user.id,
                     login: r.user.login,
+                    name: r.user.login,
                     avatarUrl: r.user.avatar_url,
+                    htmlUrl: r.user.html_url || `https://github.com/${r.user.login}`,
                   });
                   reviewerDevId = dev.id;
+                  await developerRepository.linkToRepository(repo.id, dev.id);
                 }
 
                 await pullRequestRepository.saveReview({
@@ -346,7 +368,7 @@ export class SyncService {
         }
       }
 
-      // 5. Paginated Sync for Issues
+      // 6. Paginated Sync for Issues
       let issuePage = 1;
       let hasMoreIssues = true;
 
@@ -366,9 +388,12 @@ export class SyncService {
                 organizationId: targetOrgId,
                 githubUserId: issue.user.id,
                 login: issue.user.login,
+                name: issue.user.login,
                 avatarUrl: issue.user.avatar_url,
+                htmlUrl: issue.user.html_url || `https://github.com/${issue.user.login}`,
               });
               authorDevId = dev.id;
+              await developerRepository.linkToRepository(repo.id, dev.id);
             }
 
             let assigneeDevId: string | null = null;
@@ -378,9 +403,12 @@ export class SyncService {
                 organizationId: targetOrgId,
                 githubUserId: issue.assignee.id,
                 login: issue.assignee.login,
+                name: issue.assignee.login,
                 avatarUrl: issue.assignee.avatar_url,
+                htmlUrl: issue.assignee.html_url || `https://github.com/${issue.assignee.login}`,
               });
               assigneeDevId = aDev.id;
+              await developerRepository.linkToRepository(repo.id, aDev.id);
             }
 
             const issueId = `iss-${repo.id}-${issue.number}`;
@@ -433,7 +461,12 @@ export class SyncService {
       await repositoryRepository.updateSyncStatus(repo.id, 'SYNCED', completedAt, null);
       await syncJobRepository.complete(jobId, totalProcessed);
 
-      logger.info('SYNC', `Completed historical sync for ${repo.full_name}. Processed ${totalProcessed} records.`);
+      logger.info('SYNC', `[SYNC] Commits fetched: ${totalCommitsFetched}`);
+      logger.info('SYNC', `[SYNC] Commits inserted: ${counts.commits}`);
+      logger.info('SYNC', `[SYNC] Developers processed: ${counts.developers}`);
+      logger.info('SYNC', `[SYNC] Pull requests processed: ${counts.pullRequests}`);
+      logger.info('SYNC', `[SYNC] Issues processed: ${counts.issues}`);
+      logger.info('SYNC', `[SYNC] Sync completed successfully`);
 
       return {
         success: true,
@@ -452,7 +485,7 @@ export class SyncService {
         completedAt: completedAt.toISOString(),
       };
     } catch (err: any) {
-      logger.error('SYNC', `Failed historical sync for ${repo.full_name}: ${err.message}`, err);
+      logger.error('SYNC', `Failed ${syncMode} sync for ${repo.full_name}: ${err.message}`, err);
       await repositoryRepository.updateSyncStatus(repo.id, 'FAILED', undefined, err.message);
       await syncJobRepository.fail(jobId, err.message);
       throw err;

@@ -208,8 +208,12 @@ export function RepositoryOverviewTab({ detail }: RepositoryOverviewTabProps) {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {developers.map((dev) => (
-                  <div key={dev.id} className="bg-slate-950/60 border border-slate-800 p-3.5 rounded-xl flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-slate-200 text-xs shrink-0 overflow-hidden">
+                  <Link 
+                    key={dev.id} 
+                    href={`/developers/${dev.id}`}
+                    className="bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 p-3.5 rounded-xl flex items-center gap-3 transition-colors group"
+                  >
+                    <div className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-slate-200 text-xs shrink-0 overflow-hidden group-hover:border-purple-500/50 transition-colors">
                       {dev.avatarUrl ? (
                         <img src={dev.avatarUrl} alt={dev.login} className="w-full h-full object-cover" />
                       ) : (
@@ -217,7 +221,7 @@ export function RepositoryOverviewTab({ detail }: RepositoryOverviewTabProps) {
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h4 className="text-xs font-bold text-white truncate">{dev.name || dev.login}</h4>
+                      <h4 className="text-xs font-bold text-white group-hover:text-purple-400 transition-colors truncate">{dev.name || dev.login}</h4>
                       <span className="text-[10px] text-slate-400">@{dev.login}</span>
                       <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-2">
                         <span>{dev.commits} commits</span>
@@ -225,7 +229,7 @@ export function RepositoryOverviewTab({ detail }: RepositoryOverviewTabProps) {
                         <span>{dev.prs} PRs</span>
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}

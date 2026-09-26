@@ -8,14 +8,17 @@ import { developerService } from '../services/developer.service.js';
 // 1. GET /api/developers
 export async function listDevelopers(req: Request, res: Response, next: NextFunction) {
   try {
-    const { date_from, date_to, page, limit, per_page } = req.query;
+    const { date_from, from, dateFrom, date_to, to, dateTo, page, limit, per_page, project, projectId, repository, repositoryId, search, q } = req.query;
     const orgId = (req as any).organizationId;
     const result = await developerRepository.findWithMetrics({
       organizationId: orgId,
-      dateFrom: date_from as string,
-      dateTo: date_to as string,
+      projectId: (project || projectId) as string | undefined,
+      repositoryId: (repository || repositoryId) as string | undefined,
+      search: (search || q) as string | undefined,
+      dateFrom: (date_from || from || dateFrom) as string | undefined,
+      dateTo: (date_to || to || dateTo) as string | undefined,
       page: Number(page) || 1,
-      limit: Number(limit || per_page || 20),
+      limit: Number(limit || per_page || 50),
     });
 
     res.json({
@@ -37,8 +40,17 @@ export async function listDevelopers(req: Request, res: Response, next: NextFunc
 export async function getDeveloperDetail(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const { date_from, date_to } = req.query;
-    const detail = await developerService.getDeveloperDetail(id, date_from as string, date_to as string);
+    const { date_from, from, dateFrom, date_to, to, dateTo, project, projectId, repository, repositoryId, type, activityType } = req.query;
+    
+    const filters = {
+      dateFrom: (date_from || from || dateFrom) as string | undefined,
+      dateTo: (date_to || to || dateTo) as string | undefined,
+      projectId: (project || projectId) as string | undefined,
+      repositoryId: (repository || repositoryId) as string | undefined,
+      activityType: (type || activityType) as string | undefined,
+    };
+
+    const detail = await developerService.getDeveloperDetail(id, filters);
 
     if (!detail) {
       return res.status(404).json({ success: false, error: 'Developer not found' });

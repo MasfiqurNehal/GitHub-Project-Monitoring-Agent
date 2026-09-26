@@ -51,8 +51,25 @@ export async function fetchDevelopers(filters: {
   return { success: true, data: developers };
 }
 
-export async function fetchDeveloperDetails(developerId: string): Promise<{ success: boolean; data: DeveloperDetailData }> {
-  const res = await fetchApi<any>(`/developers/${developerId}`);
+export async function fetchDeveloperDetails(
+  developerId: string,
+  filters: {
+    projectId?: string;
+    repositoryId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    activityType?: string;
+  } = {}
+): Promise<{ success: boolean; data: DeveloperDetailData }> {
+  const query = new URLSearchParams();
+  if (filters.projectId) query.append('projectId', filters.projectId);
+  if (filters.repositoryId) query.append('repositoryId', filters.repositoryId);
+  if (filters.dateFrom) query.append('dateFrom', filters.dateFrom);
+  if (filters.dateTo) query.append('dateTo', filters.dateTo);
+  if (filters.activityType) query.append('activityType', filters.activityType);
+
+  const queryString = query.toString();
+  const res = await fetchApi<any>(`/developers/${developerId}${queryString ? `?${queryString}` : ''}`);
   const dev = res.data?.developer || res.data;
 
   const developer: DeveloperWithMetrics = {

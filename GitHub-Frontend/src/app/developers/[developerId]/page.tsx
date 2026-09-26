@@ -43,7 +43,15 @@ export default function DeveloperDetailPage({ params }: { params: { developerId:
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
 
-  const { developerDetail, isLoading, isError, refetch } = useDeveloperDetail(params.developerId);
+  const detailFilters = useMemo(() => ({
+    projectId: selectedProjectId,
+    repositoryId: selectedRepositoryId,
+    dateFrom: fromDate || undefined,
+    dateTo: toDate || undefined,
+    activityType: activityTypeFilter !== 'all' ? activityTypeFilter : undefined,
+  }), [selectedProjectId, selectedRepositoryId, fromDate, toDate, activityTypeFilter]);
+
+  const { developerDetail, isLoading, isError, refetch } = useDeveloperDetail(params.developerId, detailFilters);
   const { projects } = useProjects();
   const { repositories } = useRepositories();
 

@@ -14,6 +14,22 @@ export interface ActivityEventRow {
 }
 
 export class ActivityRepository {
+  private schemaEnsured = false;
+
+  private async ensureSchema() {
+    if (this.schemaEnsured) return;
+    try {
+      await pool.query(`
+        ALTER TABLE activity_events ALTER COLUMN id TYPE VARCHAR(64);
+        ALTER TABLE activity_events ALTER COLUMN entity_id TYPE VARCHAR(64);
+        ALTER TABLE activity_events ALTER COLUMN developer_id TYPE VARCHAR(64);
+      `);
+      this.schemaEnsured = true;
+    } catch (err) {
+      this.schemaEnsured = true;
+    }
+  }
+
   async create(data: {
     id: string;
     repositoryId: string;
@@ -25,9 +41,11 @@ export class ActivityRepository {
     metadata?: any;
     source?: string;
   }): Promise<ActivityEventRow> {
+    await this.ensureSchema();
     const query = `
       INSERT INTO activity_events (id, repository_id, developer_id, event_type, entity_type, entity_id, occurred_at, metadata, source, created_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+      ON CONFLICT (id) DO NOTHING
       RETURNING *
     `;
 

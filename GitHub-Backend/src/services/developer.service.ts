@@ -3,7 +3,16 @@ import { developerRepository } from '../repositories/developer.repository.js';
 import { activityRepository } from '../repositories/activity.repository.js';
 
 export class DeveloperService {
-  async getDeveloperDetail(developerIdOrLogin: string, dateFrom?: string, dateTo?: string) {
+  async getDeveloperDetail(
+    developerIdOrLogin: string,
+    filters: {
+      dateFrom?: string;
+      dateTo?: string;
+      projectId?: string;
+      repositoryId?: string;
+      activityType?: string;
+    } = {}
+  ) {
     let dev = await developerRepository.findById(developerIdOrLogin);
     if (!dev) {
       dev = await developerRepository.findByLogin(developerIdOrLogin);
@@ -11,8 +20,41 @@ export class DeveloperService {
     if (!dev) return null;
 
     const developerId = dev.id;
+    const { dateFrom, dateTo, projectId, repositoryId, activityType } = filters;
 
-    // Execute all developer queries concurrently with Promise.all for maximum speed
+    // Filter clauses for queries
+    const repoJoin = (projectId || repositoryId) ? 'JOIN repositories r ON r.id = c.repository_id' : '';
+    let filterConds = '';
+    const filterParams: any[] = [developerId];
+    let pIdx = 2;
+
+    if (projectId) {
+      filterConds += ` AND r.project_id = $${pIdx}`;
+      filterParams.push(projectId);
+      pIdx++;
+    }
+    if (repositoryId) {
+      filterConds += ` AND c.repository_id = $${pIdx}`;
+      filterParams.push(repositoryId);
+      pIdx++;
+    }
+
+    // Date filters for commits
+    let commitDateCond = '';
+    const commitParams = [...filterParams];
+    let cIdx = pIdx;
+    if (dateFrom) {
+      commitDateCond += ` AND c.committed_at >= $${cIdx}`;
+      commitParams.push(new Date(dateFrom));
+      cIdx++;
+    }
+    if (dateTo) {
+      commitDateCond += ` AND c.committed_at <= $${cIdx}`;
+      commitParams.push(new Date(dateTo));
+      cIdx++;
+    }
+
+    // Execute developer detail queries concurrently
     const [
       projectsRes,
       reposRes,
@@ -21,6 +63,11 @@ export class DeveloperService {
       reviewStatsRes,
       issueStatsRes,
       timelineRes,
+      codeTrendRes,
+      dailyCommitsRes,
+      dailyPRsRes,
+      dailyReviewsRes,
+      dailyIssuesRes,
     ] = await Promise.all([
       pool.query(
         `SELECT DISTINCT p.id, p.name FROM projects p
@@ -35,32 +82,39 @@ export class DeveloperService {
          WHERE rd.developer_id = $1`,
         [developerId]
       ),
-      developerRepository.getMetricsForDeveloper(developerId, dateFrom, dateTo),
+      developerRepository.getMetricsForDeveloper(developerId, dateFrom, dateTo, projectId, repositoryId),
       pool.query(
         `SELECT 
           COUNT(*) as total_prs,
-          COUNT(*) FILTER (WHERE UPPER(state) = 'OPEN') as open_prs,
-          COUNT(*) FILTER (WHERE UPPER(state) = 'MERGED' OR merged = true) as merged_prs,
-          COUNT(*) FILTER (WHERE UPPER(state) = 'CLOSED' AND merged = false) as closed_prs
-         FROM pull_requests WHERE author_developer_id = $1`,
-        [developerId]
+          COUNT(*) FILTER (WHERE UPPER(pr.state) = 'OPEN') as open_prs,
+          COUNT(*) FILTER (WHERE UPPER(pr.state) = 'MERGED' OR pr.merged = true) as merged_prs,
+          COUNT(*) FILTER (WHERE UPPER(pr.state) = 'CLOSED' AND pr.merged = false) as closed_prs
+         FROM pull_requests pr
+         JOIN repositories r ON r.id = pr.repository_id
+         WHERE pr.author_developer_id = $1 ${projectId ? 'AND r.project_id = $2' : ''} ${repositoryId ? `AND pr.repository_id = ${projectId ? '$3' : '$2'}` : ''}`,
+        filterParams
       ),
       pool.query(
         `SELECT 
           COUNT(*) as total_reviews,
-          COUNT(*) FILTER (WHERE UPPER(state) = 'APPROVED') as approved,
-          COUNT(*) FILTER (WHERE UPPER(state) = 'CHANGES_REQUESTED') as changes_requested,
-          COUNT(*) FILTER (WHERE UPPER(state) = 'COMMENTED') as commented
-         FROM pull_request_reviews WHERE reviewer_developer_id = $1`,
-        [developerId]
+          COUNT(*) FILTER (WHERE UPPER(prr.state) = 'APPROVED') as approved,
+          COUNT(*) FILTER (WHERE UPPER(prr.state) = 'CHANGES_REQUESTED') as changes_requested,
+          COUNT(*) FILTER (WHERE UPPER(prr.state) = 'COMMENTED') as commented
+         FROM pull_request_reviews prr
+         JOIN pull_requests pr ON pr.id = prr.pull_request_id
+         JOIN repositories r ON r.id = pr.repository_id
+         WHERE prr.reviewer_developer_id = $1 ${projectId ? 'AND r.project_id = $2' : ''} ${repositoryId ? `AND pr.repository_id = ${projectId ? '$3' : '$2'}` : ''}`,
+        filterParams
       ),
       pool.query(
         `SELECT 
           COUNT(*) as total_issues,
-          COUNT(*) FILTER (WHERE UPPER(state) = 'OPEN') as open_issues,
-          COUNT(*) FILTER (WHERE UPPER(state) = 'CLOSED') as closed_issues
-         FROM issues WHERE author_developer_id = $1`,
-        [developerId]
+          COUNT(*) FILTER (WHERE UPPER(i.state) = 'OPEN') as open_issues,
+          COUNT(*) FILTER (WHERE UPPER(i.state) = 'CLOSED') as closed_issues
+         FROM issues i
+         JOIN repositories r ON r.id = i.repository_id
+         WHERE i.author_developer_id = $1 ${projectId ? 'AND r.project_id = $2' : ''} ${repositoryId ? `AND i.repository_id = ${projectId ? '$3' : '$2'}` : ''}`,
+        filterParams
       ),
       pool.query(
         `SELECT ae.id, ae.occurred_at, ae.event_type, ae.metadata, r.name as repo_name
@@ -71,7 +125,148 @@ export class DeveloperService {
          LIMIT 50`,
         [developerId]
       ),
+      // Code change trend by date
+      pool.query(
+        `SELECT 
+          TO_CHAR(c.committed_at, 'YYYY-MM-DD') as date,
+          COALESCE(SUM(c.additions), 0) as additions,
+          COALESCE(SUM(c.deletions), 0) as deletions
+         FROM commits c
+         JOIN repositories r ON r.id = c.repository_id
+         WHERE c.developer_id = $1 ${filterConds} ${commitDateCond}
+         GROUP BY TO_CHAR(c.committed_at, 'YYYY-MM-DD')
+         ORDER BY date ASC`,
+        commitParams
+      ),
+      // Daily commits count
+      pool.query(
+        `SELECT TO_CHAR(c.committed_at, 'YYYY-MM-DD') as date, COUNT(*) as count
+         FROM commits c
+         JOIN repositories r ON r.id = c.repository_id
+         WHERE c.developer_id = $1 ${filterConds} ${commitDateCond}
+         GROUP BY TO_CHAR(c.committed_at, 'YYYY-MM-DD')`,
+        commitParams
+      ),
+      // Daily PRs count
+      pool.query(
+        `SELECT TO_CHAR(pr.created_at, 'YYYY-MM-DD') as date, COUNT(*) as count
+         FROM pull_requests pr
+         JOIN repositories r ON r.id = pr.repository_id
+         WHERE pr.author_developer_id = $1 ${projectId ? 'AND r.project_id = $2' : ''} ${repositoryId ? `AND pr.repository_id = ${projectId ? '$3' : '$2'}` : ''}
+         GROUP BY TO_CHAR(pr.created_at, 'YYYY-MM-DD')`,
+        filterParams
+      ),
+      // Daily reviews count
+      pool.query(
+        `SELECT TO_CHAR(prr.submitted_at, 'YYYY-MM-DD') as date, COUNT(*) as count
+         FROM pull_request_reviews prr
+         JOIN pull_requests pr ON pr.id = prr.pull_request_id
+         JOIN repositories r ON r.id = pr.repository_id
+         WHERE prr.reviewer_developer_id = $1 ${projectId ? 'AND r.project_id = $2' : ''} ${repositoryId ? `AND pr.repository_id = ${projectId ? '$3' : '$2'}` : ''}
+         GROUP BY TO_CHAR(prr.submitted_at, 'YYYY-MM-DD')`,
+        filterParams
+      ),
+      // Daily issues count
+      pool.query(
+        `SELECT TO_CHAR(i.created_at, 'YYYY-MM-DD') as date, COUNT(*) as count
+         FROM issues i
+         JOIN repositories r ON r.id = i.repository_id
+         WHERE i.author_developer_id = $1 ${projectId ? 'AND r.project_id = $2' : ''} ${repositoryId ? `AND i.repository_id = ${projectId ? '$3' : '$2'}` : ''}
+         GROUP BY TO_CHAR(i.created_at, 'YYYY-MM-DD')`,
+        filterParams
+      ),
     ]);
+
+    // Build activity distribution map by date
+    const dateDistMap = new Map<string, { date: string; commits: number; prs: number; reviews: number; issues: number }>();
+
+    for (const r of dailyCommitsRes.rows) {
+      if (!r.date) continue;
+      const curr = dateDistMap.get(r.date) || { date: r.date, commits: 0, prs: 0, reviews: 0, issues: 0 };
+      curr.commits = parseInt(r.count, 10);
+      dateDistMap.set(r.date, curr);
+    }
+    for (const r of dailyPRsRes.rows) {
+      if (!r.date) continue;
+      const curr = dateDistMap.get(r.date) || { date: r.date, commits: 0, prs: 0, reviews: 0, issues: 0 };
+      curr.prs = parseInt(r.count, 10);
+      dateDistMap.set(r.date, curr);
+    }
+    for (const r of dailyReviewsRes.rows) {
+      if (!r.date) continue;
+      const curr = dateDistMap.get(r.date) || { date: r.date, commits: 0, prs: 0, reviews: 0, issues: 0 };
+      curr.reviews = parseInt(r.count, 10);
+      dateDistMap.set(r.date, curr);
+    }
+    for (const r of dailyIssuesRes.rows) {
+      if (!r.date) continue;
+      const curr = dateDistMap.get(r.date) || { date: r.date, commits: 0, prs: 0, reviews: 0, issues: 0 };
+      curr.issues = parseInt(r.count, 10);
+      dateDistMap.set(r.date, curr);
+    }
+
+    const activityDistribution = Array.from(dateDistMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+    // Construct activity timeline
+    let activityTimeline = timelineRes.rows.map((t) => {
+      let typeStr: 'commit' | 'pull_request' | 'review' | 'issue' = 'commit';
+      if (t.event_type.includes('pr') || t.event_type.includes('pull')) typeStr = 'pull_request';
+      else if (t.event_type.includes('review')) typeStr = 'review';
+      else if (t.event_type.includes('issue')) typeStr = 'issue';
+
+      return {
+        id: t.id,
+        date: new Date(t.occurred_at).toISOString().split('T')[0],
+        displayDate: new Date(t.occurred_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        time: new Date(t.occurred_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        type: typeStr,
+        title: t.metadata?.message || t.metadata?.title || `Activity: ${t.event_type}`,
+        repoName: t.repo_name || 'Repository',
+        url: t.metadata?.url,
+        linesAdded: t.metadata?.additions,
+        linesDeleted: t.metadata?.deletions,
+      };
+    });
+
+    // Fallback activity timeline if activity_events table is empty
+    if (activityTimeline.length === 0) {
+      const fallbackCommitsRes = await pool.query(
+        `SELECT c.id, c.message, c.commit_url, c.committed_at, c.additions, c.deletions, r.name as repo_name
+         FROM commits c
+         JOIN repositories r ON r.id = c.repository_id
+         WHERE c.developer_id = $1
+         ORDER BY c.committed_at DESC
+         LIMIT 20`,
+        [developerId]
+      );
+      activityTimeline = fallbackCommitsRes.rows.map((c) => ({
+        id: c.id,
+        date: new Date(c.committed_at).toISOString().split('T')[0],
+        displayDate: new Date(c.committed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        time: new Date(c.committed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        type: 'commit' as const,
+        title: c.message,
+        repoName: c.repo_name,
+        url: c.commit_url,
+        linesAdded: parseInt(c.additions || '0', 10),
+        linesDeleted: parseInt(c.deletions || '0', 10),
+      }));
+    }
+
+    // Filter activityTimeline by activityType filter if provided
+    if (activityType && activityType !== 'all') {
+      const typeKey = activityType.toLowerCase();
+      activityTimeline = activityTimeline.filter((t) => {
+        if (typeKey === 'commit' && t.type === 'commit') return true;
+        if (typeKey === 'pull_request' && t.type === 'pull_request') return true;
+        if (typeKey === 'review' && t.type === 'review') return true;
+        if (typeKey === 'issue' && t.type === 'issue') return true;
+        return false;
+      });
+    }
+
+    const projectsList = projectsRes.rows.map((p) => ({ id: p.id, name: p.name }));
+    const reposList = reposRes.rows.map((r) => ({ id: r.id, name: r.name, fullName: r.full_name }));
 
     return {
       developer: {
@@ -79,21 +274,23 @@ export class DeveloperService {
         githubUserId: dev.github_user_id,
         login: dev.login,
         name: dev.name || dev.login,
-        avatarUrl: dev.avatar_url,
-        profileUrl: dev.html_url,
+        avatarUrl: dev.avatar_url || `https://github.com/${dev.login}.png`,
+        profileUrl: dev.html_url || `https://github.com/${dev.login}`,
         email: dev.email,
         type: dev.type,
-        projects: projectsRes.rows,
-        repositories: reposRes.rows,
+        createdAt: dev.created_at,
+        updatedAt: dev.updated_at,
+        projects: projectsList,
+        repositories: reposList,
         metrics: {
-          projectsCount: projectsRes.rows.length,
-          repositoriesCount: reposRes.rows.length,
-          commitCount: metrics.commitCount,
-          prCount: metrics.prCount,
-          reviewCount: metrics.reviewCount,
-          issueCount: metrics.issueCount,
-          additions: metrics.additions,
-          deletions: metrics.deletions,
+          projectsCount: projectsList.length,
+          repositoriesCount: reposList.length,
+          commitsCount: metrics.commitCount,
+          prsCount: metrics.prCount,
+          reviewsCount: metrics.reviewCount,
+          issuesCount: metrics.issueCount,
+          linesAdded: metrics.additions,
+          linesDeleted: metrics.deletions,
           changedFiles: metrics.changedFiles,
           lastActivityAt: dev.updated_at,
         },
@@ -101,7 +298,8 @@ export class DeveloperService {
       commitStats: {
         totalCommits: metrics.commitCount,
         avgAdditionsPerCommit: Math.round(metrics.additions / (metrics.commitCount || 1)),
-        topRepo: reposRes.rows[0]?.name || 'Main Repository',
+        topRepo: reposList[0]?.name || 'Main Repository',
+        commitsByDay: dailyCommitsRes.rows.map((r) => ({ date: r.date, count: parseInt(r.count, 10) })),
       },
       prStats: {
         totalPRs: metrics.prCount,
@@ -124,16 +322,14 @@ export class DeveloperService {
         totalAdditions: metrics.additions,
         totalDeletions: metrics.deletions,
         netChanges: metrics.additions - metrics.deletions,
+        trend: codeTrendRes.rows.map((r) => ({
+          date: r.date,
+          additions: parseInt(r.additions || '0', 10),
+          deletions: parseInt(r.deletions || '0', 10),
+        })),
       },
-      activityTimeline: timelineRes.rows.map((t) => ({
-        id: t.id,
-        date: new Date(t.occurred_at).toISOString().split('T')[0],
-        displayDate: new Date(t.occurred_at).toLocaleDateString(),
-        time: new Date(t.occurred_at).toLocaleTimeString(),
-        type: t.event_type,
-        title: t.metadata?.message || `Activity: ${t.event_type}`,
-        repoName: t.repo_name || 'Repository',
-      })),
+      activityTimeline,
+      activityDistribution,
     };
   }
 
