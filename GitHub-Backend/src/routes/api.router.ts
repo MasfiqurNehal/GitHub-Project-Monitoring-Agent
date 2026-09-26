@@ -158,6 +158,7 @@ apiRouter.get('/settings/github/monitored-repos', repositoryController.listRepos
 
 // 12. GitHub Webhooks Ingestion
 apiRouter.post('/webhooks/github', webhookController.handleGitHubWebhook);
+apiRouter.post('/webhook/github', webhookController.handleGitHubWebhook);
 
 // 13. Frontend Telemetry & UI Logging
 apiRouter.post('/telemetry/log', telemetryController.logTelemetry);

@@ -21,43 +21,54 @@ export class WebhookProcessorService {
     }
 
     const repoFullName = payload?.repository?.full_name;
-    if (!repoFullName) {
-      logger.info('WEBHOOK', `Ignored webhook event '${eventName}': Missing repository full_name in payload`);
+    const repoGithubId = payload?.repository?.id ? String(payload.repository.id) : null;
+
+    if (!repoFullName && !repoGithubId) {
+      logger.info('WEBHOOK', `Ignored webhook event '${eventName}': Missing repository full_name/id in payload`);
       return;
     }
 
     // Find monitored repository in database
-    const repoRes = await pool.query(`SELECT * FROM repositories WHERE full_name = $1 LIMIT 1`, [repoFullName]);
+    const repoRes = await pool.query(
+      `SELECT r.*, p.organization_id as proj_org_id
+       FROM repositories r
+       LEFT JOIN projects p ON p.id = r.project_id
+       WHERE r.full_name = $1 OR r.github_repository_id = $2
+       LIMIT 1`,
+      [repoFullName || '', repoGithubId || '']
+    );
+
     if (repoRes.rows.length === 0) {
-      logger.info('WEBHOOK', `Ignored webhook event '${eventName}' for unmonitored repository ${repoFullName}`);
+      logger.info('WEBHOOK', `Ignored webhook event '${eventName}' for unmonitored repository ${repoFullName || repoGithubId}`);
       return;
     }
 
     const repo = repoRes.rows[0];
+    const organizationId: string | null = repo.organization_id || repo.proj_org_id || null;
 
     try {
       switch (eventName) {
         case 'pull_request':
-          await this.handlePullRequestEvent(repo.id, payload);
+          await this.handlePullRequestEvent(repo.id, organizationId, payload);
           break;
         case 'issues':
-          await this.handleIssuesEvent(repo.id, payload);
+          await this.handleIssuesEvent(repo.id, organizationId, payload);
           break;
         case 'issue_comment':
-          await this.handleIssueCommentEvent(repo.id, payload);
+          await this.handleIssueCommentEvent(repo.id, organizationId, payload);
           break;
         case 'push':
-          await this.handlePushEvent(repo.id, payload);
+          await this.handlePushEvent(repo.id, organizationId, payload);
           break;
         case 'pull_request_review':
-          await this.handleReviewEvent(repo.id, payload);
+          await this.handleReviewEvent(repo.id, organizationId, payload);
           break;
         default:
-          logger.info('WEBHOOK', `Received unhandled webhook event type '${eventName}' for ${repoFullName}`);
+          logger.info('WEBHOOK', `Received unhandled webhook event type '${eventName}' for ${repoFullName || repo.name}`);
           break;
       }
     } catch (err: any) {
-      logger.error('WEBHOOK', `Error processing webhook event '${eventName}' for ${repoFullName}: ${err.message}`, err);
+      logger.error('WEBHOOK', `Error processing webhook event '${eventName}' for ${repoFullName || repo.name}: ${err.message}`, err);
     }
   }
 
@@ -66,18 +77,19 @@ export class WebhookProcessorService {
     if (!installation) return;
 
     const action = payload.action;
-    const installationId = String(installation.id);
+    const installationId = Number(installation.id);
     const accountLogin = installation.account?.login || 'unknown';
     const accountType = installation.account?.type || 'Organization';
+    const statusStr = action === 'deleted' ? 'DELETED' : action === 'suspend' ? 'SUSPENDED' : 'ACTIVE';
 
     await pool.query(
-      `INSERT INTO github_installations (id, installation_id, account_login, account_type, status, created_at, updated_at)
+      `INSERT INTO github_installations (id, github_installation_id, account_login, account_type, status, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-       ON CONFLICT (installation_id) DO UPDATE SET
+       ON CONFLICT (github_installation_id) DO UPDATE SET
          status = EXCLUDED.status,
          account_login = EXCLUDED.account_login,
          updated_at = NOW()`,
-      [`inst-${installationId}`, installationId, accountLogin, accountType, action === 'deleted' ? 'DELETED' : action === 'suspend' ? 'SUSPENDED' : 'ACTIVE']
+      [`inst-${installationId}`, installationId, accountLogin, accountType, statusStr]
     );
 
     logger.info('WEBHOOK', `Successfully processed installation event '${action}' for installation ID ${installationId}`);
@@ -92,7 +104,7 @@ export class WebhookProcessorService {
     logger.info('WEBHOOK', `Successfully processed installation_repositories '${action}' for installation ${installationId} (Added: ${addedRepos.length}, Removed: ${removedRepos.length})`);
   }
 
-  private async handlePullRequestEvent(repositoryId: string, payload: any) {
+  private async handlePullRequestEvent(repositoryId: string, organizationId: string | null, payload: any) {
     const pr = payload.pull_request;
     if (!pr) return;
 
@@ -102,8 +114,10 @@ export class WebhookProcessorService {
     if (author?.login) {
       const dev = await developerRepository.upsert({
         id: `dev-${author.id || author.login}`,
+        organizationId,
         githubUserId: author.id,
         login: author.login,
+        name: author.name || author.login,
         avatarUrl: author.avatar_url,
         htmlUrl: author.html_url,
       });
@@ -140,6 +154,8 @@ export class WebhookProcessorService {
     let eventType = 'PULL_REQUEST_OPENED';
     if (pr.merged) eventType = 'PULL_REQUEST_MERGED';
     else if (action === 'closed') eventType = 'PULL_REQUEST_CLOSED';
+    else if (action === 'reopened') eventType = 'PULL_REQUEST_REOPENED';
+    else if (action === 'edited') eventType = 'PULL_REQUEST_EDITED';
 
     await activityRepository.create({
       id: `act-${crypto.randomUUID()}`,
@@ -155,7 +171,7 @@ export class WebhookProcessorService {
     logger.info('WEBHOOK', `Successfully processed PR #${pr.number} (${stateStr}) for repository ${repositoryId}`);
   }
 
-  private async handleIssuesEvent(repositoryId: string, payload: any) {
+  private async handleIssuesEvent(repositoryId: string, organizationId: string | null, payload: any) {
     const issue = payload.issue;
     if (!issue || payload.pull_request) return;
 
@@ -165,8 +181,10 @@ export class WebhookProcessorService {
     if (author?.login) {
       const dev = await developerRepository.upsert({
         id: `dev-${author.id || author.login}`,
+        organizationId,
         githubUserId: author.id,
         login: author.login,
+        name: author.name || author.login,
         avatarUrl: author.avatar_url,
         htmlUrl: author.html_url,
       });
@@ -178,8 +196,10 @@ export class WebhookProcessorService {
     if (issue.assignee?.login) {
       const aDev = await developerRepository.upsert({
         id: `dev-${issue.assignee.id || issue.assignee.login}`,
+        organizationId,
         githubUserId: issue.assignee.id,
         login: issue.assignee.login,
+        name: issue.assignee.name || issue.assignee.login,
         avatarUrl: issue.assignee.avatar_url,
       });
       assigneeDevId = aDev.id;
@@ -197,7 +217,7 @@ export class WebhookProcessorService {
       state: stateStr,
       authorDeveloperId: devId,
       assigneeDeveloperId: assigneeDevId,
-      labels: issue.labels ? issue.labels.map((l: any) => typeof l === 'string' ? l : l.name) : [],
+      labels: issue.labels ? issue.labels.map((l: any) => (typeof l === 'string' ? l : l.name)) : [],
       commentsCount: issue.comments || 0,
       createdAt: new Date(issue.created_at),
       updatedAt: new Date(issue.updated_at),
@@ -206,7 +226,7 @@ export class WebhookProcessorService {
     });
 
     const action = payload.action;
-    const eventType = action === 'closed' ? 'ISSUE_CLOSED' : 'ISSUE_OPENED';
+    const eventType = action === 'closed' ? 'ISSUE_CLOSED' : action === 'reopened' ? 'ISSUE_REOPENED' : 'ISSUE_OPENED';
 
     await activityRepository.create({
       id: `act-${crypto.randomUUID()}`,
@@ -222,7 +242,7 @@ export class WebhookProcessorService {
     logger.info('WEBHOOK', `Successfully processed Issue #${issue.number} (${stateStr}) for repository ${repositoryId}`);
   }
 
-  private async handleIssueCommentEvent(repositoryId: string, payload: any) {
+  private async handleIssueCommentEvent(repositoryId: string, organizationId: string | null, payload: any) {
     const comment = payload.comment;
     const issue = payload.issue;
     if (!comment || !issue) return;
@@ -233,8 +253,10 @@ export class WebhookProcessorService {
     if (author?.login) {
       const dev = await developerRepository.upsert({
         id: `dev-${author.id || author.login}`,
+        organizationId,
         githubUserId: author.id,
         login: author.login,
+        name: author.name || author.login,
         avatarUrl: author.avatar_url,
         htmlUrl: author.html_url,
       });
@@ -261,34 +283,59 @@ export class WebhookProcessorService {
     logger.info('WEBHOOK', `Successfully processed Issue Comment for Issue #${issue.number} in repository ${repositoryId}`);
   }
 
-  private async handlePushEvent(repositoryId: string, payload: any) {
+  private async handlePushEvent(repositoryId: string, organizationId: string | null, payload: any) {
     const commits = payload.commits || [];
+    const sender = payload.sender;
     const pusher = payload.pusher;
-    let devId: string | null = null;
 
-    if (pusher?.name) {
+    let defaultDevId: string | null = null;
+    const login = sender?.login || pusher?.name;
+    if (login) {
       const dev = await developerRepository.upsert({
-        id: `dev-${pusher.name}`,
-        githubUserId: null,
-        login: pusher.name,
-        avatarUrl: null,
-        htmlUrl: `https://github.com/${pusher.name}`,
+        id: `dev-${sender?.id || login}`,
+        organizationId,
+        githubUserId: sender?.id || null,
+        login,
+        name: sender?.name || pusher?.name || login,
+        avatarUrl: sender?.avatar_url || null,
+        htmlUrl: sender?.html_url || `https://github.com/${login}`,
       });
       await developerRepository.linkToRepository(repositoryId, dev.id);
-      devId = dev.id;
+      defaultDevId = dev.id;
     }
 
     for (const c of commits) {
+      let commitDevId = defaultDevId;
+      const authorLogin = c.author?.username || c.author?.name;
+      if (authorLogin && authorLogin !== login) {
+        const authorDev = await developerRepository.upsert({
+          id: `dev-${authorLogin}`,
+          organizationId,
+          githubUserId: null,
+          login: authorLogin,
+          name: c.author?.name || authorLogin,
+          email: c.author?.email || null,
+          avatarUrl: null,
+          htmlUrl: `https://github.com/${authorLogin}`,
+        });
+        await developerRepository.linkToRepository(repositoryId, authorDev.id);
+        commitDevId = authorDev.id;
+      }
+
+      const additions = c.added ? c.added.length : 0;
+      const deletions = c.removed ? c.removed.length : 0;
+      const changedFiles = (c.added?.length || 0) + (c.modified?.length || 0) + (c.removed?.length || 0);
+
       await commitRepository.upsert({
         id: `cmt-${c.id}`,
         repositoryId,
         githubCommitSha: c.id,
-        developerId: devId,
+        developerId: commitDevId,
         message: c.message,
         committedAt: new Date(c.timestamp || Date.now()),
-        additions: c.added?.length || 0,
-        deletions: c.removed?.length || 0,
-        changedFiles: (c.added?.length || 0) + (c.modified?.length || 0) + (c.removed?.length || 0),
+        additions,
+        deletions,
+        changedFiles,
         commitUrl: c.url,
       });
     }
@@ -297,7 +344,7 @@ export class WebhookProcessorService {
       await activityRepository.create({
         id: `act-${crypto.randomUUID()}`,
         repositoryId,
-        developerId: devId,
+        developerId: defaultDevId,
         eventType: 'COMMIT_PUSHED',
         entityType: 'COMMIT',
         entityId: commits[0].id.substring(0, 8),
@@ -309,7 +356,7 @@ export class WebhookProcessorService {
     logger.info('WEBHOOK', `Successfully processed Push event (${commits.length} commits) for repository ${repositoryId}`);
   }
 
-  private async handleReviewEvent(repositoryId: string, payload: any) {
+  private async handleReviewEvent(repositoryId: string, organizationId: string | null, payload: any) {
     const review = payload.review;
     const pr = payload.pull_request;
     if (!review || !pr) return;
@@ -320,8 +367,10 @@ export class WebhookProcessorService {
     if (reviewer?.login) {
       const dev = await developerRepository.upsert({
         id: `dev-${reviewer.id || reviewer.login}`,
+        organizationId,
         githubUserId: reviewer.id,
         login: reviewer.login,
+        name: reviewer.name || reviewer.login,
         avatarUrl: reviewer.avatar_url,
         htmlUrl: reviewer.html_url,
       });

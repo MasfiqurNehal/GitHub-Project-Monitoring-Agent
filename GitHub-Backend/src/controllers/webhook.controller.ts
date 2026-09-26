@@ -53,8 +53,8 @@ export async function handleGitHubWebhook(req: Request & { rawBody?: Buffer }, r
   // 4. Store Delivery Details in Neon
   const saved = await webhookRepository.saveEvent(eventId, deliveryId, eventName || 'unknown', repositoryId, req.body);
 
-  // 5. Return Quick 202 Accepted Response to GitHub
-  res.status(202).json({
+  // 5. Return Quick 200 OK Response to GitHub
+  res.status(200).json({
     success: true,
     received: true,
     deliveryId,
