@@ -1,4 +1,4 @@
-# 🚀 DevPulse AI — Multi-Tenant GitHub Project Monitoring & Engineering Analytics Agent
+# 🚀 GitHub Project Monitoring Agent
 
 A production-grade, multi-tenant SaaS platform and AI-powered engineering intelligence engine designed to monitor GitHub repositories, track developer productivity, analyze project health metrics, and provide interactive RAG-based AI code insights.
 
@@ -14,11 +14,13 @@ A production-grade, multi-tenant SaaS platform and AI-powered engineering intell
 ## 🌟 Key Features
 
 ### 🏢 1. Strict SaaS Multi-Tenant Isolation
+
 - **Tenant-Scoped Access**: Authenticated users belong to SaaS Organizations/Tenants. All API requests enforce strict JWT-derived `organization_id` boundaries.
 - **Cross-Tenant Safe Monitoring**: Different tenants can legitimately monitor the same public or private GitHub repository without data leaks.
 - **Tenant-Safe Project Deletion**: Secure project deletion requiring user password authentication and explicit confirmation check while preserving historical GitHub commit data for other linked projects.
 
 ### 📁 2. Flexible Project ↔ Repository Relationship
+
 - **Many-to-Many Architecture**: A single project can link multiple repositories (e.g., `frontend`, `backend`, `ai-service`), and a repository can be shared across multiple projects.
 - **Aggregated Statistics**: Dynamically calculates aggregated metrics across all repositories linked to a project (commits, pull requests, open/closed issues, developer metrics, code additions/deletions).
 - **8 Project Detail Tabs**:
@@ -32,11 +34,13 @@ A production-grade, multi-tenant SaaS platform and AI-powered engineering intell
   8. **Code Changes**: Code addition/deletion trends and top modified files.
 
 ### ⚡ 3. Real-Time GitHub App Integration & Background Sync
+
 - **GitHub App OAuth & Installation**: Native GitHub App integration with token caching and rate-limit handling.
 - **Historical Backfill & Incremental Sync**: Asynchronous queue workers (BullMQ + Redis) process initial historical data and handle continuous background polling.
 - **Webhook Processing**: Real-time event ingestion for commits, pull requests, issues, and reviews.
 
 ### 🤖 4. AI-Powered Engineering Copilot & Analytics (FastAPI Service)
+
 - **Interactive Codebase RAG Chatbot**: Ask natural language questions about connected repositories, pull requests, and commit trends.
 - **Bottleneck & Anomaly Detection**: AI agents automatically analyze developer velocity, review delays, and code churn to highlight engineering risks.
 
@@ -44,14 +48,14 @@ A production-grade, multi-tenant SaaS platform and AI-powered engineering intell
 
 ## 🛠️ Technology Stack
 
-| Layer | Technologies & Tools |
-| :--- | :--- |
-| **Frontend** | Next.js 14 (App Router), TypeScript, React 18, Tailwind CSS, Recharts, Lucide Icons, Axios |
-| **Backend API** | Node.js, Express.js, TypeScript, JWT Auth, Argon2 / SHA-256 Hashing, Winston Logger |
-| **Database & Cache** | PostgreSQL (Neon Serverless DB), Redis, BullMQ Background Queues |
-| **AI Microservice** | Python 3.11+, FastAPI, Uvicorn, LangChain, RAG Vector Search, OpenAI / Gemini LLM API |
-| **GitHub API** | GitHub App Webhooks, Octokit, GitHub REST & GraphQL API |
-| **DevOps & Tooling** | Docker Compose, Git |
+| Layer                | Technologies & Tools                                                                       |
+| :------------------- | :----------------------------------------------------------------------------------------- |
+| **Frontend**         | Next.js 14 (App Router), TypeScript, React 18, Tailwind CSS, Recharts, Lucide Icons, Axios |
+| **Backend API**      | Node.js, Express.js, TypeScript, JWT Auth, Argon2 / SHA-256 Hashing, Winston Logger        |
+| **Database & Cache** | PostgreSQL (Neon Serverless DB), Redis, BullMQ Background Queues                           |
+| **AI Microservice**  | Python 3.11+, FastAPI, Uvicorn, LangChain, RAG Vector Search, OpenAI / Gemini LLM API      |
+| **GitHub API**       | GitHub App Webhooks, Octokit, GitHub REST & GraphQL API                                    |
+| **DevOps & Tooling** | Docker Compose, Git                                                                        |
 
 ---
 
@@ -114,44 +118,52 @@ The core database uses strict `organization_id` foreign keys on all primary tabl
 
 ---
 
-## 🚀 Getting Started & Local Setup
+## 🚀 Getting Started & Setup Options
 
 ### Prerequisites
-
-Ensure you have the following installed on your machine:
-- **Node.js** (v18.x or higher) & `npm`
-- **Python** (v3.11 or higher) & `pip`
-- **Docker** & **Docker Compose** (for local PostgreSQL and Redis)
+- **Docker** & **Docker Compose** installed on your PC.
 
 ---
 
-### Step 1: Clone the Repository
+### ⚡ Option A: Instant 1-Command Docker Deployment (Recommended)
+
+To run the entire system (**PostgreSQL**, **Redis**, **Backend API**, **FastAPI AI Service**, and **Next.js Frontend**) on any PC in a single command:
 
 ```bash
+# 1. Clone the repository
 git clone https://github.com/MasfiqurNehal/GitHub-Project-Monitoring-Agent.git
 cd GitHub-Project-Monitoring-Agent
+
+# 2. Build and start all 5 containers
+docker-compose up --build
 ```
+
+That's it! Docker will automatically set up all database schemas, run migrations, and launch all services:
+- 🌐 **Frontend App**: `http://localhost:3000`
+- ⚙️ **Backend API**: `http://localhost:5001`
+- 🤖 **AI Microservice**: `http://localhost:8000`
+- 🗄️ **PostgreSQL Database**: `localhost:5432`
+- ⚡ **Redis Queue**: `localhost:6379`
 
 ---
 
-### Step 2: Spin up Database & Redis Services
+### 🛠️ Option B: Manual Local Development Setup
 
+If you prefer running services manually for local development:
+
+#### Step 1: Spin up Postgres & Redis
 ```bash
-docker-compose up -d
+docker-compose up -d postgres redis
 ```
-*This starts PostgreSQL on port `5432` and Redis on port `6379`.*
 
----
-
-### Step 3: Configure and Start Backend Service
-
+#### Step 2: Backend Service
 ```bash
 cd GitHub-Backend
-
-# Install dependencies
 npm install
-
-# Copy environment template and configure variables
+cp .env.example .env
+npm run migrate
+npm run dev
+```
 cp .env.example .env
 
 # Run database migrations
@@ -199,58 +211,50 @@ npm install
 npm run dev
 ```
 
-Open your browser at **`http://localhost:3000`** to access the DevPulse dashboard!
+Open your browser at **`http://localhost:3000`** to access the dashboard!
 
 ---
 
 ## 🔑 Environment Variables Reference
 
 ### Backend (`GitHub-Backend/.env`)
+
 ```env
-PORT=5001
-NODE_ENV=development
-DATABASE_URL=postgresql://postgres:postgres_password@localhost:5432/github_monitoring
-REDIS_URL=redis://localhost:6379
-JWT_SECRET=your_jwt_secret_key_here
-GITHUB_APP_ID=your_github_app_id
-GITHUB_CLIENT_ID=your_github_client_id
-GITHUB_CLIENT_SECRET=your_github_client_secret
-GITHUB_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n..."
-GITHUB_WEBHOOK_SECRET=your_webhook_secret
+
 ```
 
 ### AI Service (`FastAPI-AI-Services/.env`)
+
 ```env
-PORT=8000
-DATABASE_URL=postgresql://postgres:postgres_password@localhost:5432/github_monitoring
-OPENAI_API_KEY=your_openai_api_key
-GEMINI_API_KEY=your_gemini_api_key
+
 ```
 
 ### Frontend (`GitHub-Frontend/.env.local`)
+
 ```env
-NEXT_PUBLIC_API_BASE_URL=http://localhost:5001/api
-NEXT_PUBLIC_AI_SERVICE_URL=http://localhost:8000
+
 ```
 
 ---
 
 ## 📡 API Endpoints Overview
 
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/api/auth/login` | User login & JWT issuance |
-| `GET` | `/api/projects` | List all projects for authenticated tenant |
-| `POST` | `/api/projects` | Create a new tenant project |
-| `GET` | `/api/projects/:id` | Get aggregated project detail & tab stats |
-| `POST` | `/api/projects/:id/repositories` | Connect a repository to a project |
-| `DELETE` | `/api/projects/:id` | Password-verified tenant project deletion |
-| `GET` | `/api/repositories` | List tenant repositories |
-| `GET` | `/api/developers` | Developer performance metrics |
-| `POST` | `/api/v1/chatbot/query` | (FastAPI) RAG codebase AI query |
+| Method   | Endpoint                         | Description                                |
+| :------- | :------------------------------- | :----------------------------------------- |
+| `POST`   | `/api/auth/login`                | User login & JWT issuance                  |
+| `GET`    | `/api/projects`                  | List all projects for authenticated tenant |
+| `POST`   | `/api/projects`                  | Create a new tenant project                |
+| `GET`    | `/api/projects/:id`              | Get aggregated project detail & tab stats  |
+| `POST`   | `/api/projects/:id/repositories` | Connect a repository to a project          |
+| `DELETE` | `/api/projects/:id`              | Password-verified tenant project deletion  |
+| `GET`    | `/api/repositories`              | List tenant repositories                   |
+| `GET`    | `/api/developers`                | Developer performance metrics              |
+| `POST`   | `/api/v1/chatbot/query`          | (FastAPI) RAG codebase AI query            |
 
 ---
 
-## 📄 License
+## 📄 Project
 
-This project is licensed under the [MIT License](LICENSE).
+Masfiqur Nehal
+https://www.masfiqurnehal.com/
+https://github.com/MasfiqurNehal

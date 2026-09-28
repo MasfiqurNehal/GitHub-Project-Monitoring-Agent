@@ -462,6 +462,10 @@ export async function deleteProject(req: Request, res: Response, next: NextFunct
       return res.status(401).json({ success: false, error: 'Unauthorized user or session' });
     }
 
+    if (req.body.confirmation !== undefined && req.body.confirmation !== true) {
+      return res.status(400).json({ success: false, error: 'Confirmation checkbox must be checked to delete project' });
+    }
+
     if (!password || typeof password !== 'string' || !password.trim()) {
       return res.status(400).json({ success: false, error: 'Password is required to delete project' });
     }
