@@ -31,7 +31,7 @@ export interface RepositoryRow {
 export class RepositoryRepository {
   async findAll(organizationId?: string): Promise<RepositoryRow[]> {
     const orgFilter = organizationId
-      ? `WHERE r.organization_id = $1 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $1)`
+      ? `WHERE r.organization_id = $1 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $1) OR r.id IN (SELECT repository_id FROM project_repositories WHERE organization_id = $1 OR project_id IN (SELECT id FROM projects WHERE organization_id = $1))`
       : '';
     const params = organizationId ? [organizationId] : [];
 
@@ -59,7 +59,7 @@ export class RepositoryRepository {
   async findById(id: string, organizationId?: string): Promise<RepositoryRow | null> {
     if (organizationId) {
       const res = await pool.query(
-        'SELECT * FROM repositories WHERE id = $1 AND (organization_id = $2 OR project_id IN (SELECT id FROM projects WHERE organization_id = $2) OR id IN (SELECT repository_id FROM project_repositories WHERE organization_id = $2))',
+        'SELECT * FROM repositories WHERE id = $1 AND (organization_id = $2 OR project_id IN (SELECT id FROM projects WHERE organization_id = $2) OR id IN (SELECT repository_id FROM project_repositories WHERE organization_id = $2 OR project_id IN (SELECT id FROM projects WHERE organization_id = $2)))',
         [id, organizationId]
       );
       return res.rows[0] || null;
@@ -76,7 +76,7 @@ export class RepositoryRepository {
   async findByFullName(fullName: string, organizationId?: string): Promise<RepositoryRow | null> {
     if (organizationId) {
       const res = await pool.query(
-        'SELECT * FROM repositories WHERE LOWER(full_name) = LOWER($1) AND (organization_id = $2 OR project_id IN (SELECT id FROM projects WHERE organization_id = $2))',
+        'SELECT * FROM repositories WHERE LOWER(full_name) = LOWER($1) AND (organization_id = $2 OR project_id IN (SELECT id FROM projects WHERE organization_id = $2) OR id IN (SELECT repository_id FROM project_repositories WHERE organization_id = $2 OR project_id IN (SELECT id FROM projects WHERE organization_id = $2)))',
         [fullName, organizationId]
       );
       return res.rows[0] || null;
