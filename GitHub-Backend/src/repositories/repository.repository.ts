@@ -130,7 +130,7 @@ export class RepositoryRepository {
         $19, $20, 'PENDING', NOW(), NOW()
       )
       ON CONFLICT (full_name) DO UPDATE SET
-        project_id = EXCLUDED.project_id,
+        project_id = COALESCE(EXCLUDED.project_id, repositories.project_id),
         organization_id = COALESCE(EXCLUDED.organization_id, repositories.organization_id),
         github_repository_id = EXCLUDED.github_repository_id,
         github_installation_id = EXCLUDED.github_installation_id,

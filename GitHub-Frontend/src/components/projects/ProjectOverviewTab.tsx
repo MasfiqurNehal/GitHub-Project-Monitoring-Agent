@@ -13,14 +13,16 @@ import {
   Clock, 
   ArrowUpRight, 
   ExternalLink,
-  ShieldCheck
+  ShieldCheck,
+  Plus
 } from 'lucide-react';
 
 interface ProjectOverviewTabProps {
   detail: ProjectDetailData;
+  onConnectRepo?: () => void;
 }
 
-export function ProjectOverviewTab({ detail }: ProjectOverviewTabProps) {
+export function ProjectOverviewTab({ detail, onConnectRepo }: ProjectOverviewTabProps) {
   const { project, repositories, developers, recentActivity } = detail;
   const metrics = project.metrics;
 
@@ -101,7 +103,18 @@ export function ProjectOverviewTab({ detail }: ProjectOverviewTabProps) {
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <GitBranch className="w-4 h-4 text-blue-400" /> Monitored Repositories ({repositories.length})
               </h3>
-              <span className="text-[11px] text-slate-400">Project scope</span>
+              {onConnectRepo ? (
+                <button
+                  type="button"
+                  onClick={onConnectRepo}
+                  className="px-2.5 py-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Connect Repo</span>
+                </button>
+              ) : (
+                <span className="text-[11px] text-slate-400">Project scope</span>
+              )}
             </div>
 
             {repositories.length > 0 ? (

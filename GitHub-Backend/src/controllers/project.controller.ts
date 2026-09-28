@@ -289,14 +289,16 @@ function normalizeGitHubUrl(input: string): { owner: string; name: string; canon
 // 7. POST /api/projects/:id/repositories
 export async function addRepositoryToProject(req: Request, res: Response, next: NextFunction) {
   try {
-    const { id } = req.params;
-    const { repositoryId, url, repositoryUrl, owner, name } = req.body;
+    const id = req.params.id || req.params.projectId;
+    const { repositoryId, url, repositoryUrl, owner, name, nameOrDescription } = req.body;
     const orgId = (req as any).organizationId;
 
     const project = await projectRepository.findById(id, orgId);
     if (!project) {
       return res.status(404).json({ success: false, error: 'Project not found' });
     }
+
+    const customDescription = typeof nameOrDescription === 'string' && nameOrDescription.trim() ? nameOrDescription.trim() : undefined;
 
     // 1. If existing repositoryId is explicitly provided
     if (repositoryId) {
@@ -310,12 +312,27 @@ export async function addRepositoryToProject(req: Request, res: Response, next: 
         return res.status(409).json({ success: false, error: 'Repository is already attached to another project' });
       }
 
+      const updates: string[] = [];
+      const values: any[] = [];
+      let paramIdx = 1;
+
       if (repo.project_id !== project.id) {
-        await pool.query('UPDATE repositories SET project_id = $1 WHERE id = $2 AND (organization_id = $3 OR organization_id IS NULL)', [
-          project.id,
-          repo.id,
-          orgId,
-        ]);
+        updates.push(`project_id = $${paramIdx++}`);
+        values.push(project.id);
+      }
+
+      if (customDescription && customDescription !== repo.description) {
+        updates.push(`description = $${paramIdx++}`);
+        values.push(customDescription);
+      }
+
+      if (updates.length > 0) {
+        values.push(repo.id);
+        values.push(orgId);
+        await pool.query(
+          `UPDATE repositories SET ${updates.join(', ')} WHERE id = $${paramIdx++} AND (organization_id = $${paramIdx++} OR organization_id IS NULL)`,
+          values
+        );
       }
 
       const updatedRepo = (await repositoryRepository.findById(repo.id, orgId)) || repo;
@@ -363,12 +380,28 @@ export async function addRepositoryToProject(req: Request, res: Response, next: 
         return res.status(409).json({ success: false, error: 'Repository is already attached to another project' });
       }
 
+      const updates: string[] = [];
+      const values: any[] = [];
+      let paramIdx = 1;
+
       if (globalRepo.project_id !== project.id) {
-        await pool.query('UPDATE repositories SET project_id = $1, organization_id = COALESCE(organization_id, $2) WHERE id = $3', [
-          project.id,
-          orgId,
-          globalRepo.id,
-        ]);
+        updates.push(`project_id = $${paramIdx++}`);
+        values.push(project.id);
+      }
+
+      if (!globalRepo.organization_id && orgId) {
+        updates.push(`organization_id = $${paramIdx++}`);
+        values.push(orgId);
+      }
+
+      if (customDescription && customDescription !== globalRepo.description) {
+        updates.push(`description = $${paramIdx++}`);
+        values.push(customDescription);
+      }
+
+      if (updates.length > 0) {
+        values.push(globalRepo.id);
+        await pool.query(`UPDATE repositories SET ${updates.join(', ')} WHERE id = $${paramIdx++}`, values);
       }
 
       const updatedRepo = (await repositoryRepository.findById(globalRepo.id, orgId)) || globalRepo;
@@ -406,7 +439,7 @@ export async function addRepositoryToProject(req: Request, res: Response, next: 
       htmlUrl: validated.url,
       defaultBranch: validated.defaultBranch,
       isPrivate: validated.isPrivate,
-      description: validated.description || undefined,
+      description: customDescription || validated.description || undefined,
       language: validated.language,
       stars: validated.starsCount,
     });

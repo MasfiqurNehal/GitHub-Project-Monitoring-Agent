@@ -117,9 +117,20 @@ export async function createProject(data: { name: string; description?: string }
   });
 }
 
-export async function connectRepository(projectId: string, owner: string, name: string): Promise<{ success: boolean; data: any }> {
+export interface ConnectRepositoryPayload {
+  repositoryId?: string;
+  repositoryUrl?: string;
+  owner?: string;
+  name?: string;
+  nameOrDescription?: string;
+}
+
+export async function connectRepository(
+  projectId: string,
+  payload: ConnectRepositoryPayload | { owner: string; name: string }
+): Promise<{ success: boolean; data: any; message?: string }> {
   return await fetchApi<any>(`/projects/${projectId}/repositories`, {
     method: 'POST',
-    body: JSON.stringify({ owner, name }),
+    body: JSON.stringify(payload),
   });
 }

@@ -3,24 +3,45 @@
 import React from 'react';
 import Link from 'next/link';
 import { Repository } from '../../types';
-import { GitBranch, ExternalLink, Clock, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { GitBranch, ExternalLink, Clock, ShieldCheck, CheckCircle2, Plus } from 'lucide-react';
 
 interface ProjectRepositoriesTabProps {
   repositories: Repository[];
+  onConnectRepo?: () => void;
 }
 
-export function ProjectRepositoriesTab({ repositories }: ProjectRepositoriesTabProps) {
+export function ProjectRepositoriesTab({ repositories, onConnectRepo }: ProjectRepositoriesTabProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-bold text-white flex items-center gap-2">
           <GitBranch className="w-4 h-4 text-blue-400" /> Monitored Repositories ({repositories.length})
         </h3>
+        {onConnectRepo && (
+          <button
+            type="button"
+            onClick={onConnectRepo}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md shadow-blue-600/20"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Connect Repository</span>
+          </button>
+        )}
       </div>
 
       {repositories.length === 0 ? (
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-8 text-center text-slate-400 text-xs">
-          No repositories associated with this project yet.
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-8 text-center space-y-3">
+          <p className="text-slate-400 text-xs">No repositories associated with this project yet.</p>
+          {onConnectRepo && (
+            <button
+              type="button"
+              onClick={onConnectRepo}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition-all shadow-md shadow-blue-600/20"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Connect Repository</span>
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -33,9 +33,10 @@ export type ProjectTabId =
 
 interface ProjectTabsProps {
   detail: ProjectDetailData;
+  onConnectRepo?: () => void;
 }
 
-export function ProjectTabs({ detail }: ProjectTabsProps) {
+export function ProjectTabs({ detail, onConnectRepo }: ProjectTabsProps) {
   const [activeTab, setActiveTab] = useState<ProjectTabId>('overview');
 
   const tabs: { id: ProjectTabId; label: string; icon: React.ReactNode; count?: number }[] = [
@@ -92,8 +93,8 @@ export function ProjectTabs({ detail }: ProjectTabsProps) {
         aria-labelledby={`project-tab-${activeTab}`}
         className="pt-2"
       >
-        {activeTab === 'overview' && <ProjectOverviewTab detail={detail} />}
-        {activeTab === 'repositories' && <ProjectRepositoriesTab repositories={detail.repositories} />}
+        {activeTab === 'overview' && <ProjectOverviewTab detail={detail} onConnectRepo={onConnectRepo} />}
+        {activeTab === 'repositories' && <ProjectRepositoriesTab repositories={detail.repositories} onConnectRepo={onConnectRepo} />}
         {activeTab === 'developers' && <ProjectDevelopersTab developers={detail.developers} />}
         {activeTab === 'activity' && <ProjectActivityTab activity={detail.recentActivity} />}
         {activeTab === 'commits' && <ProjectCommitsTab commits={detail.commits} />}

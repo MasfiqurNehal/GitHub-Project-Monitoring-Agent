@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getProjects, getProjectDetail } from '../features/projects/api';
-import { createProject, connectRepository } from '../lib/api/projects';
+import { createProject, connectRepository, ConnectRepositoryPayload } from '../lib/api/projects';
 
 export function useProjects(filters: { search?: string; status?: string } = {}) {
   const queryClient = useQueryClient();
@@ -18,10 +18,12 @@ export function useProjects(filters: { search?: string; status?: string } = {}) 
   });
 
   const connectRepoMutation = useMutation({
-    mutationFn: ({ projectId, owner, name }: { projectId: string; owner: string; name: string }) =>
-      connectRepository(projectId, owner, name),
-    onSuccess: () => {
+    mutationFn: ({ projectId, payload }: { projectId: string; payload: ConnectRepositoryPayload }) =>
+      connectRepository(projectId, payload),
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['projects-list'] });
+      queryClient.invalidateQueries({ queryKey: ['project-detail', variables.projectId] });
+      queryClient.invalidateQueries({ queryKey: ['repositories-list'] });
     },
   });
 
@@ -38,10 +40,22 @@ export function useProjects(filters: { search?: string; status?: string } = {}) 
 }
 
 export function useProject(projectId: string) {
+  const queryClient = useQueryClient();
+
   const detailQuery = useQuery({
     queryKey: ['project-detail', projectId],
     queryFn: () => getProjectDetail(projectId),
     enabled: !!projectId,
+  });
+
+  const connectRepoMutation = useMutation({
+    mutationFn: (payload: ConnectRepositoryPayload) =>
+      connectRepository(projectId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-detail', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projects-list'] });
+      queryClient.invalidateQueries({ queryKey: ['repositories-list'] });
+    },
   });
 
   return {
@@ -52,6 +66,8 @@ export function useProject(projectId: string) {
     isLoading: detailQuery.isLoading,
     isError: detailQuery.isError,
     refetch: detailQuery.refetch,
+    connectRepo: connectRepoMutation.mutateAsync,
+    isConnecting: connectRepoMutation.isPending,
   };
 }
 

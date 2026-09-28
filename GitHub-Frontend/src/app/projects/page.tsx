@@ -52,7 +52,7 @@ export default function ProjectsPage() {
   const handleConnectRepo = async (projectId: string) => {
     if (!repoOwner.trim() || !repoName.trim()) return;
     try {
-      await connectRepo({ projectId, owner: repoOwner, name: repoName });
+      await connectRepo({ projectId, payload: { owner: repoOwner, name: repoName } });
       setRepoOwner('');
       setRepoName('');
       setSelectedProjectId(null);

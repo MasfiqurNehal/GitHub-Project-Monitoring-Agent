@@ -6,6 +6,7 @@ import Header from '../../../components/layout/header';
 import ChatDrawer from '../../../components/ai/chat-drawer';
 import { useProjectDetail } from '../../../hooks/use-projects';
 import { ProjectTabs } from '../../../components/projects/ProjectTabs';
+import { ConnectRepositoryModal } from '../../../components/projects/ConnectRepositoryModal';
 import { LoadingState } from '../../../components/common/LoadingState';
 import { ErrorState } from '../../../components/common/ErrorState';
 import { 
@@ -16,13 +17,15 @@ import {
   Users, 
   GitCommit, 
   GitPullRequest, 
-  AlertCircle 
+  AlertCircle,
+  Plus
 } from 'lucide-react';
 
 export default function ProjectDetailPage({ params }: { params: { projectId: string } }) {
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
+  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
 
-  const { projectDetail, isLoading, isError, refetch } = useProjectDetail(params.projectId);
+  const { projectDetail, isLoading, isError, refetch, connectRepo, isConnecting } = useProjectDetail(params.projectId);
 
   if (isLoading) {
     return (
@@ -65,6 +68,10 @@ export default function ProjectDetailPage({ params }: { params: { projectId: str
     minute: '2-digit',
   });
 
+  const handleConnectRepo = async (payload: { repositoryId?: string; repositoryUrl?: string; nameOrDescription?: string }) => {
+    await connectRepo(payload);
+  };
+
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-slate-950 text-slate-100 min-h-screen">
       <Header onOpenAIChat={() => setIsAIChatOpen(true)} />
@@ -103,32 +110,51 @@ export default function ProjectDetailPage({ params }: { params: { projectId: str
             </div>
           </div>
 
-          {/* Quick Metrics Bar */}
-          <div className="flex items-center gap-3 py-2 px-3 bg-slate-950/60 rounded-xl border border-slate-800 shrink-0">
-            <div className="text-center px-2">
-              <span className="text-[10px] text-slate-400 uppercase font-semibold flex items-center gap-1">
-                <GitBranch className="w-3 h-3 text-blue-400" /> Repos
-              </span>
-              <span className="text-sm font-bold text-white mt-0.5 block">{metrics.repositoriesCount}</span>
-            </div>
-            <div className="text-center px-2 border-l border-slate-800">
-              <span className="text-[10px] text-slate-400 uppercase font-semibold flex items-center gap-1">
-                <Users className="w-3 h-3 text-purple-400" /> Devs
-              </span>
-              <span className="text-sm font-bold text-white mt-0.5 block">{metrics.developersCount}</span>
-            </div>
-            <div className="text-center px-2 border-l border-slate-800">
-              <span className="text-[10px] text-slate-400 uppercase font-semibold flex items-center gap-1">
-                <GitCommit className="w-3 h-3 text-emerald-400" /> Commits
-              </span>
-              <span className="text-sm font-bold text-white mt-0.5 block">{metrics.commitsCount}</span>
+          {/* Header Action & Quick Metrics Bar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsConnectModalOpen(true)}
+              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-600/20"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Connect Repository</span>
+            </button>
+
+            <div className="flex items-center gap-3 py-2 px-3 bg-slate-950/60 rounded-xl border border-slate-800">
+              <div className="text-center px-2">
+                <span className="text-[10px] text-slate-400 uppercase font-semibold flex items-center gap-1">
+                  <GitBranch className="w-3 h-3 text-blue-400" /> Repos
+                </span>
+                <span className="text-sm font-bold text-white mt-0.5 block">{metrics.repositoriesCount}</span>
+              </div>
+              <div className="text-center px-2 border-l border-slate-800">
+                <span className="text-[10px] text-slate-400 uppercase font-semibold flex items-center gap-1">
+                  <Users className="w-3 h-3 text-purple-400" /> Devs
+                </span>
+                <span className="text-sm font-bold text-white mt-0.5 block">{metrics.developersCount}</span>
+              </div>
+              <div className="text-center px-2 border-l border-slate-800">
+                <span className="text-[10px] text-slate-400 uppercase font-semibold flex items-center gap-1">
+                  <GitCommit className="w-3 h-3 text-emerald-400" /> Commits
+                </span>
+                <span className="text-sm font-bold text-white mt-0.5 block">{metrics.commitsCount}</span>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Tabbed View Modules */}
-        <ProjectTabs detail={projectDetail} />
+        <ProjectTabs detail={projectDetail} onConnectRepo={() => setIsConnectModalOpen(true)} />
       </main>
+
+      <ConnectRepositoryModal
+        isOpen={isConnectModalOpen}
+        onClose={() => setIsConnectModalOpen(false)}
+        projectId={params.projectId}
+        onConnect={handleConnectRepo}
+        isConnecting={isConnecting}
+      />
 
       <ChatDrawer isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} />
     </div>
