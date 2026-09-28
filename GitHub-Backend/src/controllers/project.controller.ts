@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { projectRepository } from '../repositories/project.repository.js';
 import { repositoryRepository } from '../repositories/repository.repository.js';
 import { githubService } from '../services/github.service.js';
+import { authService } from '../services/auth.service.js';
 import { pool } from '../db/connection.js';
 import { logger } from '../utils/logger.js';
 import crypto from 'crypto';
@@ -456,13 +457,31 @@ export async function updateProject(req: Request, res: Response, next: NextFunct
 export async function deleteProject(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
+    const { password } = req.body || {};
+    const user = (req as any).user;
     const orgId = (req as any).organizationId;
+
+    if (!user || !user.id || !orgId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized user or session' });
+    }
+
+    if (!password || typeof password !== 'string' || !password.trim()) {
+      return res.status(400).json({ success: false, error: 'Password is required to delete project' });
+    }
+
+    // Verify user's current password
+    const isPasswordValid = await authService.verifyUserPassword(user.id, password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ success: false, error: 'Incorrect password' });
+    }
+
+    // Verify project belongs to authenticated user's tenant and delete project + junction records in a transaction
     const deleted = await projectRepository.delete(id, orgId);
     if (!deleted) {
       return res.status(404).json({ success: false, error: 'Project not found' });
     }
 
-    logger.info('PROJECTS', `Deleted project [ID: ${id}] from database. Linked repositories preserved.`);
+    logger.info('PROJECTS', `User '${user.id}' securely deleted project [ID: ${id}] from org [ID: ${orgId}]. Repositories & sync data preserved.`);
     res.json({ success: true, message: 'Project deleted successfully' });
   } catch (err) {
     next(err);
@@ -546,42 +565,56 @@ export async function addRepositoryToProject(req: Request, res: Response, next: 
 
     const customDescription = typeof nameOrDescription === 'string' && nameOrDescription.trim() ? nameOrDescription.trim() : undefined;
 
+    // Helper function to attach repository to project in project_repositories table
+    const attachRepoToProject = async (targetRepoId: string) => {
+      const dupCheck = await pool.query(
+        'SELECT 1 FROM project_repositories WHERE project_id = $1 AND repository_id = $2',
+        [project.id, targetRepoId]
+      );
+      if (dupCheck.rows.length > 0) {
+        return false; // Already attached to this project
+      }
+
+      const prId = `pr-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+      await pool.query(
+        `INSERT INTO project_repositories (id, project_id, repository_id, organization_id)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (project_id, repository_id) DO NOTHING`,
+        [prId, project.id, targetRepoId, orgId]
+      );
+
+      // Keep legacy project_id populated if NULL
+      await pool.query(
+        'UPDATE repositories SET project_id = $1 WHERE id = $2 AND project_id IS NULL',
+        [project.id, targetRepoId]
+      );
+
+      return true;
+    };
+
     // 1. If existing repositoryId is explicitly provided
     if (repositoryId) {
-      const repo = await repositoryRepository.findById(repositoryId, orgId);
+      let repo = await repositoryRepository.findById(repositoryId, orgId);
+      if (!repo) {
+        repo = await repositoryRepository.findByIdGlobal(repositoryId);
+      }
       if (!repo) {
         return res.status(404).json({ success: false, error: 'Repository not found' });
       }
 
-      // Check if already assigned to another project in the SAME organization
-      if (repo.project_id && repo.project_id !== project.id) {
-        return res.status(409).json({ success: false, error: 'Repository is already attached to another project' });
-      }
-
-      const updates: string[] = [];
-      const values: any[] = [];
-      let paramIdx = 1;
-
-      if (repo.project_id !== project.id) {
-        updates.push(`project_id = $${paramIdx++}`);
-        values.push(project.id);
+      const attached = await attachRepoToProject(repo.id);
+      if (!attached) {
+        return res.status(400).json({ success: false, error: 'Repository is already connected to this project' });
       }
 
       if (customDescription && customDescription !== repo.description) {
-        updates.push(`description = $${paramIdx++}`);
-        values.push(customDescription);
-      }
-
-      if (updates.length > 0) {
-        values.push(repo.id);
-        values.push(orgId);
         await pool.query(
-          `UPDATE repositories SET ${updates.join(', ')} WHERE id = $${paramIdx++} AND (organization_id = $${paramIdx++} OR organization_id IS NULL)`,
-          values
+          `UPDATE repositories SET description = $1 WHERE id = $2`,
+          [customDescription, repo.id]
         );
       }
 
-      const updatedRepo = (await repositoryRepository.findById(repo.id, orgId)) || repo;
+      const updatedRepo = (await repositoryRepository.findById(repo.id, orgId)) || (await repositoryRepository.findByIdGlobal(repo.id)) || repo;
 
       // Trigger historical sync asynchronously
       githubService.syncRepository(updatedRepo.id, orgId).catch((syncErr) => {
@@ -615,39 +648,20 @@ export async function addRepositoryToProject(req: Request, res: Response, next: 
       return res.status(400).json({ success: false, error: 'Invalid GitHub repository URL or format. Only GitHub repository URLs are accepted.' });
     }
 
-    // 3. Check if repository already exists in database for this organization
+    // 3. Check if repository already exists in database
     const globalRepo = await repositoryRepository.findByFullNameGlobal(normalized.fullName);
     if (globalRepo) {
-      if (globalRepo.organization_id && orgId && globalRepo.organization_id !== orgId) {
-        return res.status(403).json({ success: false, error: 'Repository belongs to another organization' });
-      }
-
-      if (globalRepo.project_id && globalRepo.project_id !== project.id) {
-        return res.status(409).json({ success: false, error: 'Repository is already attached to another project' });
-      }
-
-      const updates: string[] = [];
-      const values: any[] = [];
-      let paramIdx = 1;
-
-      if (globalRepo.project_id !== project.id) {
-        updates.push(`project_id = $${paramIdx++}`);
-        values.push(project.id);
+      const attached = await attachRepoToProject(globalRepo.id);
+      if (!attached) {
+        return res.status(400).json({ success: false, error: 'Repository is already connected to this project' });
       }
 
       if (!globalRepo.organization_id && orgId) {
-        updates.push(`organization_id = $${paramIdx++}`);
-        values.push(orgId);
+        await pool.query(`UPDATE repositories SET organization_id = $1 WHERE id = $2`, [orgId, globalRepo.id]);
       }
 
       if (customDescription && customDescription !== globalRepo.description) {
-        updates.push(`description = $${paramIdx++}`);
-        values.push(customDescription);
-      }
-
-      if (updates.length > 0) {
-        values.push(globalRepo.id);
-        await pool.query(`UPDATE repositories SET ${updates.join(', ')} WHERE id = $${paramIdx++}`, values);
+        await pool.query(`UPDATE repositories SET description = $1 WHERE id = $2`, [customDescription, globalRepo.id]);
       }
 
       const updatedRepo = (await repositoryRepository.findById(globalRepo.id, orgId)) || globalRepo;
@@ -690,6 +704,8 @@ export async function addRepositoryToProject(req: Request, res: Response, next: 
       stars: validated.starsCount,
     });
 
+    await attachRepoToProject(repository.id);
+
     // Trigger historical sync asynchronously
     githubService.syncRepository(repository.id, orgId).catch((syncErr) => {
       logger.error('PROJECTS', `Background sync error for new repo '${repository.full_name}': ${syncErr.message}`);
@@ -724,12 +740,32 @@ export async function removeRepositoryFromProject(req: Request, res: Response, n
     }
 
     const repo = await repositoryRepository.findById(repositoryId, orgId);
-    if (!repo || repo.project_id !== project.id) {
+    if (!repo) {
+      return res.status(404).json({ success: false, error: 'Repository not found' });
+    }
+
+    const assocCheck = await pool.query(
+      `SELECT 1 FROM project_repositories WHERE project_id = $1 AND repository_id = $2
+       UNION
+       SELECT 1 FROM repositories WHERE id = $2 AND project_id = $1`,
+      [project.id, repo.id]
+    );
+
+    if (assocCheck.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Repository association not found in this project' });
     }
 
-    // Unlink project association (NEVER delete actual repository or GitHub repository)
-    await pool.query('UPDATE repositories SET project_id = NULL WHERE id = $1', [repo.id]);
+    // Unlink association from junction table
+    await pool.query(
+      'DELETE FROM project_repositories WHERE project_id = $1 AND repository_id = $2',
+      [project.id, repo.id]
+    );
+
+    // Unlink legacy project_id if it matched this project
+    await pool.query(
+      'UPDATE repositories SET project_id = NULL WHERE id = $1 AND project_id = $2',
+      [repo.id, project.id]
+    );
 
     logger.info('PROJECTS', `Unlinked repository '${repo.full_name}' from project '${project.name}' (GitHub repo preserved)`);
     res.json({ success: true, message: 'Repository unlinked from project successfully' });

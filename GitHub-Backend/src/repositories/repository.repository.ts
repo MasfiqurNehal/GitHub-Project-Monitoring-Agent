@@ -59,11 +59,16 @@ export class RepositoryRepository {
   async findById(id: string, organizationId?: string): Promise<RepositoryRow | null> {
     if (organizationId) {
       const res = await pool.query(
-        'SELECT * FROM repositories WHERE id = $1 AND (organization_id = $2 OR project_id IN (SELECT id FROM projects WHERE organization_id = $2))',
+        'SELECT * FROM repositories WHERE id = $1 AND (organization_id = $2 OR project_id IN (SELECT id FROM projects WHERE organization_id = $2) OR id IN (SELECT repository_id FROM project_repositories WHERE organization_id = $2))',
         [id, organizationId]
       );
       return res.rows[0] || null;
     }
+    const res = await pool.query('SELECT * FROM repositories WHERE id = $1', [id]);
+    return res.rows[0] || null;
+  }
+
+  async findByIdGlobal(id: string): Promise<RepositoryRow | null> {
     const res = await pool.query('SELECT * FROM repositories WHERE id = $1', [id]);
     return res.rows[0] || null;
   }
@@ -104,7 +109,8 @@ export class RepositoryRepository {
       LEFT JOIN commits c ON c.repository_id = r.id
       LEFT JOIN pull_requests pr ON pr.repository_id = r.id
       LEFT JOIN issues i ON i.repository_id = r.id
-      WHERE r.project_id = $1
+      WHERE r.id IN (SELECT repository_id FROM project_repositories WHERE project_id = $1)
+         OR r.project_id = $1
       GROUP BY r.id
       ORDER BY r.created_at DESC
     `;

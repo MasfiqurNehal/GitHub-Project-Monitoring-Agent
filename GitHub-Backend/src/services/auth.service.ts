@@ -483,6 +483,44 @@ export class AuthService {
     );
     return res.rows;
   }
+
+  // Verify user password for sensitive operations (e.g. project deletion)
+  public async verifyUserPassword(userId: string, passwordInput: string): Promise<boolean> {
+    if (!userId || !passwordInput) return false;
+    const cleanPassword = String(passwordInput);
+
+    try {
+      const res = await pool.query(
+        `SELECT id, email, password_hash FROM users WHERE id = $1 LIMIT 1`,
+        [userId]
+      );
+      if (res.rows.length > 0) {
+        const userRow = res.rows[0];
+        if (userRow.password_hash && userRow.password_hash === cleanPassword) {
+          return true;
+        }
+        if (userRow.email) {
+          const fileUsers = this.loadUsersFromFile();
+          const matchedFileUser = fileUsers.find(
+            (u) => u.email.toLowerCase().trim() === userRow.email.toLowerCase().trim()
+          );
+          if (matchedFileUser && matchedFileUser.password === cleanPassword) {
+            return true;
+          }
+        }
+      }
+    } catch (err: any) {
+      logger.error('AUTH_SERVICE', `Error verifying user password from DB: ${err.message}`);
+    }
+
+    const fileUsers = this.loadUsersFromFile();
+    const matchedById = fileUsers.find((u) => u.id === userId);
+    if (matchedById && matchedById.password === cleanPassword) {
+      return true;
+    }
+
+    return false;
+  }
 }
 
 export const authService = new AuthService();

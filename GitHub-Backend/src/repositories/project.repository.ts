@@ -27,7 +27,8 @@ export class ProjectRepository {
         COUNT(DISTINCT pr.id) as prs_count,
         COUNT(DISTINCT i.id) as issues_count
       FROM projects p
-      LEFT JOIN repositories r ON r.project_id = p.id
+      LEFT JOIN project_repositories pr_link ON pr_link.project_id = p.id
+      LEFT JOIN repositories r ON (r.id = pr_link.repository_id OR r.project_id = p.id)
       LEFT JOIN commits c ON c.repository_id = r.id
       LEFT JOIN pull_requests pr ON pr.repository_id = r.id
       LEFT JOIN issues i ON i.repository_id = r.id
@@ -104,8 +105,10 @@ export class ProjectRepository {
         await client.query('ROLLBACK');
         return false;
       }
-      // Set project_id = NULL on linked repositories to preserve monitoring records and GitHub repositories
+      // Unlink legacy project_id field on repositories to preserve monitoring records
       await client.query('UPDATE repositories SET project_id = NULL WHERE project_id = $1', [id]);
+      // Remove junction records for this project
+      await client.query('DELETE FROM project_repositories WHERE project_id = $1', [id]);
       let delQuery = 'DELETE FROM projects WHERE id = $1';
       const delParams: any[] = [id];
       if (organizationId) {
