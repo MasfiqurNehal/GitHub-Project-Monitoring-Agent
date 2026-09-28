@@ -23,6 +23,10 @@ export const apiRouter = Router();
 apiRouter.post('/auth/login', authController.login);
 apiRouter.post('/auth/refresh', authController.refreshToken);
 
+// GitHub App Installation Setup Callbacks (State Authenticated & Live App Verified)
+apiRouter.get('/github/app/setup', githubConnectionController.handleInstallationCallback);
+apiRouter.get('/github/callback', githubConnectionController.handleInstallationCallback);
+
 // GitHub Webhooks & Telemetry (Public / Signature Verified)
 apiRouter.post('/webhooks/github', webhookController.handleGitHubWebhook);
 apiRouter.post('/webhook/github', webhookController.handleGitHubWebhook);
@@ -147,11 +151,9 @@ apiRouter.get('/reports/:id', reportController.getReportDetail);
 
 // 10. GitHub Connection & App Flow Endpoints
 apiRouter.get('/github/app/install', githubConnectionController.getInstallUrl);
-apiRouter.get('/github/app/setup', githubConnectionController.handleInstallationCallback);
 apiRouter.get('/github/connection/status', githubConnectionController.getConnectionStatus);
 
 apiRouter.get('/github/install', githubConnectionController.getInstallUrl);
-apiRouter.get('/github/callback', githubConnectionController.handleInstallationCallback);
 apiRouter.get('/github/connection', githubConnectionController.getConnectionStatus);
 apiRouter.delete('/github/connection', githubConnectionController.disconnectConnection);
 

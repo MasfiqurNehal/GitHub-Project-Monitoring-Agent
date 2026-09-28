@@ -12,6 +12,7 @@ interface CachedToken {
 
 export class GitHubAppService {
   private tokenCache: Map<number, CachedToken> = new Map();
+  private consumedNonces: Set<string> = new Set();
 
   // Check if GitHub App credentials are configured in .env
   isAppConfigured(): boolean {
@@ -24,7 +25,7 @@ export class GitHubAppService {
       organizationId,
       userId: userId || null,
       timestamp: Date.now(),
-      nonce: crypto.randomBytes(8).toString('hex'),
+      nonce: crypto.randomBytes(16).toString('hex'),
     });
     const signature = crypto
       .createHmac('sha256', config.jwtSecret)
@@ -33,7 +34,7 @@ export class GitHubAppService {
     return Buffer.from(JSON.stringify({ payload, signature })).toString('base64url');
   }
 
-  // Verify state token from GitHub callback
+  // Verify state token from GitHub callback (Cryptographic signature, 15m TTL, single-use nonce)
   verifyInstallationState(stateToken: string): { organizationId: string; userId?: string } | null {
     try {
       if (!stateToken) return null;
@@ -51,10 +52,23 @@ export class GitHubAppService {
       }
 
       const parsedPayload = JSON.parse(payload);
-      // State valid for 60 minutes
-      if (Date.now() - parsedPayload.timestamp > 60 * 60 * 1000) {
+      // State valid for 15 minutes
+      if (Date.now() - parsedPayload.timestamp > 15 * 60 * 1000) {
         logger.warn('GITHUB_APP', 'Expired state token in installation callback');
         return null;
+      }
+
+      // Check single-use nonce
+      if (parsedPayload.nonce) {
+        if (this.consumedNonces.has(parsedPayload.nonce)) {
+          logger.warn('GITHUB_APP', 'Replayed state token in installation callback');
+          return null;
+        }
+        this.consumedNonces.add(parsedPayload.nonce);
+        if (this.consumedNonces.size > 5000) {
+          const firstKey = this.consumedNonces.values().next().value;
+          if (firstKey) this.consumedNonces.delete(firstKey);
+        }
       }
 
       return {
@@ -64,6 +78,20 @@ export class GitHubAppService {
     } catch (err: any) {
       logger.warn('GITHUB_APP', `Failed to verify installation state token: ${err.message}`);
       return null;
+    }
+  }
+
+  // Fetch list of repositories accessible to an installation using installation token
+  async listAccessibleRepositories(installationId: number): Promise<any[]> {
+    try {
+      const octokit = await this.getInstallationOctokit(installationId);
+      const response = await octokit.rest.apps.listReposAccessibleToInstallation({
+        per_page: 100,
+      });
+      return response.data.repositories || [];
+    } catch (err: any) {
+      logger.error('GITHUB_APP', `Failed to list accessible repositories for installation ID ${installationId}: ${err.message}`);
+      return [];
     }
   }
 

@@ -61,7 +61,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const handleLogin = async (email: string, password: string) => {
-    setIsLoading(true);
     const res = await loginUser(email, password);
 
     if (res.success && res.data) {

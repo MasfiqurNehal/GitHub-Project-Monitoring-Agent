@@ -946,8 +946,8 @@ export class AnalyticsService {
       recentActivity,
     };
 
-    // Cache the aggregated overview result for 20 seconds
-    this.setCache(cacheKey, overviewResult, 20000);
+    // Cache the aggregated overview result for 60 seconds (cleared automatically on sync/webhook)
+    this.setCache(cacheKey, overviewResult, 60000);
     return overviewResult;
   }
 

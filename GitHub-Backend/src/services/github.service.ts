@@ -2,6 +2,7 @@ import { GitHubClient } from '../github/github-client.js';
 import { githubInstallationRepository } from '../repositories/githubInstallation.repository.js';
 import { repositoryRepository } from '../repositories/repository.repository.js';
 import { githubAppService } from '../github/github-app.service.js';
+import { syncService } from './sync.service.js';
 import { logger } from '../utils/logger.js';
 
 export class GitHubService {
@@ -9,6 +10,10 @@ export class GitHubService {
 
   constructor() {
     this.client = new GitHubClient();
+  }
+
+  async syncRepository(repositoryId: string, organizationId?: string) {
+    return syncService.runFullHistoricalSync(repositoryId, organizationId);
   }
 
   // Parse GitHub URL safely into owner and repo

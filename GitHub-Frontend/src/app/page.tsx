@@ -38,7 +38,7 @@ export default function LandingPage() {
     }
   };
 
-  if (authLoading) {
+  if (authLoading && !isSubmitting) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-300 space-y-4">
         <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />

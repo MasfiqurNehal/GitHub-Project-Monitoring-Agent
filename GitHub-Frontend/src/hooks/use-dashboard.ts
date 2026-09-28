@@ -17,8 +17,9 @@ export function useDashboardOverview(filters: DashboardFilters = {}) {
   return {
     overview: overviewQuery.data?.data,
     signals: signalsQuery.data?.data || { inactiveRepositories: [], stalePullRequests: [] },
-    isLoading: overviewQuery.isLoading || signalsQuery.isLoading,
-    isError: overviewQuery.isError || signalsQuery.isError,
+    isLoading: overviewQuery.isLoading,
+    isSignalsLoading: signalsQuery.isLoading,
+    isError: overviewQuery.isError,
     refetch: () => {
       overviewQuery.refetch();
       signalsQuery.refetch();

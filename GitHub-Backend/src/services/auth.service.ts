@@ -227,33 +227,29 @@ export class AuthService {
       logger.warn('AUTH_SERVICE', `Could not create/update saas_organization in DB: ${err.message}`);
     }
 
-    // 3. Log login attempt in Neon DB (user_login_logs)
+    // 3. Log login attempt in Neon DB (user_login_logs) asynchronously
     const logId = `log-${crypto.randomBytes(8).toString('hex')}`;
-    try {
-      await pool.query(
-        `INSERT INTO user_login_logs (id, user_id, email, status, ip_address, user_agent, login_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-        [logId, dbUserId, cleanEmail, isSuccess ? 'SUCCESS' : 'FAILED', ipAddress || '127.0.0.1', userAgent || 'Unknown']
-      );
-    } catch (err: any) {
+    pool.query(
+      `INSERT INTO user_login_logs (id, user_id, email, status, ip_address, user_agent, login_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+      [logId, dbUserId, cleanEmail, isSuccess ? 'SUCCESS' : 'FAILED', ipAddress || '127.0.0.1', userAgent || 'Unknown']
+    ).catch((err: any) => {
       logger.error('AUTH_SERVICE', `Failed to record login audit log in Neon DB: ${err.message}`);
-    }
+    });
 
     if (!isSuccess || !dbUserId) {
       throw new Error('INVALID_CREDENTIALS: Incorrect email or password');
     }
 
-    // 4. Update last_login_at in Neon DB users table
-    try {
-      await pool.query(
-        `INSERT INTO users (id, github_login, name, email, role, password_hash, organization_id, last_login_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-         ON CONFLICT (id) DO UPDATE SET last_login_at = NOW(), organization_id = EXCLUDED.organization_id, updated_at = NOW()`,
-        [dbUserId, cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_'), dbName, cleanEmail, dbRole, cleanPassword, dbOrgId]
-      );
-    } catch (err: any) {
+    // 4. Update last_login_at in Neon DB users table asynchronously
+    pool.query(
+      `INSERT INTO users (id, github_login, name, email, role, password_hash, organization_id, last_login_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET last_login_at = NOW(), organization_id = EXCLUDED.organization_id, updated_at = NOW()`,
+      [dbUserId, cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_'), dbName, cleanEmail, dbRole, cleanPassword, dbOrgId]
+    ).catch((err: any) => {
       logger.warn('AUTH_SERVICE', `Could not update last_login_at in DB: ${err.message}`);
-    }
+    });
 
     // 5. Fetch full user profile from Neon DB (with avatarUrl, designation, companyName, phoneNumber, contactEmail)
     const fullProfile = await this.getUserProfile(dbUserId);

@@ -115,6 +115,40 @@ export async function handleInstallationCallback(req: Request, res: Response, ne
 
     logger.info('GITHUB_AUTH', `Successfully saved GitHub installation for ${saved.account_login} [Org: ${targetOrgId}] in Neon DB`);
 
+    // Fetch and persist repositories accessible to this installation
+    if (githubAppService.isAppConfigured() && targetOrgId) {
+      try {
+        const accessibleRepos = await githubAppService.listAccessibleRepositories(instId);
+        logger.info('GITHUB_AUTH', `Fetched ${accessibleRepos.length} accessible repositories for installation ID ${instId}`);
+
+        for (const repo of accessibleRepos) {
+          await repositoryRepository.upsert({
+            id: `repo-${repo.id}`,
+            organizationId: targetOrgId,
+            githubRepositoryId: repo.id,
+            githubInstallationId: instId,
+            owner: repo.owner?.login || accountLogin,
+            name: repo.name,
+            fullName: repo.full_name,
+            htmlUrl: repo.html_url,
+            cloneUrl: repo.clone_url,
+            defaultBranch: repo.default_branch || 'main',
+            visibility: repo.visibility || (repo.private ? 'private' : 'public'),
+            isPrivate: repo.private || false,
+            description: repo.description || null,
+            language: repo.language || null,
+            stars: repo.stargazers_count || 0,
+            forks: repo.forks_count || 0,
+            openIssuesCount: repo.open_issues_count || 0,
+            githubCreatedAt: repo.created_at,
+            githubUpdatedAt: repo.updated_at,
+          });
+        }
+      } catch (repoErr: any) {
+        logger.warn('GITHUB_AUTH', `Non-fatal error listing accessible repositories for installation ID ${instId}: ${repoErr.message}`);
+      }
+    }
+
     // Support both API response (for testing) and browser redirect
     if (req.headers.accept?.includes('application/json')) {
       return res.json({
