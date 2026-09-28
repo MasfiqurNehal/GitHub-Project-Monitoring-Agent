@@ -1,4 +1,4 @@
-# 🚀 GitHub Project Monitoring Agent
+# 🚀 GitHub Project Monitoring & Engineering Intelligence AI Agent
 
 A production-grade, multi-tenant SaaS platform and AI-powered engineering intelligence engine designed to monitor GitHub repositories, track developer productivity, analyze project health metrics, and provide interactive RAG-based AI code insights.
 
@@ -121,6 +121,7 @@ The core database uses strict `organization_id` foreign keys on all primary tabl
 ## 🚀 Getting Started & Setup Options
 
 ### Prerequisites
+
 - **Docker** & **Docker Compose** installed on your PC.
 
 ---
@@ -139,6 +140,7 @@ docker-compose up --build
 ```
 
 That's it! Docker will automatically set up all database schemas, run migrations, and launch all services:
+
 - 🌐 **Frontend App**: `http://localhost:3000`
 - ⚙️ **Backend API**: `http://localhost:5001`
 - 🤖 **AI Microservice**: `http://localhost:8000`
@@ -152,11 +154,13 @@ That's it! Docker will automatically set up all database schemas, run migrations
 If you prefer running services manually for local development:
 
 #### Step 1: Spin up Postgres & Redis
+
 ```bash
 docker-compose up -d postgres redis
 ```
 
 #### Step 2: Backend Service
+
 ```bash
 cd GitHub-Backend
 npm install
@@ -164,14 +168,18 @@ cp .env.example .env
 npm run migrate
 npm run dev
 ```
+
 cp .env.example .env
 
 # Run database migrations
+
 npm run db:migrate
 
 # Start development backend server (Port 5001)
+
 npm run dev
-```
+
+````
 
 ---
 
@@ -195,7 +203,7 @@ cp .env.example .env
 
 # Start FastAPI server (Port 8000)
 python main.py
-```
+````
 
 ---
 
@@ -253,8 +261,14 @@ Open your browser at **`http://localhost:3000`** to access the dashboard!
 
 ---
 
-## 📄 Project
+---
 
-Masfiqur Nehal
-https://www.masfiqurnehal.com/
-https://github.com/MasfiqurNehal
+## 👨‍💻 Project
+
+**Masfiqur Nehal**
+
+- 🌐 **Portfolio:** [masfiqurnehal.com](https://www.masfiqurnehal.com/)
+- 💻 **GitHub:** [github.com/MasfiqurNehal](https://github.com/MasfiqurNehal)
+- 🔗 **LinkedIn:** [linkedin.com/in/masfiqur-nehal](https://www.linkedin.com/in/masfiqur-nehal/)
+
+---
