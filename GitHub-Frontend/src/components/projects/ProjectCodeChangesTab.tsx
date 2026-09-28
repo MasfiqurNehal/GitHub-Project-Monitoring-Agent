@@ -65,21 +65,25 @@ export function ProjectCodeChangesTab({ codeChanges }: ProjectCodeChangesTabProp
         </h3>
 
         <div className="space-y-3">
-          {topFilesChanged.map((file, idx) => (
-            <div key={idx} className="p-3.5 bg-slate-950/60 rounded-xl border border-slate-800/80 flex items-center justify-between">
-              <div className="flex items-center gap-3 min-w-0">
-                <FileCode className="w-4 h-4 text-blue-400 shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-xs font-mono font-bold text-slate-200 truncate">{file.name}</p>
-                  <span className="text-[10px] text-slate-400">{file.repoName}</span>
+          {topFilesChanged.length === 0 ? (
+            <p className="text-slate-400 text-xs text-center py-6 italic">No file-level diff changes recorded for this project in the selected time period.</p>
+          ) : (
+            topFilesChanged.map((file, idx) => (
+              <div key={idx} className="p-3.5 bg-slate-950/60 rounded-xl border border-slate-800/80 flex items-center justify-between">
+                <div className="flex items-center gap-3 min-w-0">
+                  <FileCode className="w-4 h-4 text-blue-400 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-mono font-bold text-slate-200 truncate">{file.name}</p>
+                    <span className="text-[10px] text-slate-400">{file.repoName}</span>
+                  </div>
+                </div>
+                <div className="font-mono text-xs font-semibold shrink-0">
+                  <span className="text-emerald-400">+{file.additions}</span>{' '}
+                  <span className="text-rose-400">-{file.deletions}</span>
                 </div>
               </div>
-              <div className="font-mono text-xs font-semibold shrink-0">
-                <span className="text-emerald-400">+{file.additions}</span>{' '}
-                <span className="text-rose-400">-{file.deletions}</span>
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>

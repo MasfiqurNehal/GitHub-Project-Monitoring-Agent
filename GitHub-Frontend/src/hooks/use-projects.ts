@@ -39,12 +39,12 @@ export function useProjects(filters: { search?: string; status?: string } = {}) 
   };
 }
 
-export function useProject(projectId: string) {
+export function useProject(projectId: string, filters?: { preset?: string; from?: string; to?: string }) {
   const queryClient = useQueryClient();
 
   const detailQuery = useQuery({
-    queryKey: ['project-detail', projectId],
-    queryFn: () => getProjectDetail(projectId),
+    queryKey: ['project-detail', projectId, filters],
+    queryFn: () => getProjectDetail(projectId, filters),
     enabled: !!projectId,
   });
 

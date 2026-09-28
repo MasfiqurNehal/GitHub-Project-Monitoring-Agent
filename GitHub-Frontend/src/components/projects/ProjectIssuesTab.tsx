@@ -53,42 +53,50 @@ export function ProjectIssuesTab({ issues }: ProjectIssuesTabProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-slate-300">
-              {issues.map((issue) => {
-                const formattedDate = new Date(issue.updatedAt).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                });
+              {issues.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 px-4 text-center text-slate-400 text-xs">
+                    No issues found for this project in the selected time period.
+                  </td>
+                </tr>
+              ) : (
+                issues.map((issue) => {
+                  const formattedDate = new Date(issue.updatedAt).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  });
 
-                return (
-                  <tr key={issue.id} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="py-3 px-4">
-                      <span className="font-mono text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20 text-[11px]">
-                        #{issue.number}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-bold text-slate-100 max-w-md truncate">
-                      <Link href={`/issues/${issue.id}`} className="hover:text-blue-400 transition-colors">
-                        {issue.title}
-                      </Link>
-                    </td>
-                    <td className="py-3 px-4">{getIssueBadge(issue.state)}</td>
-                    <td className="py-3 px-4 font-mono text-slate-400 text-[11px]">
-                      {issue.repoName}
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-slate-200">
-                      {issue.author}
-                    </td>
-                    <td className="py-3 px-4 text-slate-400 text-[11px]">
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-slate-500" />
-                        <span>{formattedDate}</span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                  return (
+                    <tr key={issue.id} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3 px-4">
+                        <span className="font-mono text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20 text-[11px]">
+                          #{issue.number}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-bold text-slate-100 max-w-md truncate">
+                        <Link href={`/issues/${issue.id}`} className="hover:text-blue-400 transition-colors">
+                          {issue.title}
+                        </Link>
+                      </td>
+                      <td className="py-3 px-4">{getIssueBadge(issue.state)}</td>
+                      <td className="py-3 px-4 font-mono text-slate-400 text-[11px]">
+                        {issue.repoName}
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-slate-200">
+                        {issue.author}
+                      </td>
+                      <td className="py-3 px-4 text-slate-400 text-[11px]">
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-slate-500" />
+                          <span>{formattedDate}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>

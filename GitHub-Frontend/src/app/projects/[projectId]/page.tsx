@@ -21,9 +21,15 @@ import {
   Plus
 } from 'lucide-react';
 
+import { DateRangeFilter } from '../../../components/filters/DateRangeFilter';
+import { DateRangePreset } from '../../../types';
+
 export default function ProjectDetailPage({ params }: { params: { projectId: string } }) {
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const [preset, setPreset] = useState<DateRangePreset>('7d');
+  const [from, setFrom] = useState<string>('');
+  const [to, setTo] = useState<string>('');
 
   const {
     projectDetail,
@@ -34,7 +40,7 @@ export default function ProjectDetailPage({ params }: { params: { projectId: str
     isConnecting,
     disconnectRepo,
     isDisconnecting,
-  } = useProjectDetail(params.projectId);
+  } = useProjectDetail(params.projectId, { preset, from, to });
 
   if (isLoading) {
     return (
@@ -151,6 +157,23 @@ export default function ProjectDetailPage({ params }: { params: { projectId: str
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Analytics Date Filter Control Strip */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900/60 border border-slate-800/80 p-3.5 rounded-2xl shadow-lg">
+          <span className="text-xs text-slate-400 font-semibold px-1 flex items-center gap-2">
+            <Clock className="w-3.5 h-3.5 text-blue-400" /> Date Range Filter:
+          </span>
+          <DateRangeFilter
+            preset={preset}
+            from={from}
+            to={to}
+            onPresetChange={(newPreset) => setPreset(newPreset)}
+            onCustomDateChange={(newFrom, newTo) => {
+              setFrom(newFrom || '');
+              setTo(newTo || '');
+            }}
+          />
         </div>
 
         {/* Tabbed View Modules */}

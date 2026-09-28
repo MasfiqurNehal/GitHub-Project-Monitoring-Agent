@@ -51,8 +51,17 @@ export async function fetchProjects(filters: {
   return { success: true, data: projects };
 }
 
-export async function fetchProjectDetails(projectId: string): Promise<{ success: boolean; data: ProjectDetailData }> {
-  const res = await fetchApi<any>(`/projects/${projectId}`);
+export async function fetchProjectDetails(
+  projectId: string,
+  filters?: { preset?: string; from?: string; to?: string }
+): Promise<{ success: boolean; data: ProjectDetailData }> {
+  const query = new URLSearchParams();
+  if (filters?.preset) query.append('preset', filters.preset);
+  if (filters?.from) query.append('from', filters.from);
+  if (filters?.to) query.append('to', filters.to);
+
+  const queryString = query.toString();
+  const res = await fetchApi<any>(`/projects/${projectId}${queryString ? `?${queryString}` : ''}`);
   const p = res.data?.project || res.data;
 
   const project: ProjectWithMetrics = {

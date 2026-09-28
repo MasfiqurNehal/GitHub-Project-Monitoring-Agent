@@ -9,6 +9,9 @@ export async function getProjects(filters: {
   return await fetchProjects(filters);
 }
 
-export async function getProjectDetail(projectId: string): Promise<ApiResponse<ProjectDetailData>> {
-  return await fetchProjectDetails(projectId);
+export async function getProjectDetail(
+  projectId: string,
+  filters?: { preset?: string; from?: string; to?: string }
+): Promise<ApiResponse<ProjectDetailData>> {
+  return await fetchProjectDetails(projectId, filters);
 }
