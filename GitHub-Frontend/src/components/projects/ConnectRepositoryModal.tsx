@@ -178,7 +178,7 @@ export function ConnectRepositoryModal({
                   onChange={(e) => setSelectedRepoId(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50 appearance-none font-medium"
                 >
-                  <option value="">-- Select a repository --</option>
+                  <option value="">Select repository</option>
                   {repositories.map((repo) => (
                     <option key={repo.id} value={repo.id}>
                       {repo.fullName || repo.name} {repo.isPrivate ? '(Private)' : '(Public)'}
@@ -204,7 +204,7 @@ export function ConnectRepositoryModal({
                 id="repo-url-field"
                 type="url"
                 disabled={isConnecting}
-                placeholder="https://github.com/company/repository"
+                placeholder="https://github.com/owner/repository"
                 value={customRepoUrl}
                 onChange={(e) => setCustomRepoUrl(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50"
