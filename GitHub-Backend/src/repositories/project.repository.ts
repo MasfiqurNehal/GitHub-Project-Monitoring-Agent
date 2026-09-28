@@ -22,27 +22,73 @@ export class ProjectRepository {
     const query = `
       SELECT 
         p.*,
-        COUNT(DISTINCT r.id) as repositories_count,
-        COUNT(DISTINCT c.id) as commits_count,
-        COUNT(DISTINCT pr.id) as prs_count,
-        COUNT(DISTINCT i.id) as issues_count
+        (
+          SELECT COUNT(DISTINCT r_id)::int FROM (
+            SELECT pr_link.repository_id as r_id FROM project_repositories pr_link WHERE pr_link.project_id = p.id
+            UNION
+            SELECT r_legacy.id as r_id FROM repositories r_legacy WHERE r_legacy.project_id = p.id
+          ) repo_union
+        ) as repositories_count,
+        (
+          SELECT COUNT(*)::int 
+          FROM commits c 
+          WHERE c.repository_id IN (
+            SELECT pr_link.repository_id FROM project_repositories pr_link WHERE pr_link.project_id = p.id
+            UNION
+            SELECT r_legacy.id FROM repositories r_legacy WHERE r_legacy.project_id = p.id
+          )
+        ) as commits_count,
+        (
+          SELECT COUNT(*)::int 
+          FROM pull_requests pr 
+          WHERE pr.repository_id IN (
+            SELECT pr_link.repository_id FROM project_repositories pr_link WHERE pr_link.project_id = p.id
+            UNION
+            SELECT r_legacy.id FROM repositories r_legacy WHERE r_legacy.project_id = p.id
+          )
+        ) as prs_count,
+        (
+          SELECT COUNT(*)::int 
+          FROM issues i 
+          WHERE i.repository_id IN (
+            SELECT pr_link.repository_id FROM project_repositories pr_link WHERE pr_link.project_id = p.id
+            UNION
+            SELECT r_legacy.id FROM repositories r_legacy WHERE r_legacy.project_id = p.id
+          )
+        ) as issues_count,
+        (
+          SELECT COUNT(DISTINCT dev_id)::int FROM (
+            SELECT c.developer_id as dev_id FROM commits c WHERE c.repository_id IN (
+              SELECT pr_link.repository_id FROM project_repositories pr_link WHERE pr_link.project_id = p.id
+              UNION
+              SELECT r_legacy.id FROM repositories r_legacy WHERE r_legacy.project_id = p.id
+            ) AND c.developer_id IS NOT NULL
+            UNION
+            SELECT pr.author_developer_id as dev_id FROM pull_requests pr WHERE pr.repository_id IN (
+              SELECT pr_link.repository_id FROM project_repositories pr_link WHERE pr_link.project_id = p.id
+              UNION
+              SELECT r_legacy.id FROM repositories r_legacy WHERE r_legacy.project_id = p.id
+            ) AND pr.author_developer_id IS NOT NULL
+            UNION
+            SELECT i.author_developer_id as dev_id FROM issues i WHERE i.repository_id IN (
+              SELECT pr_link.repository_id FROM project_repositories pr_link WHERE pr_link.project_id = p.id
+              UNION
+              SELECT r_legacy.id FROM repositories r_legacy WHERE r_legacy.project_id = p.id
+            ) AND i.author_developer_id IS NOT NULL
+          ) dev_union
+        ) as developers_count
       FROM projects p
-      LEFT JOIN project_repositories pr_link ON pr_link.project_id = p.id
-      LEFT JOIN repositories r ON (r.id = pr_link.repository_id OR r.project_id = p.id)
-      LEFT JOIN commits c ON c.repository_id = r.id
-      LEFT JOIN pull_requests pr ON pr.repository_id = r.id
-      LEFT JOIN issues i ON i.repository_id = r.id
       ${whereClause}
-      GROUP BY p.id
       ORDER BY p.created_at DESC
     `;
     const res = await pool.query(query, params);
     return res.rows.map(r => ({
       ...r,
-      repositories_count: parseInt(r.repositories_count, 10),
-      commits_count: parseInt(r.commits_count, 10),
-      prs_count: parseInt(r.prs_count, 10),
-      issues_count: parseInt(r.issues_count, 10),
+      repositories_count: parseInt(r.repositories_count || '0', 10),
+      commits_count: parseInt(r.commits_count || '0', 10),
+      prs_count: parseInt(r.prs_count || '0', 10),
+      issues_count: parseInt(r.issues_count || '0', 10),
+      developers_count: parseInt(r.developers_count || '0', 10),
     }));
   }
 

@@ -187,14 +187,12 @@ export async function getProjectDetail(req: Request, res: Response, next: NextFu
              d.name,
              d.avatar_url as "avatarUrl",
              d.html_url as "profileUrl",
-             COUNT(DISTINCT c.id)::int as commits,
-             COUNT(DISTINCT pr.id)::int as prs,
-             COUNT(DISTINCT CASE WHEN pr.merged_at IS NOT NULL THEN pr.id END)::int as reviews,
-             COALESCE(SUM(c.additions), 0)::int as "linesAdded",
-             COALESCE(SUM(c.deletions), 0)::int as "linesDeleted"
+             (SELECT COUNT(*)::int FROM commits c WHERE c.developer_id = d.id AND c.repository_id = ANY($1::text[]) ${cmtSubDate}) as commits,
+             (SELECT COUNT(*)::int FROM pull_requests pr WHERE pr.author_developer_id = d.id AND pr.repository_id = ANY($1::text[]) ${prSubDate}) as prs,
+             (SELECT COUNT(*)::int FROM pull_requests pr WHERE pr.author_developer_id = d.id AND pr.repository_id = ANY($1::text[]) AND pr.merged_at IS NOT NULL ${prSubDate}) as reviews,
+             (SELECT COALESCE(SUM(additions), 0)::int FROM commits c WHERE c.developer_id = d.id AND c.repository_id = ANY($1::text[]) ${cmtSubDate}) as "linesAdded",
+             (SELECT COALESCE(SUM(deletions), 0)::int FROM commits c WHERE c.developer_id = d.id AND c.repository_id = ANY($1::text[]) ${cmtSubDate}) as "linesDeleted"
            FROM developers d
-           LEFT JOIN commits c ON c.developer_id = d.id AND c.repository_id = ANY($1::text[]) ${cmtJoinDate}
-           LEFT JOIN pull_requests pr ON pr.author_developer_id = d.id AND pr.repository_id = ANY($1::text[]) ${prJoinDate}
            WHERE d.id IN (
              SELECT developer_id FROM repository_developers WHERE repository_id = ANY($1::text[])
              UNION
@@ -204,7 +202,6 @@ export async function getProjectDetail(req: Request, res: Response, next: NextFu
              UNION
              SELECT author_developer_id FROM issues WHERE repository_id = ANY($1::text[]) AND author_developer_id IS NOT NULL ${issSubDate}
            )
-           GROUP BY d.id
            ORDER BY commits DESC, prs DESC`,
           devsParams
         ),
