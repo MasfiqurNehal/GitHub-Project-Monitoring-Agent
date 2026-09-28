@@ -63,8 +63,15 @@ export async function getProjectDetail(req: Request, res: Response, next: NextFu
       const [devsRes, actRes, prRes, issRes, cmtRes, statsRes] = await Promise.all([
         pool.query(
           `SELECT DISTINCT d.* FROM developers d
-           JOIN repository_developers rd ON d.id = rd.developer_id
-           WHERE rd.repository_id = ANY($1::text[])`,
+           WHERE d.id IN (
+             SELECT developer_id FROM repository_developers WHERE repository_id = ANY($1::text[])
+             UNION
+             SELECT developer_id FROM commits WHERE repository_id = ANY($1::text[]) AND developer_id IS NOT NULL
+             UNION
+             SELECT author_developer_id FROM pull_requests WHERE repository_id = ANY($1::text[]) AND author_developer_id IS NOT NULL
+             UNION
+             SELECT author_developer_id FROM issues WHERE repository_id = ANY($1::text[]) AND author_developer_id IS NOT NULL
+           )`,
           [repoIds]
         ),
         pool.query(

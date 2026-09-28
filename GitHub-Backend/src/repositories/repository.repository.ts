@@ -91,7 +91,24 @@ export class RepositoryRepository {
   }
 
   async findByProjectId(projectId: string): Promise<RepositoryRow[]> {
-    const res = await pool.query('SELECT * FROM repositories WHERE project_id = $1 ORDER BY created_at DESC', [projectId]);
+    const query = `
+      SELECT 
+        r.*,
+        COUNT(DISTINCT c.developer_id)::int as developers_count,
+        COUNT(DISTINCT c.id)::int as commits_count,
+        COUNT(DISTINCT pr.id)::int as prs_count,
+        COUNT(DISTINCT i.id)::int as issues_count,
+        COALESCE(SUM(c.additions), 0)::int as lines_added,
+        COALESCE(SUM(c.deletions), 0)::int as lines_deleted
+      FROM repositories r
+      LEFT JOIN commits c ON c.repository_id = r.id
+      LEFT JOIN pull_requests pr ON pr.repository_id = r.id
+      LEFT JOIN issues i ON i.repository_id = r.id
+      WHERE r.project_id = $1
+      GROUP BY r.id
+      ORDER BY r.created_at DESC
+    `;
+    const res = await pool.query(query, [projectId]);
     return res.rows;
   }
 

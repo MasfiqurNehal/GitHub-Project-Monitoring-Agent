@@ -27,6 +27,7 @@ export interface Repository {
   isActive: boolean;
   isPrivate?: boolean;
   status?: 'ACTIVE' | 'SYNCING' | 'PAUSED' | 'ERROR' | 'FAILED';
+  description?: string | null;
   lastSyncedAt?: string | null;
   createdAt: string;
   updatedAt: string;

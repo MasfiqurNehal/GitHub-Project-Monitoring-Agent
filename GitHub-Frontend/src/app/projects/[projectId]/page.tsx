@@ -25,7 +25,16 @@ export default function ProjectDetailPage({ params }: { params: { projectId: str
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
 
-  const { projectDetail, isLoading, isError, refetch, connectRepo, isConnecting } = useProjectDetail(params.projectId);
+  const {
+    projectDetail,
+    isLoading,
+    isError,
+    refetch,
+    connectRepo,
+    isConnecting,
+    disconnectRepo,
+    isDisconnecting,
+  } = useProjectDetail(params.projectId);
 
   if (isLoading) {
     return (
@@ -145,7 +154,12 @@ export default function ProjectDetailPage({ params }: { params: { projectId: str
         </div>
 
         {/* Tabbed View Modules */}
-        <ProjectTabs detail={projectDetail} onConnectRepo={() => setIsConnectModalOpen(true)} />
+        <ProjectTabs
+          detail={projectDetail}
+          onConnectRepo={() => setIsConnectModalOpen(true)}
+          onDisconnectRepo={disconnectRepo}
+          isDisconnecting={isDisconnecting}
+        />
       </main>
 
       <ConnectRepositoryModal

@@ -85,9 +85,21 @@ export async function fetchProjectDetails(projectId: string): Promise<{ success:
     defaultBranch: r.defaultBranch || r.default_branch || 'main',
     language: r.language || 'TypeScript',
     isActive: r.isActive ?? true,
+    isPrivate: r.isPrivate ?? r.is_private ?? false,
+    status: (r.sync_status || r.status || 'ACTIVE').toUpperCase() as any,
+    description: r.description || null,
     lastSyncedAt: r.lastSyncedAt || r.last_synced_at,
     createdAt: r.createdAt || r.created_at || new Date().toISOString(),
     updatedAt: r.updatedAt || r.updated_at || new Date().toISOString(),
+    metrics: {
+      developersCount: Number(r.metrics?.developersCount || r.developers_count || 0),
+      commitsCount: Number(r.metrics?.commitsCount || r.commits_count || 0),
+      prsCount: Number(r.metrics?.prsCount || r.prs_count || 0),
+      issuesCount: Number(r.metrics?.issuesCount || r.issues_count || 0),
+      linesAdded: Number(r.metrics?.linesAdded || r.lines_added || r.additions || 0),
+      linesDeleted: Number(r.metrics?.linesDeleted || r.lines_deleted || r.deletions || 0),
+      lastActivityAt: r.metrics?.lastActivityAt || r.last_synced_at || r.updated_at || r.created_at || new Date().toISOString(),
+    },
   }));
 
   const detailData: ProjectDetailData = {
@@ -132,5 +144,14 @@ export async function connectRepository(
   return await fetchApi<any>(`/projects/${projectId}/repositories`, {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+export async function removeRepositoryFromProject(
+  projectId: string,
+  repositoryId: string
+): Promise<{ success: boolean; message?: string }> {
+  return await fetchApi<any>(`/projects/${projectId}/repositories/${repositoryId}`, {
+    method: 'DELETE',
   });
 }

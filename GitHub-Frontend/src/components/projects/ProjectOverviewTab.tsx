@@ -119,27 +119,32 @@ export function ProjectOverviewTab({ detail, onConnectRepo }: ProjectOverviewTab
 
             {repositories.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {repositories.map((repo) => (
-                  <div key={repo.id} className="bg-slate-950/60 border border-slate-800 p-3.5 rounded-xl space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-200">{repo.fullName}</span>
-                      <a
-                        href={repo.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-slate-400 hover:text-white transition-colors"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
+                {repositories.map((repo) => {
+                  const m = repo.metrics || { commitsCount: 0, prsCount: 0, issuesCount: 0, developersCount: 0 };
+                  return (
+                    <div key={repo.id} className="bg-slate-950/60 border border-slate-800 p-3.5 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-200 truncate max-w-[180px]" title={repo.fullName}>{repo.fullName}</span>
+                        <a
+                          href={repo.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-slate-400 hover:text-white transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                        <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono">
+                          {repo.language || 'TypeScript'}
+                        </span>
+                        <span>Commits: <strong className="text-slate-200">{m.commitsCount}</strong></span>
+                        <span>PRs: <strong className="text-slate-200">{m.prsCount}</strong></span>
+                        <span>Issues: <strong className="text-slate-200">{m.issuesCount}</strong></span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                      <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono text-[10px]">
-                        {repo.language || 'Code'}
-                      </span>
-                      <span>Branch: {repo.defaultBranch}</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-xs text-slate-500 italic py-4 text-center">No repositories connected to this project yet.</p>

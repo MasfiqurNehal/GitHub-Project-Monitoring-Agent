@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getProjects, getProjectDetail } from '../features/projects/api';
-import { createProject, connectRepository, ConnectRepositoryPayload } from '../lib/api/projects';
+import { createProject, connectRepository, removeRepositoryFromProject, ConnectRepositoryPayload } from '../lib/api/projects';
 
 export function useProjects(filters: { search?: string; status?: string } = {}) {
   const queryClient = useQueryClient();
@@ -58,6 +58,15 @@ export function useProject(projectId: string) {
     },
   });
 
+  const disconnectRepoMutation = useMutation({
+    mutationFn: (repositoryId: string) => removeRepositoryFromProject(projectId, repositoryId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-detail', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projects-list'] });
+      queryClient.invalidateQueries({ queryKey: ['repositories-list'] });
+    },
+  });
+
   return {
     ...detailQuery,
     projectDetail: detailQuery.data?.data,
@@ -68,6 +77,8 @@ export function useProject(projectId: string) {
     refetch: detailQuery.refetch,
     connectRepo: connectRepoMutation.mutateAsync,
     isConnecting: connectRepoMutation.isPending,
+    disconnectRepo: disconnectRepoMutation.mutateAsync,
+    isDisconnecting: disconnectRepoMutation.isPending,
   };
 }
 
