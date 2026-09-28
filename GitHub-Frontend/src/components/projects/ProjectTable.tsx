@@ -11,14 +11,16 @@ import {
   GitPullRequest, 
   AlertCircle, 
   ArrowRight,
-  Clock
+  Clock,
+  Trash2
 } from 'lucide-react';
 
 interface ProjectTableProps {
   projects: ProjectWithMetrics[];
+  onDeleteProject?: (project: ProjectWithMetrics) => void;
 }
 
-export function ProjectTable({ projects }: ProjectTableProps) {
+export function ProjectTable({ projects, onDeleteProject }: ProjectTableProps) {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'ACTIVE':
@@ -65,7 +67,7 @@ export function ProjectTable({ projects }: ProjectTableProps) {
               <th scope="col" className="py-3.5 px-4 text-center">PRs</th>
               <th scope="col" className="py-3.5 px-4 text-center">Issues</th>
               <th scope="col" className="py-3.5 px-4">Last Activity</th>
-              <th scope="col" className="py-3.5 px-4 text-right">Action</th>
+              <th scope="col" className="py-3.5 px-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 text-slate-300">
@@ -126,14 +128,27 @@ export function ProjectTable({ projects }: ProjectTableProps) {
                     </div>
                   </td>
                   <td className="py-3.5 px-4 text-right">
-                    <Link
-                      href={`/projects/${project.id}`}
-                      aria-label={`View details for ${project.name}`}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white rounded-lg text-xs font-semibold border border-blue-500/30 transition-all"
-                    >
-                      <span>View</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
+                    <div className="flex items-center justify-end gap-2">
+                      {onDeleteProject && (
+                        <button
+                          onClick={() => onDeleteProject(project)}
+                          aria-label={`Delete project ${project.name}`}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 rounded-lg text-xs font-semibold border border-rose-500/20 transition-all"
+                          title="Delete Project"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete</span>
+                        </button>
+                      )}
+                      <Link
+                        href={`/projects/${project.id}`}
+                        aria-label={`View details for ${project.name}`}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white rounded-lg text-xs font-semibold border border-blue-500/30 transition-all"
+                      >
+                        <span>View</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               );

@@ -7,6 +7,7 @@ import { useProjects } from '../../hooks/use-projects';
 import { ProjectCard } from '../../components/projects/ProjectCard';
 import { ProjectTable } from '../../components/projects/ProjectTable';
 import { CreateProjectModal } from '../../components/projects/CreateProjectModal';
+import { DeleteProjectModal } from '../../components/projects/DeleteProjectModal';
 import { DateRangeFilter } from '../../components/filters/DateRangeFilter';
 import { LoadingState } from '../../components/common/LoadingState';
 import { DateRangePreset, ProjectWithMetrics } from '../../types';
@@ -26,6 +27,7 @@ import {
 export default function ProjectsPage() {
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [deletingProject, setDeletingProject] = useState<ProjectWithMetrics | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   
   // Search & Filters State
@@ -34,12 +36,7 @@ export default function ProjectsPage() {
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
 
-  // Repository Connection Modal State
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [repoOwner, setRepoOwner] = useState('');
-  const [repoName, setRepoName] = useState('');
-
-  const { projects, isLoading, createProject, isCreating, connectRepo, isConnecting } = useProjects();
+  const { projects, isLoading, createProject, isCreating, deleteProject, isDeleting } = useProjects();
 
   const handleCreateProject = async (name: string, description?: string) => {
     try {
@@ -49,16 +46,9 @@ export default function ProjectsPage() {
     }
   };
 
-  const handleConnectRepo = async (projectId: string) => {
-    if (!repoOwner.trim() || !repoName.trim()) return;
-    try {
-      await connectRepo({ projectId, payload: { owner: repoOwner, name: repoName } });
-      setRepoOwner('');
-      setRepoName('');
-      setSelectedProjectId(null);
-    } catch (err) {
-      console.error('Failed to connect repo:', err);
-    }
+  const handleDeleteProject = async (projectId: string, password: string) => {
+    await deleteProject({ projectId, password });
+    setDeletingProject(null);
   };
 
   // Filter projects by Search query
@@ -210,46 +200,6 @@ export default function ProjectsPage() {
           </div>
         </div>
 
-        {/* Connect Repository Inline Modal / Panel */}
-        {selectedProjectId && (
-          <div className="bg-slate-900 border border-blue-500/40 p-4 rounded-2xl space-y-3 animate-in fade-in">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold text-blue-400 flex items-center gap-2">
-                <GitBranch className="w-4 h-4" /> Connect GitHub Repository
-              </h4>
-              <button
-                onClick={() => setSelectedProjectId(null)}
-                className="text-xs text-slate-400 hover:text-white"
-              >
-                Cancel
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <input
-                type="text"
-                placeholder="Owner (e.g. facebook)"
-                value={repoOwner}
-                onChange={(e) => setRepoOwner(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white outline-none"
-              />
-              <input
-                type="text"
-                placeholder="Repository Name (e.g. react)"
-                value={repoName}
-                onChange={(e) => setRepoName(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white outline-none"
-              />
-            </div>
-            <button
-              onClick={() => handleConnectRepo(selectedProjectId)}
-              disabled={!repoOwner || !repoName || isConnecting}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs py-2 rounded-xl font-semibold transition-colors disabled:opacity-50"
-            >
-              {isConnecting ? 'Connecting...' : 'Connect & Sync Repository'}
-            </button>
-          </div>
-        )}
-
         {/* Projects View: Grid or Table */}
         {isLoading ? (
           <LoadingState message="Loading engineering projects..." />
@@ -267,12 +217,15 @@ export default function ProjectsPage() {
               <ProjectCard
                 key={project.id}
                 project={project}
-                onConnectRepo={(id) => setSelectedProjectId(id)}
+                onDeleteProject={(p) => setDeletingProject(p)}
               />
             ))}
           </div>
         ) : (
-          <ProjectTable projects={filteredProjects} />
+          <ProjectTable 
+            projects={filteredProjects} 
+            onDeleteProject={(p) => setDeletingProject(p)}
+          />
         )}
       </main>
 
@@ -282,6 +235,15 @@ export default function ProjectsPage() {
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={handleCreateProject}
         isCreating={isCreating}
+      />
+
+      {/* Modal Dialog for Secure Project Deletion */}
+      <DeleteProjectModal
+        isOpen={!!deletingProject}
+        project={deletingProject}
+        onClose={() => setDeletingProject(null)}
+        onConfirmDelete={handleDeleteProject}
+        isDeleting={isDeleting}
       />
 
       <ChatDrawer isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} />

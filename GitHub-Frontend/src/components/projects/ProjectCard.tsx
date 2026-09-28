@@ -12,15 +12,15 @@ import {
   AlertCircle, 
   Clock, 
   ArrowRight,
-  Plus
+  Trash2
 } from 'lucide-react';
 
 interface ProjectCardProps {
   project: ProjectWithMetrics;
-  onConnectRepo?: (projectId: string) => void;
+  onDeleteProject?: (project: ProjectWithMetrics) => void;
 }
 
-export function ProjectCard({ project, onConnectRepo }: ProjectCardProps) {
+export function ProjectCard({ project, onDeleteProject }: ProjectCardProps) {
   const metrics = project.metrics || {
     repositoriesCount: project.repositories?.length || 0,
     developersCount: 0,
@@ -163,13 +163,14 @@ export function ProjectCard({ project, onConnectRepo }: ProjectCardProps) {
 
       {/* Footer Actions */}
       <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
-        {onConnectRepo ? (
+        {onDeleteProject ? (
           <button
-            onClick={() => onConnectRepo(project.id)}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700/80 text-slate-300 text-xs font-medium rounded-xl border border-slate-700/50 flex items-center gap-1.5 transition-colors"
+            onClick={() => onDeleteProject(project)}
+            className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 text-xs font-medium rounded-xl border border-rose-500/20 flex items-center gap-1.5 transition-colors"
+            title="Delete Project"
           >
-            <Plus className="w-3.5 h-3.5 text-blue-400" />
-            <span>Connect Repo</span>
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Delete</span>
           </button>
         ) : (
           <div />

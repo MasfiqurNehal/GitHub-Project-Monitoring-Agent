@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getProjects, getProjectDetail } from '../features/projects/api';
-import { createProject, connectRepository, removeRepositoryFromProject, ConnectRepositoryPayload } from '../lib/api/projects';
+import { createProject, connectRepository, removeRepositoryFromProject, deleteProject as deleteProjectApi, ConnectRepositoryPayload } from '../lib/api/projects';
 
 export function useProjects(filters: { search?: string; status?: string } = {}) {
   const queryClient = useQueryClient();
@@ -27,6 +27,15 @@ export function useProjects(filters: { search?: string; status?: string } = {}) 
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: ({ projectId, password }: { projectId: string; password: string }) =>
+      deleteProjectApi(projectId, password),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects-list'] });
+      queryClient.invalidateQueries({ queryKey: ['repositories-list'] });
+    },
+  });
+
   return {
     projects: projectsQuery.data?.data || [],
     isLoading: projectsQuery.isLoading,
@@ -36,6 +45,8 @@ export function useProjects(filters: { search?: string; status?: string } = {}) 
     isCreating: createMutation.isPending,
     connectRepo: connectRepoMutation.mutateAsync,
     isConnecting: connectRepoMutation.isPending,
+    deleteProject: deleteMutation.mutateAsync,
+    isDeleting: deleteMutation.isPending,
   };
 }
 

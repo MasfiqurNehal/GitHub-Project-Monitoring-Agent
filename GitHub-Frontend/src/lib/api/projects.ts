@@ -164,3 +164,13 @@ export async function removeRepositoryFromProject(
     method: 'DELETE',
   });
 }
+
+export async function deleteProject(
+  projectId: string,
+  password: string
+): Promise<{ success: boolean; message?: string }> {
+  return await fetchApi<any>(`/projects/${projectId}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ password }),
+  });
+}
