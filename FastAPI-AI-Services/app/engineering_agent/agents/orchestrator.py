@@ -12,8 +12,8 @@ from app.engineering_agent.prompts.system_prompts import (
     ENGINEERING_ORCHESTRATOR_SYSTEM_PROMPT,
     SPECIALIZED_INTENT_PROMPTS
 )
+from app.engineering_agent.llm import agent_llm_factory, LLMError
 from app.agents.detector import agent_detector
-from app.providers.ai_provider import ai_provider
 from app.utils.logger import logger
 
 class EngineeringOrchestrator:
@@ -195,18 +195,28 @@ class EngineeringOrchestrator:
             {"role": "user", "content": user_content}
         ]
 
-        # Step 4: Generate completion via AI Provider
+        # Step 4: Generate completion via Engineering Agent LLM Provider
         try:
-            completion = await ai_provider.generate_completion(messages=messages, temperature=0.3)
-            state.final_response = completion.get("content", "Unable to generate engineering response.")
-        except Exception as e:
-            logger.error(f"[EngineeringAgent] Error generating AI completion: {str(e)}")
+            provider = agent_llm_factory.get_provider()
+            completion_resp = await provider.complete(messages=messages, temperature=0.3)
+            state.final_response = completion_resp.content or "Analysis complete."
+        except LLMError as e:
+            logger.error(f"[EngineeringAgent] LLM Provider error ({e.__class__.__name__}): {e.message}")
             state.final_response = (
                 f"### ⚙️ Engineering Analysis\n\n"
-                f"We retrieved live engineering telemetry for your tenant ({state.tenant_id}).\n\n"
+                f"We retrieved live engineering telemetry for your tenant (`{state.tenant_id}`).\n\n"
                 f"- **Tools Executed**: {len(state.tool_results)}\n"
                 f"- **Status**: Live data fetched successfully.\n\n"
-                f"*Note: AI Provider synthesis temporarily unavailable: {str(e)}*"
+                f"*(Note: Engineering Agent LLM Provider synthesis notice: {e.message})*"
+            )
+        except Exception as e:
+            logger.error(f"[EngineeringAgent] Unexpected error during AI completion: {str(e)}")
+            state.final_response = (
+                f"### ⚙️ Engineering Analysis\n\n"
+                f"We retrieved live engineering telemetry for your tenant (`{state.tenant_id}`).\n\n"
+                f"- **Tools Executed**: {len(state.tool_results)}\n"
+                f"- **Status**: Live data fetched successfully.\n\n"
+                f"*(Note: AI Provider synthesis temporarily unavailable)*"
             )
 
         # Step 5: Extract Metrics & Recommended Actions from telemetry

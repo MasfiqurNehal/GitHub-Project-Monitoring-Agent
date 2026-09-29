@@ -16,12 +16,22 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     DATABASE_URL: str = ""
 
-    # AI Provider Settings
+    # AI Provider Settings (Chatbot)
     AI_PROVIDER: str = "betopia"
     AI_BASE_URL: str = "https://api.betopia.ai/v1"
     AI_API_KEY: str = ""
     AI_MODEL: str = "auto"
     AI_TIMEOUT_SECONDS: float = 30.0
+
+    # ============================================================
+    # ENGINEERING AGENT LLM CONFIGURATION (Strictly Isolated)
+    # ============================================================
+    ENGINEERING_AGENT_LLM_PROVIDER: str = ""
+    ENGINEERING_AGENT_LLM_BASE_URL: str = ""
+    ENGINEERING_AGENT_LLM_API_KEY: str = ""
+    ENGINEERING_AGENT_LLM_MODEL: str = ""
+    ENGINEERING_AGENT_LLM_TIMEOUT: float = 45.0
+    ENGINEERING_AGENT_LLM_MAX_RETRIES: int = 2
 
     # Security & Auth Settings
     JWT_SECRET: str = "super-secret-jwt-key-github-monitoring-agent"
