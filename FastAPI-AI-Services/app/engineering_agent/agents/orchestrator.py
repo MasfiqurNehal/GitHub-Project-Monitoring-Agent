@@ -74,6 +74,8 @@ class EngineeringOrchestrator:
 
         # Step 2: Fetch relevant telemetry data from Express backend via Tools
         context_data: Dict[str, Any] = {}
+        target_repo_name = routing_result.entities.repository_name if routing_result.entities else None
+        target_dev_name = routing_result.entities.developer_name if routing_result.entities else None
         
         # Tool A: Projects
         if state.project_id:
@@ -95,6 +97,8 @@ class EngineeringOrchestrator:
             if proj_res.get("success"):
                 context_data["project_details"] = proj_res.get("data")
                 state.project_context = proj_res.get("data")
+            elif proj_res.get("status_code") in (403, 404):
+                context_data["project_notice"] = f"Project '{state.project_id}' was not found in your organization."
         else:
             t0 = time.time()
             projs_res = await express_api_client.list_projects(
@@ -113,7 +117,7 @@ class EngineeringOrchestrator:
             if projs_res.get("success"):
                 context_data["projects_list"] = projs_res.get("data")
 
-        # Tool B: Repositories
+        # Tool B: Repositories (Tenant Scoped)
         if state.repository_id:
             t0 = time.time()
             repo_res = await express_api_client.get_repository_detail(
@@ -133,7 +137,10 @@ class EngineeringOrchestrator:
             if repo_res.get("success"):
                 context_data["repository_details"] = repo_res.get("data")
                 state.repository_context = repo_res.get("data")
-        elif "developer" in state.detected_intent or "repo" in state.user_request.lower() or "project" in state.user_request.lower():
+            elif repo_res.get("status_code") in (403, 404):
+                context_data["repository_notice"] = f"Repository '{state.repository_id}' was not found in your organization."
+        else:
+            # Fetch tenant-monitored repositories
             t0 = time.time()
             repos_res = await express_api_client.list_repositories(
                 auth_token=state.auth_token,
@@ -149,30 +156,67 @@ class EngineeringOrchestrator:
                 duration_ms=dur
             )
             if repos_res.get("success"):
-                context_data["repositories_list"] = repos_res.get("data")
+                tenant_repos = repos_res.get("data", [])
+                context_data["repositories_list"] = tenant_repos
+                
+                # If a specific repository was requested by name, match strictly within tenant repos
+                if target_repo_name and isinstance(tenant_repos, list):
+                    matching_repo = next(
+                        (r for r in tenant_repos if isinstance(r, dict) and (
+                            target_repo_name.lower() in (r.get("name") or "").lower() or
+                            target_repo_name.lower() in (r.get("full_name") or "").lower()
+                        )),
+                        None
+                    )
+                    if matching_repo and matching_repo.get("id"):
+                        detail_res = await express_api_client.get_repository_detail(
+                            repository_id=matching_repo["id"],
+                            auth_token=state.auth_token,
+                            tenant_id=state.tenant_id
+                        )
+                        if detail_res.get("success"):
+                            context_data["repository_details"] = detail_res.get("data")
+                            state.repository_context = detail_res.get("data")
+                    else:
+                        context_data["repository_notice"] = (
+                            f"Repository '{target_repo_name}' is not monitored in your organization."
+                        )
 
-        # Tool C: Developers
-        if "developer" in state.detected_intent or "developer" in state.user_request.lower() or "team" in state.user_request.lower() or "contributor" in state.user_request.lower():
-            t0 = time.time()
-            devs_res = await express_api_client.list_developers(
-                auth_token=state.auth_token,
-                tenant_id=state.tenant_id
-            )
-            dur = (time.time() - t0) * 1000.0
-            state.record_tool_result(
-                tool_name="list_developers",
-                input_args={},
-                output_data=devs_res.get("data"),
-                success=devs_res.get("success", False),
-                error_message=devs_res.get("error"),
-                duration_ms=dur
-            )
-            if devs_res.get("success"):
-                context_data["developers_list"] = devs_res.get("data")
-                state.developer_context = devs_res.get("data")
+        # Tool C: Developers (Tenant Scoped)
+        t0 = time.time()
+        devs_res = await express_api_client.list_developers(
+            auth_token=state.auth_token,
+            tenant_id=state.tenant_id
+        )
+        dur = (time.time() - t0) * 1000.0
+        state.record_tool_result(
+            tool_name="list_developers",
+            input_args={},
+            output_data=devs_res.get("data"),
+            success=devs_res.get("success", False),
+            error_message=devs_res.get("error"),
+            duration_ms=dur
+        )
+        if devs_res.get("success"):
+            tenant_devs = devs_res.get("data", [])
+            context_data["developers_list"] = tenant_devs
+            if target_dev_name and isinstance(tenant_devs, list):
+                matching_dev = next(
+                    (d for d in tenant_devs if isinstance(d, dict) and (
+                        target_dev_name.lower() in (d.get("login") or "").lower() or
+                        target_dev_name.lower() in (d.get("name") or "").lower()
+                    )),
+                    None
+                )
+                if matching_dev:
+                    context_data["target_developer"] = matching_dev
+                else:
+                    context_data["developer_notice"] = (
+                        f"Developer '{target_dev_name}' has no recorded activity in your organization."
+                    )
 
         # Tool D: Pull Requests / Activity
-        if "pr" in state.user_request.lower() or "review" in state.user_request.lower() or "pull request" in state.user_request.lower():
+        if "pr" in state.user_request.lower() or "review" in state.user_request.lower() or "pull request" in state.user_request.lower() or state.detected_intent == "pull_request_info":
             t0 = time.time()
             prs_res = await express_api_client.list_pull_requests(
                 auth_token=state.auth_token,

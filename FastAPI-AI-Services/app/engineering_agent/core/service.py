@@ -5,6 +5,7 @@ import uuid
 import time
 from typing import Optional, Dict, Any
 
+from fastapi import HTTPException, status
 from app.engineering_agent.schemas.request import EngineeringAgentRequest
 from app.engineering_agent.schemas.response import (
     EngineeringAgentResponse,
@@ -29,12 +30,32 @@ class EngineeringAgentService:
     ) -> EngineeringAgentResponse:
         """
         Execute an engineering agent task within the authenticated tenant context.
+        Enforces strict SaaS tenant boundary validation and prevents IDOR attacks.
         """
-        tenant_id = request.tenant_id or user.organization_id or "default-tenant"
+        # 1. Require verified organization_id from the authenticated user token
+        if not user.organization_id:
+            logger.warning(f"[EngineeringAgentService] Request rejected: User '{user.id}' missing organization_id in token.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tenant context required. The authenticated token does not contain a valid organization identifier."
+            )
+
+        # 2. Prevent client-side tenant override / IDOR attempt
+        if request.tenant_id and request.tenant_id != user.organization_id:
+            logger.warning(
+                f"[EngineeringAgentService] IDOR Security Alert: User '{user.id}' (org: '{user.organization_id}') "
+                f"attempted to access foreign tenant '{request.tenant_id}'."
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cross-tenant access forbidden. You cannot access or specify a tenant ID other than your authenticated organization."
+            )
+
+        tenant_id = user.organization_id
         conversation_id = request.conversation_id or f"eng-conv-{uuid.uuid4().hex[:12]}"
         message_id = f"eng-msg-{uuid.uuid4().hex[:12]}"
 
-        # Initialize isolated agent execution state
+        # Initialize isolated agent execution state strictly bounded to user's tenant
         state = AgentState(
             user_request=request.message,
             tenant_id=tenant_id,

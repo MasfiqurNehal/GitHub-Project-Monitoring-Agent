@@ -61,33 +61,32 @@ class DeterministicIntentMatcher:
         entities.timeframe = self.extract_timeframe(normalized_text)
 
         # 1. Extract developer names: e.g. "how many commit masfiqur did", "commits by alex", "alex's prs", "by developer alex"
-        dev_match = re.search(
+        stopwords = {
+            "the", "a", "an", "all", "our", "recent", "last", "this", "my",
+            "project", "repo", "repository", "commits", "commit", "prs", "pr",
+            "developer", "devloper", "dev", "contributor", "author", "issues"
+        }
+        for dev_match in re.finditer(
             r"(?:by|from|for|author|dev|developer)\s+(?:developer\s+|dev\s+|contributor\s+)?([a-zA-Z0-9_\-\.]+)|([a-zA-Z0-9_\-\.]+)(?:'s|\s+did|\s+pushed)",
             normalized_text,
             re.IGNORECASE
-        )
-        if dev_match:
+        ):
             candidate = dev_match.group(1) or dev_match.group(2)
-            # Filter out non-name words
-            stopwords = {
-                "the", "a", "an", "all", "our", "recent", "last", "this", "my",
-                "project", "repo", "repository", "commits", "commit", "prs", "pr",
-                "developer", "devloper", "dev", "contributor", "author", "issues"
-            }
             if candidate and candidate.lower().strip() not in stopwords:
                 entities.developer_name = candidate.strip()
+                break
 
-        # 2. Extract repository mentions: e.g. "show me nexora commits", "nexora repo", "hospital-management-frontend"
-        repo_match = re.search(
+        # 2. Extract repository mentions: e.g. "show me nexora commits", "commits in frontend repo", "hospital-management-frontend"
+        repo_stopwords = {"the", "a", "an", "all", "our", "recent", "last", "this", "my", "project", "developer", "commit", "commits", "pr", "prs", "issues", "code", "repo", "repository"}
+        for repo_match in re.finditer(
             r"(?:show\s+me|in|for|of|repo|repository)\s+(?:repo\s+|repository\s+)?([a-zA-Z0-9_\-\.\/]+)(?:\s+commits|\s+prs|\s+repo|\s+repository|\s+issues)?",
             normalized_text,
             re.IGNORECASE
-        )
-        if repo_match:
+        ):
             candidate = repo_match.group(1).strip()
-            stopwords = {"the", "a", "an", "all", "our", "recent", "last", "this", "my", "project", "developer", "commit", "commits", "pr", "prs", "issues", "code", "repo", "repository"}
-            if candidate.lower() not in stopwords:
+            if candidate.lower() not in repo_stopwords:
                 entities.repository_name = candidate
+                break
 
         # 3. Target metrics identification
         if "commit" in normalized_text:
