@@ -121,7 +121,7 @@ class DeterministicIntentMatcher:
             return IntentCategory.DEVELOPER_INFO, confidence, entities
 
         # 2. Cross-Repository Analytics & Comparison
-        if re.search(r"\b(compare|contrast|versus|vs|benchmark|cross\s+repo|all\s+repositories|across\s+repos)\b", norm):
+        if re.search(r"\b(compare|contrast|versus|vs|benchmark|cross\s+repo|across\s+repos|compare\s+all\s+repositories)\b", norm):
             return IntentCategory.CROSS_REPOSITORY_ANALYTICS, 0.90, entities
 
         # 3. Code Impact, Churn & Diff Analytics
@@ -150,7 +150,7 @@ class DeterministicIntentMatcher:
             return IntentCategory.DASHBOARD_ANALYTICS, 0.84, entities
 
         # 9. Repository Info
-        if re.search(r"\b(repository|repo|repos|codebase|stars|forks|default\s+branch|language\s+breakdown)\b", norm):
+        if re.search(r"\b(repository|repositories|repo|repos|codebase|stars|forks|default\s+branch|language\s+breakdown)\b", norm):
             return IntentCategory.REPOSITORY_INFO, 0.85, entities
 
         # 10. General Engineering / IT Architecture QA
