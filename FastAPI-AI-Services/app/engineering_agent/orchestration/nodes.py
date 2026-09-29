@@ -11,7 +11,9 @@ from app.engineering_agent.state.agent_state import AgentState
 from app.engineering_agent.router import engineering_intent_router, IntentCategory
 from app.engineering_agent.freshness import freshness_evaluator, FreshnessMetadata, FreshnessTier
 from app.engineering_agent.entity_resolution import entity_resolver, tenant_entity_loader, EntityType
+from app.engineering_agent.response_generation import response_generator
 from app.engineering_agent.agents.registry import specialist_registry
+
 
 
 from app.engineering_agent.agents.repository_agent import repository_agent
@@ -371,74 +373,14 @@ async def aggregate_results_node(state: GraphState) -> Dict[str, Any]:
 
 
 async def generate_response_node(state: GraphState) -> Dict[str, Any]:
-    """Synthesize final expert engineering response via LLM Provider (zero chain-of-thought)."""
-    selected_agent = state.get("selected_agent", "Engineering Agent")
-    detected_intent = state.get("detected_intent", "general_engineering_qa")
-    telemetry = state.get("telemetry_data", {})
+    """Synthesize final expert engineering response via ResponseGenerator (Phase 10: Response Generation)."""
+    fact_checked_resp = await response_generator.generate_response(state)
+    return {
+        "final_response": fact_checked_resp.markdown_content,
+        "metrics": [m.model_dump() for m in fact_checked_resp.key_metrics] if fact_checked_resp.key_metrics else state.get("metrics", []),
+        "actions": fact_checked_resp.actions or state.get("actions", [])
+    }
 
-    intent_instruction = SPECIALIZED_INTENT_PROMPTS.get(
-        detected_intent,
-        SPECIALIZED_INTENT_PROMPTS.get("general_engineering_analysis", "Provide deep engineering insights.")
-    )
-
-    system_message = (
-        f"{ENGINEERING_ORCHESTRATOR_SYSTEM_PROMPT}\n\n"
-        f"Active Specialist: {selected_agent}\n"
-        f"Specialized Task Focus: {intent_instruction}\n"
-    )
-
-    telemetry_str = json.dumps(telemetry, default=str)[:3500] if telemetry else "No specific telemetry recorded."
-
-    user_content = (
-        f"USER INSTRUCTION: {state['user_request']}\n\n"
-        f"AUTHENTICATED TENANT CONTEXT:\n"
-        f"- Tenant ID: {state['tenant_id']}\n"
-        f"- Scoped Project ID: {state.get('project_id') or 'All Projects'}\n"
-        f"- Scoped Repository ID: {state.get('repository_id') or 'All Repositories'}\n\n"
-        f"LIVE TELEMETRY FROM SPECIALIST AGENTS & TOOLS:\n"
-        f"```json\n{telemetry_str}\n```\n\n"
-        f"Synthesize an expert technical response with actionable recommendations. Never expose internal thoughts or hidden keys."
-    )
-
-    messages = [
-        {"role": "system", "content": system_message},
-        {"role": "user", "content": user_content}
-    ]
-
-    try:
-        provider = agent_llm_factory.get_provider()
-        resp = await provider.complete(messages=messages, temperature=0.3)
-        final_answer = resp.content or "Analysis complete."
-    except LLMError as e:
-        logger.error(f"[StateGraph] LLM Provider error ({e.__class__.__name__}): {e.message}")
-        final_answer = (
-            f"### ⚙️ Engineering Analysis ({selected_agent})\n\n"
-            f"We retrieved live engineering telemetry for your tenant (`{state['tenant_id']}`).\n\n"
-            f"- **Specialist**: {selected_agent}\n"
-            f"- **Status**: Live telemetry gathered successfully.\n\n"
-            f"*(Note: LLM synthesis notice: {e.message})*"
-        )
-    except Exception as e:
-        logger.error(f"[StateGraph] Unexpected error during completion: {str(e)}")
-        final_answer = (
-            f"### ⚙️ Engineering Analysis ({selected_agent})\n\n"
-            f"We retrieved live engineering telemetry for your tenant (`{state['tenant_id']}`).\n\n"
-            f"- **Specialist**: {selected_agent}\n"
-            f"- **Status**: Live telemetry gathered successfully.\n"
-        )
-
-    # Append Data Freshness Provenance Footnote (Phase 8: Data Freshness Strategy)
-    freshness_dict = state.get("freshness_metadata")
-
-    if freshness_dict and "Data Source:" not in final_answer:
-        try:
-            meta = FreshnessMetadata(**freshness_dict)
-            footnote = freshness_evaluator.format_provenance_footnote(meta)
-            final_answer += footnote
-        except Exception as e:
-            logger.warning(f"[generate_response_node] Failed to append freshness footnote: {e}")
-
-    return {"final_response": final_answer}
 
 
 
