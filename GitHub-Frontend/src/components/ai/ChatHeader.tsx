@@ -8,14 +8,22 @@ import {
   Trash2, 
   Sidebar, 
   Workflow, 
-  Cpu 
+  Cpu,
+  FolderKanban,
+  GitBranch,
+  User,
+  X,
+  ShieldCheck
 } from 'lucide-react';
+import { AgentContextScope } from '../../hooks/use-ai-agent';
 
 interface ChatHeaderProps {
   onNewChat: () => void;
   onClearChat: () => void;
   onToggleSidebar: () => void;
   isSidebarOpen: boolean;
+  contextScope?: AgentContextScope;
+  onClearContext?: (key?: 'projectId' | 'repositoryId' | 'developerId') => void;
 }
 
 export function ChatHeader({
@@ -23,9 +31,16 @@ export function ChatHeader({
   onClearChat,
   onToggleSidebar,
   isSidebarOpen,
+  contextScope,
+  onClearContext,
 }: ChatHeaderProps) {
+  const hasProjectContext = Boolean(contextScope?.projectId);
+  const hasRepoContext = Boolean(contextScope?.repositoryId);
+  const hasDevContext = Boolean(contextScope?.developerId);
+  const hasActiveScope = hasProjectContext || hasRepoContext || hasDevContext;
+
   return (
-    <div className="bg-slate-900/90 border-b border-slate-800 p-4 flex items-center justify-between gap-4">
+    <div className="bg-slate-900/90 border-b border-slate-800 p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       {/* Title & Toggle */}
       <div className="flex items-center gap-3">
         <button
@@ -42,25 +57,78 @@ export function ChatHeader({
           </div>
 
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold text-white tracking-tight">Engineering Agent Console</h1>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                <Cpu className="w-3 h-3" /> Gemini Ready (Mock)
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-sm sm:text-base font-bold text-white tracking-tight">Engineering Agent Console</h1>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <ShieldCheck className="w-3 h-3" /> Tenant Isolated
               </span>
             </div>
-            <p className="text-slate-400 text-xs hidden sm:block">
-              ChatGPT-style engineering intelligence over monitored repositories & developer activity.
+            <p className="text-slate-400 text-xs hidden md:block">
+              Multi-agent analytical orchestrator over repositories, pull requests, and telemetry.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Right Controls: Architecture Pipeline Badge & Actions */}
-      <div className="flex items-center gap-2">
+      {/* Active Context Scope Chips & Actions */}
+      <div className="flex items-center gap-2 flex-wrap justify-between sm:justify-end">
+        {/* Context Badges */}
+        {hasActiveScope && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {hasProjectContext && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-fade-in shadow-sm">
+                <FolderKanban className="w-3.5 h-3.5 text-blue-400" />
+                <span>Project: <strong className="text-white">{contextScope?.projectName || contextScope?.projectId}</strong></span>
+                {onClearContext && (
+                  <button
+                    onClick={() => onClearContext('projectId')}
+                    className="p-0.5 hover:bg-blue-500/20 rounded text-blue-300 hover:text-white transition-colors ml-0.5"
+                    title="Remove project context"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </span>
+            )}
+
+            {hasRepoContext && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 animate-fade-in shadow-sm">
+                <GitBranch className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Repo: <strong className="text-white">{contextScope?.repositoryName || contextScope?.repositoryId}</strong></span>
+                {onClearContext && (
+                  <button
+                    onClick={() => onClearContext('repositoryId')}
+                    className="p-0.5 hover:bg-indigo-500/20 rounded text-indigo-300 hover:text-white transition-colors ml-0.5"
+                    title="Remove repository context"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </span>
+            )}
+
+            {hasDevContext && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-purple-500/10 text-purple-400 border border-purple-500/30 animate-fade-in shadow-sm">
+                <User className="w-3.5 h-3.5 text-purple-400" />
+                <span>Dev: <strong className="text-white">{contextScope?.developerName || contextScope?.developerId}</strong></span>
+                {onClearContext && (
+                  <button
+                    onClick={() => onClearContext('developerId')}
+                    className="p-0.5 hover:bg-purple-500/20 rounded text-purple-300 hover:text-white transition-colors ml-0.5"
+                    title="Remove developer context"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Pipeline Architecture Indicator */}
-        <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-slate-400">
-          <Workflow className="w-3.5 h-3.5 text-indigo-400" />
-          <span>Pipeline: <strong className="text-slate-200">Next.js → Express → FastAPI → Orchestrator → Gemini</strong></span>
+        <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-950 border border-slate-800 text-[10px] text-slate-400">
+          <Workflow className="w-3 h-3 text-amber-400" />
+          <span>FastAPI <strong className="text-slate-200">LangGraph StateGraph</strong></span>
         </div>
 
         {/* Clear Messages */}

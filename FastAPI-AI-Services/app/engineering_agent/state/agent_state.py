@@ -36,6 +36,7 @@ class AgentState:
     auth_token: Optional[str] = None
     project_id: Optional[str] = None
     repository_id: Optional[str] = None
+    developer_id: Optional[str] = None
     conversation_id: str = field(default_factory=lambda: f"eng-conv-{uuid.uuid4().hex[:12]}")
     message_id: str = field(default_factory=lambda: f"eng-msg-{uuid.uuid4().hex[:12]}")
     detected_intent: Optional[str] = None

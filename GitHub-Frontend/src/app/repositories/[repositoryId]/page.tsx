@@ -17,7 +17,8 @@ import {
   Lock, 
   Globe, 
   FolderKanban,
-  Clock
+  Clock,
+  Bot
 } from 'lucide-react';
 
 export default function RepositoryDetailPage({ params }: { params: { repositoryId: string } }) {
@@ -155,6 +156,14 @@ export default function RepositoryDetailPage({ params }: { params: { repositoryI
 
           {/* Action Buttons */}
           <div className="flex items-center gap-3 shrink-0">
+            <Link
+              href={`/ai?repositoryId=${repository.id}&repositoryName=${encodeURIComponent(repository.name)}`}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-600/20 hover:bg-amber-600 text-amber-300 hover:text-white font-semibold text-xs rounded-xl border border-amber-500/30 transition-all shadow-md"
+              title="Analyze this repository with Engineering AI Agent"
+            >
+              <Bot className="w-3.5 h-3.5" />
+              <span>Ask Agent</span>
+            </Link>
             <button
               onClick={handleManualSync}
               disabled={isSyncing}

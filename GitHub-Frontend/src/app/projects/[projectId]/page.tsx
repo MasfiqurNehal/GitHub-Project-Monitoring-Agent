@@ -18,7 +18,8 @@ import {
   GitCommit, 
   GitPullRequest, 
   AlertCircle,
-  Plus
+  Plus,
+  Bot
 } from 'lucide-react';
 
 import { DateRangeFilter } from '../../../components/filters/DateRangeFilter';
@@ -127,6 +128,15 @@ export default function ProjectDetailPage({ params }: { params: { projectId: str
 
           {/* Header Action & Quick Metrics Bar */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 shrink-0">
+            <Link
+              href={`/ai?projectId=${project.id}&projectName=${encodeURIComponent(project.name)}`}
+              className="px-4 py-2.5 bg-amber-600/20 hover:bg-amber-600 text-amber-300 hover:text-white border border-amber-500/30 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-md"
+              title="Analyze this project with Engineering AI Agent"
+            >
+              <Bot className="w-4 h-4" />
+              <span>Ask Agent</span>
+            </Link>
+
             <button
               type="button"
               onClick={() => setIsConnectModalOpen(true)}

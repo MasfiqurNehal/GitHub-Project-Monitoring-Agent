@@ -35,6 +35,7 @@ class EngineeringOrchestrator:
             "auth_token": state.auth_token,
             "project_id": state.project_id,
             "repository_id": state.repository_id,
+            "developer_id": state.developer_id,
             "conversation_id": state.conversation_id,
             "message_id": state.message_id,
             "telemetry_data": {},

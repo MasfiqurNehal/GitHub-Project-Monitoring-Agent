@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Header from '../../components/layout/header';
 import ChatDrawer from '../../components/ai/chat-drawer';
 import { useAIAgent } from '../../hooks/use-ai-agent';
@@ -10,10 +11,19 @@ import { ChatMessage } from '../../components/ai/ChatMessage';
 import { SuggestedPrompts } from '../../components/ai/SuggestedPrompts';
 import { ThinkingState } from '../../components/ai/ThinkingState';
 import { ChatInput } from '../../components/ai/ChatInput';
+import { LoadingState } from '../../components/common/LoadingState';
 
-export default function AIWorkspacePage() {
+function AIWorkspaceContent() {
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const searchParams = useSearchParams();
+
+  const projectId = searchParams.get('projectId') || searchParams.get('project_id') || undefined;
+  const projectName = searchParams.get('projectName') || undefined;
+  const repositoryId = searchParams.get('repositoryId') || searchParams.get('repository_id') || undefined;
+  const repositoryName = searchParams.get('repositoryName') || undefined;
+  const developerId = searchParams.get('developerId') || searchParams.get('developer_id') || undefined;
+  const developerName = searchParams.get('developerName') || undefined;
 
   const {
     conversations,
@@ -23,11 +33,21 @@ export default function AIWorkspacePage() {
     isLoading,
     isSidebarOpen,
     setIsSidebarOpen,
+    contextScope,
+    clearContextScope,
     handleSendMessage,
+    retryMessage,
     createNewChat,
     clearCurrentChat,
     deleteConversation,
-  } = useAIAgent();
+  } = useAIAgent({
+    projectId,
+    projectName,
+    repositoryId,
+    repositoryName,
+    developerId,
+    developerName,
+  });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -50,6 +70,8 @@ export default function AIWorkspacePage() {
             onClearChat={clearCurrentChat}
             onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
             isSidebarOpen={isSidebarOpen}
+            contextScope={contextScope}
+            onClearContext={clearContextScope}
           />
 
           {/* Main Body Grid: Sidebar + Chat Messages */}
@@ -70,7 +92,11 @@ export default function AIWorkspacePage() {
               {/* Messages Container */}
               <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
                 {activeConversation.messages.map((msg) => (
-                  <ChatMessage key={msg.id} message={msg} />
+                  <ChatMessage 
+                    key={msg.id} 
+                    message={msg} 
+                    onRetry={(msgId) => retryMessage(msgId)} 
+                  />
                 ))}
 
                 {/* Thinking / Processing State Indicator */}
@@ -78,7 +104,10 @@ export default function AIWorkspacePage() {
 
                 {/* Suggested Prompt Chips (rendered if conversation has <= 1 message) */}
                 {activeConversation.messages.length <= 1 && !isLoading && (
-                  <SuggestedPrompts onSelectPrompt={handleSendMessage} />
+                  <SuggestedPrompts 
+                    onSelectPrompt={handleSendMessage} 
+                    contextScope={contextScope} 
+                  />
                 )}
 
                 <div ref={messagesEndRef} />
@@ -93,5 +122,17 @@ export default function AIWorkspacePage() {
 
       <ChatDrawer isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} />
     </div>
+  );
+}
+
+export default function AIWorkspacePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex-1 flex items-center justify-center min-h-screen bg-slate-950 text-slate-100">
+        <LoadingState message="Loading Engineering Agent Console..." />
+      </div>
+    }>
+      <AIWorkspaceContent />
+    </Suspense>
   );
 }

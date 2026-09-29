@@ -63,6 +63,7 @@ class EngineeringAgentService:
             auth_token=raw_token,
             project_id=request.project_id,
             repository_id=request.repository_id,
+            developer_id=request.developer_id,
             conversation_id=conversation_id,
             message_id=message_id
         )

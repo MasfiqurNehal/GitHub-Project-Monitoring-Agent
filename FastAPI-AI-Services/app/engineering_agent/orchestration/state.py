@@ -18,6 +18,7 @@ class GraphState(TypedDict, total=False):
     auth_token: Optional[str]
     project_id: Optional[str]
     repository_id: Optional[str]
+    developer_id: Optional[str]
     conversation_id: str
     message_id: str
     

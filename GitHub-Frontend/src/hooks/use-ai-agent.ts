@@ -9,25 +9,45 @@ import {
   deleteConversationApi
 } from '../lib/api/ai';
 
+export interface AgentContextScope {
+  projectId?: string;
+  projectName?: string;
+  repositoryId?: string;
+  repositoryName?: string;
+  developerId?: string;
+  developerName?: string;
+}
+
 const DEFAULT_WELCOME_THREAD: ConversationThread = {
   id: `conv-${Date.now()}`,
-  title: 'GitMonitor AI Assistant',
+  title: 'Engineering AI Agent',
   updatedAt: new Date().toISOString(),
   messages: [
     {
       id: 'welcome-msg',
       role: 'assistant',
-      content: 'Welcome to **GitMonitor AI Assistant**. How can I help you analyze repositories, commits, PRs, and software development activity today?',
+      content: 'Welcome to the **Engineering AI Agent Console**. I provide deterministic, read-only intelligence and multi-agent analysis across your monitored repositories, pull requests, commits, and developer metrics.\n\nHow can I help you today?',
       timestamp: new Date().toISOString(),
     },
   ],
 };
 
-export function useAIAgent() {
+export function useAIAgent(initialContext?: AgentContextScope) {
   const [conversations, setConversations] = useState<ConversationThread[]>([DEFAULT_WELCOME_THREAD]);
   const [activeConversationId, setActiveConversationId] = useState<string>(DEFAULT_WELCOME_THREAD.id);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
+  const [contextScope, setContextScope] = useState<AgentContextScope>(initialContext || {});
+
+  // Update context scope if initialContext changes from URL/parent
+  useEffect(() => {
+    if (initialContext && (initialContext.projectId || initialContext.repositoryId || initialContext.developerId)) {
+      setContextScope((prev) => ({
+        ...prev,
+        ...initialContext,
+      }));
+    }
+  }, [initialContext?.projectId, initialContext?.repositoryId, initialContext?.developerId]);
 
   // Load user conversations on initial mount
   useEffect(() => {
@@ -105,7 +125,13 @@ export function useAIAgent() {
     setIsLoading(true);
 
     try {
-      const res = await sendEngineeringAgentMessage(targetConvId, promptText);
+      const res = await sendEngineeringAgentMessage({
+        conversationId: targetConvId,
+        userMessage: promptText,
+        projectId: contextScope.projectId,
+        repositoryId: contextScope.repositoryId,
+        developerId: contextScope.developerId,
+      });
 
       setConversations((prev) =>
         prev.map((thread) => {
@@ -121,6 +147,78 @@ export function useAIAgent() {
       );
     } catch (err) {
       console.error('[useAIAgent] Send message error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const retryMessage = async (failedMessageId?: string) => {
+    const thread = activeConversation;
+    if (!thread || isLoading) return;
+
+    let promptToRetry = '';
+    let updatedMessages = [...thread.messages];
+
+    if (failedMessageId) {
+      const errorMsgIndex = updatedMessages.findIndex((m) => m.id === failedMessageId);
+      if (errorMsgIndex >= 0) {
+        const errorMsg = updatedMessages[errorMsgIndex];
+        promptToRetry = errorMsg.failedPrompt || '';
+        // Find preceding user message if failedPrompt is not set
+        if (!promptToRetry && errorMsgIndex > 0 && updatedMessages[errorMsgIndex - 1].role === 'user') {
+          promptToRetry = updatedMessages[errorMsgIndex - 1].content;
+        }
+        // Remove error message
+        updatedMessages.splice(errorMsgIndex, 1);
+      }
+    } else {
+      // Find last error message
+      const lastMsg = updatedMessages[updatedMessages.length - 1];
+      if (lastMsg && lastMsg.isError) {
+        promptToRetry = lastMsg.failedPrompt || '';
+        updatedMessages.pop();
+      }
+    }
+
+    if (!promptToRetry) {
+      // Look for the last user message
+      const lastUserMsg = [...updatedMessages].reverse().find((m) => m.role === 'user');
+      if (lastUserMsg) {
+        promptToRetry = lastUserMsg.content;
+      }
+    }
+
+    if (!promptToRetry) return;
+
+    // Update messages to remove the failed node
+    setConversations((prev) =>
+      prev.map((t) => (t.id === activeConversationId ? { ...t, messages: updatedMessages } : t))
+    );
+
+    setIsLoading(true);
+    try {
+      const res = await sendEngineeringAgentMessage({
+        conversationId: activeConversationId,
+        userMessage: promptToRetry,
+        projectId: contextScope.projectId,
+        repositoryId: contextScope.repositoryId,
+        developerId: contextScope.developerId,
+      });
+
+      setConversations((prev) =>
+        prev.map((t) => {
+          if (t.id === activeConversationId) {
+            return {
+              ...t,
+              updatedAt: new Date().toISOString(),
+              messages: [...updatedMessages, res.data],
+            };
+          }
+          return t;
+        })
+      );
+    } catch (err) {
+      console.error('[useAIAgent] Retry error:', err);
     } finally {
       setIsLoading(false);
     }
@@ -144,6 +242,9 @@ export function useAIAgent() {
       title: 'New Conversation',
       updatedAt: new Date().toISOString(),
       messages: [],
+      projectId: contextScope.projectId,
+      repositoryId: contextScope.repositoryId,
+      developerId: contextScope.developerId,
     };
     setConversations((prev) => [newThread, ...prev]);
     setActiveConversationId(fallbackId);
@@ -161,6 +262,21 @@ export function useAIAgent() {
         return thread;
       })
     );
+  };
+
+  const clearContextScope = (scopeKey?: 'projectId' | 'repositoryId' | 'developerId') => {
+    if (scopeKey) {
+      setContextScope((prev) => {
+        const updated = { ...prev };
+        delete updated[scopeKey];
+        if (scopeKey === 'projectId') delete updated.projectName;
+        if (scopeKey === 'repositoryId') delete updated.repositoryName;
+        if (scopeKey === 'developerId') delete updated.developerName;
+        return updated;
+      });
+    } else {
+      setContextScope({});
+    }
   };
 
   const deleteConversation = async (id: string) => {
@@ -191,7 +307,11 @@ export function useAIAgent() {
     isLoading,
     isSidebarOpen,
     setIsSidebarOpen,
+    contextScope,
+    setContextScope,
+    clearContextScope,
     handleSendMessage,
+    retryMessage,
     createNewChat,
     clearCurrentChat,
     deleteConversation,

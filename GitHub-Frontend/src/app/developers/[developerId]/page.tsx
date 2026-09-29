@@ -29,7 +29,8 @@ import {
   GitBranch,
   Clock,
   Activity,
-  CheckCircle2
+  CheckCircle2,
+  Bot
 } from 'lucide-react';
 
 export default function DeveloperDetailPage({ params }: { params: { developerId: string } }) {
@@ -165,9 +166,19 @@ export default function DeveloperDetailPage({ params }: { params: { developerId:
             </div>
           </div>
 
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-semibold shrink-0">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>Factual Activity Metrics</span>
+          <div className="flex items-center gap-3 shrink-0">
+            <Link
+              href={`/ai?developerId=${developer.id}&developerName=${encodeURIComponent(developer.name || developer.login)}`}
+              className="flex items-center gap-2 px-3.5 py-2 bg-amber-600/20 hover:bg-amber-600 text-amber-300 hover:text-white font-semibold text-xs rounded-xl border border-amber-500/30 transition-all shadow-md"
+              title="Analyze this developer with Engineering AI Agent"
+            >
+              <Bot className="w-4 h-4" />
+              <span>Ask Agent</span>
+            </Link>
+            <div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-semibold">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Factual Activity Metrics</span>
+            </div>
           </div>
         </div>
 

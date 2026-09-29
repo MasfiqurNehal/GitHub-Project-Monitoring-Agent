@@ -9,6 +9,7 @@ class EngineeringAgentRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=10000, description="User instruction, prompt, or analytical query")
     project_id: Optional[str] = Field(None, description="Optional target project ID to scope the analysis")
     repository_id: Optional[str] = Field(None, description="Optional target repository ID to scope the analysis")
+    developer_id: Optional[str] = Field(None, description="Optional target developer ID to scope the analysis")
     conversation_id: Optional[str] = Field(None, description="Optional session or conversation ID for multi-turn tracking")
     tenant_id: Optional[str] = Field(None, description="Optional explicit organization/tenant ID override")
     user_id: Optional[str] = Field(None, description="Optional explicit user ID")
