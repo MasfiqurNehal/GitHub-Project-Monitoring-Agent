@@ -46,5 +46,11 @@ class GraphState(TypedDict, total=False):
     error: Optional[str]
     execution_steps: List[str]
     
+    # Data Freshness Strategy Context (Phase 8)
+    freshness_metadata: Optional[Dict[str, Any]]
+    data_freshness_tier: Optional[str]
+    force_fresh: bool
+
+    
     # Reference to master AgentState for backwards-compatible state tracking
     agent_state: Optional[AgentState]

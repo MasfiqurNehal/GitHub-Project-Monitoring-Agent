@@ -24,14 +24,18 @@ TYPO_MAPPINGS = {
 }
 
 TIMEFRAME_PATTERNS = [
+    (r"\b(last\s+5\s+min(?:ute)?s?|5\s+mins?|last\s+10\s+mins?|last\s+hour|just\s+now|right\s+now|live)\b", "live"),
     (r"\b(today|now)\b", "today"),
     (r"\b(yesterday)\b", "yesterday"),
     (r"\b(this\s+week|current\s+week|7d|last\s+7\s+days)\b", "7d"),
     (r"\b(last\s+week|previous\s+week)\b", "last_week"),
     (r"\b(this\s+month|current\s+month|30d|last\s+30\s+days)\b", "30d"),
-    (r"\b(last\s+month|previous\s+month)\b", "last_month"),
-    (r"\b(this\s+year|all\s+time|alltime)\b", "all"),
+    (r"\b(last\s+month|previous\s+month|past\s+month)\b", "last_month"),
+    (r"\b(last\s+quarter|previous\s+quarter|past\s+90\s+days?|90d)\b", "last_quarter"),
+    (r"\b(last\s+year|previous\s+year|past\s+year|in\s+202[0-9])\b", "last_year"),
+    (r"\b(this\s+year|all\s+time|alltime|historical)\b", "all"),
 ]
+
 
 NON_IT_PATTERNS = [
     r"\b(recipe|cook|food|pasta|pizza|cake|weather|horoscope|football|soccer|cricket|nba|movie|song|lyrics|joke|dating)\b",

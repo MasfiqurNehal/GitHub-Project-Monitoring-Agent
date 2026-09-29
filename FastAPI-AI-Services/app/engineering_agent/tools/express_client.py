@@ -102,6 +102,11 @@ class ExpressApiClient:
         }
         return {"success": True, "data": branches_data, "duration_ms": repo_res.get("duration_ms", 0)}
 
+    async def get_repository_sync_status(self, repository_id: str, auth_token: Optional[str], tenant_id: Optional[str]) -> Dict[str, Any]:
+        """Fetch background synchronization freshness, sync_status, and latest sync job info."""
+        return await self._get(f"/repositories/{repository_id}/sync-status", auth_token, tenant_id)
+
+
     async def get_repository_commits(
         self,
         repository_id: str,

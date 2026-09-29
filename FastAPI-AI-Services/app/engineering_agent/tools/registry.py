@@ -12,7 +12,9 @@ from app.engineering_agent.tools.schemas import (
     GetRepositoryInput,
     ListRepositoriesInput,
     GetRepositoryBranchesInput,
+    GetRepositorySyncStatusInput,
     GetRepositoryCommitsInput,
+
     GetCommitDetailsInput,
     GetRepositoryPullRequestsInput,
     GetPullRequestDetailsInput,
@@ -226,6 +228,19 @@ class ToolRegistry:
                 )
             )
         )
+
+        # get_repository_sync_status
+        self.register(
+            ReadOnlyTool(
+                name="get_repository_sync_status",
+                description="Fetch background synchronization freshness, sync_status, and latest sync job info.",
+                input_model=GetRepositorySyncStatusInput,
+                handler=lambda inp, auth_token, tenant_id: express_api_client.get_repository_sync_status(
+                    repository_id=inp.repository_id, auth_token=auth_token, tenant_id=tenant_id
+                )
+            )
+        )
+
 
         # 4. get_repository_commits
         self.register(

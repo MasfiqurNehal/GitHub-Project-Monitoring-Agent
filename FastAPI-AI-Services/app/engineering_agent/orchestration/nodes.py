@@ -7,8 +7,12 @@ import asyncio
 from typing import Dict, Any, List, Optional
 
 from app.engineering_agent.orchestration.state import GraphState
+from app.engineering_agent.state.agent_state import AgentState
 from app.engineering_agent.router import engineering_intent_router, IntentCategory
+
+from app.engineering_agent.freshness import freshness_evaluator, FreshnessMetadata, FreshnessTier
 from app.engineering_agent.agents.registry import specialist_registry
+
 from app.engineering_agent.agents.repository_agent import repository_agent
 from app.engineering_agent.agents.commit_agent import commit_agent
 from app.engineering_agent.agents.pull_request_agent import pull_request_agent
@@ -51,6 +55,13 @@ async def route_intent_node(state: GraphState) -> Dict[str, Any]:
         repository_id=state.get("repository_id")
     )
 
+    # Evaluate data freshness requirement (Phase 8: Data Freshness Strategy)
+    freshness_eval = freshness_evaluator.evaluate_request(
+        user_message=state["user_request"],
+        intent=routing_result.intent,
+        entities=routing_result.entities
+    )
+
     # Check for multi-agent query pattern: mentions both project and developer/ranking
     prompt_lower = state["user_request"].lower()
     is_multi_agent = bool(
@@ -65,8 +76,12 @@ async def route_intent_node(state: GraphState) -> Dict[str, Any]:
         "requires_clarification": routing_result.requires_clarification,
         "clarification_prompt": routing_result.clarification_prompt,
         "suggested_options": routing_result.suggested_options,
-        "is_multi_agent_pipeline": is_multi_agent
+        "is_multi_agent_pipeline": is_multi_agent,
+        "freshness_metadata": freshness_eval.freshness_metadata.model_dump(),
+        "data_freshness_tier": freshness_eval.tier.value,
+        "force_fresh": freshness_eval.force_fresh
     }
+
 
 
 # =============================================================================
@@ -106,9 +121,23 @@ async def clarification_node(state: GraphState) -> Dict[str, Any]:
 # 3. Specialist Agent Execution Nodes
 # =============================================================================
 
-def _get_agent_state_from_graph(state: GraphState):
+def _get_agent_state_from_graph(state: GraphState) -> AgentState:
     """Retrieve or construct the AgentState instance for specialist agent compatibility."""
-    return state.get("agent_state")
+    agent_state = state.get("agent_state")
+    if agent_state is not None:
+        return agent_state
+    
+    return AgentState(
+        user_request=state.get("user_request", ""),
+        tenant_id=state.get("tenant_id", ""),
+        user_id=state.get("user_id", "system-user"),
+        auth_token=state.get("auth_token"),
+        project_id=state.get("project_id"),
+        repository_id=state.get("repository_id"),
+        conversation_id=state.get("conversation_id", "eng-conv-default"),
+        message_id=state.get("message_id", "eng-msg-default")
+    )
+
 
 
 async def repository_node(state: GraphState) -> Dict[str, Any]:
@@ -338,7 +367,19 @@ async def generate_response_node(state: GraphState) -> Dict[str, Any]:
             f"- **Status**: Live telemetry gathered successfully.\n"
         )
 
+    # Append Data Freshness Provenance Footnote (Phase 8: Data Freshness Strategy)
+    freshness_dict = state.get("freshness_metadata")
+
+    if freshness_dict and "Data Source:" not in final_answer:
+        try:
+            meta = FreshnessMetadata(**freshness_dict)
+            footnote = freshness_evaluator.format_provenance_footnote(meta)
+            final_answer += footnote
+        except Exception as e:
+            logger.warning(f"[generate_response_node] Failed to append freshness footnote: {e}")
+
     return {"final_response": final_answer}
+
 
 
 # =============================================================================

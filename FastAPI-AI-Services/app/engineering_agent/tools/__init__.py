@@ -8,6 +8,7 @@ from app.engineering_agent.tools.schemas import (
     GetRepositoryInput,
     ListRepositoriesInput,
     GetRepositoryBranchesInput,
+    GetRepositorySyncStatusInput,
     GetRepositoryCommitsInput,
     GetCommitDetailsInput,
     GetRepositoryPullRequestsInput,
@@ -26,10 +27,13 @@ from app.engineering_agent.tools.schemas import (
 from app.engineering_agent.tools.express_client import express_api_client, ExpressApiClient
 from app.engineering_agent.tools.registry import tool_registry, ToolRegistry, ReadOnlyTool, PROHIBITED_MUTATION_OPERATIONS
 
+read_only_tool_registry = tool_registry
+
 __all__ = [
     "express_api_client",
     "ExpressApiClient",
     "tool_registry",
+    "read_only_tool_registry",
     "ToolRegistry",
     "ReadOnlyTool",
     "ToolResult",
@@ -38,6 +42,8 @@ __all__ = [
     "GetRepositoryInput",
     "ListRepositoriesInput",
     "GetRepositoryBranchesInput",
+    "GetRepositorySyncStatusInput",
+
     "GetRepositoryCommitsInput",
     "GetCommitDetailsInput",
     "GetRepositoryPullRequestsInput",

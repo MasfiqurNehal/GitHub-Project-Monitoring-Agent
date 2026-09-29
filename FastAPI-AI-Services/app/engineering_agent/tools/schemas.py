@@ -43,6 +43,12 @@ class GetRepositoryBranchesInput(BaseModel):
     repository_id: str = Field(..., min_length=1, description="Repository ID")
 
 
+class GetRepositorySyncStatusInput(BaseModel):
+    """Input for inspecting background sync freshness and latest job status."""
+    repository_id: str = Field(..., min_length=1, description="Repository ID or full name")
+
+
+
 class GetRepositoryCommitsInput(BaseModel):
     """Input for retrieving commit history for a repository."""
     repository_id: str = Field(..., min_length=1, description="Repository ID")
