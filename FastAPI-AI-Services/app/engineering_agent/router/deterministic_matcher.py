@@ -77,7 +77,7 @@ class DeterministicIntentMatcher:
             "review", "reviews", "code", "work", "activity", "changes", "pull"
         }
         for dev_match in re.finditer(
-            r"(?:by|from|for|author|dev|developer)\s+(?:developer\s+|dev\s+|contributor\s+)?([a-zA-Z0-9_\-\.]+)|([a-zA-Z0-9_\-\.]+)(?:'s|\s+did|\s+pushed)",
+            r"(?:by|from|author|dev|developer)\s+(?:developer\s+|dev\s+|contributor\s+)?([a-zA-Z0-9_\-\.]+)|([a-zA-Z0-9_\-\.]+)(?:'s|\s+did|\s+pushed)",
             normalized_text,
             re.IGNORECASE
         ):
@@ -123,12 +123,12 @@ class DeterministicIntentMatcher:
             if re.search(pattern, norm, re.IGNORECASE):
                 return IntentCategory.UNSUPPORTED_NON_IT, 0.95, entities
 
-        # 1. Developer Info & Velocity
+        # 1. Developer Info, Velocity & Inactivity
         if (
-            re.search(r"\b(developer|contributor|committer|team\s+velocity|who\s+committed|who\s+worked|top\s+contributors)\b", norm) or
+            re.search(r"\b(developer|contributor|committer|team\s+velocity|who\s+committed|who\s+worked|top\s+contributors|inactive|activity|who\s+has\s+been)\b", norm) or
             (entities.developer_name is not None and re.search(r"\b(did|pushed|commits|activity|prs)\b", norm))
         ):
-            confidence = 0.92 if entities.developer_name else 0.85
+            confidence = 0.92 if entities.developer_name else 0.88
             return IntentCategory.DEVELOPER_INFO, confidence, entities
 
         # 2. Cross-Repository Analytics & Comparison

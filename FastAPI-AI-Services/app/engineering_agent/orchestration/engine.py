@@ -6,6 +6,7 @@ from app.engineering_agent.orchestration.graph import StateGraph, CompiledStateG
 from app.engineering_agent.orchestration.nodes import (
     validate_context_node,
     route_intent_node,
+    security_reject_node,
     guardrail_reject_node,
     clarification_node,
     repository_node,
@@ -32,6 +33,7 @@ def build_engineering_agent_graph() -> CompiledStateGraph:
     # 1. Register all nodes
     graph.add_node("validate_context", validate_context_node)
     graph.add_node("route_intent", route_intent_node)
+    graph.add_node("security_reject", security_reject_node)
     graph.add_node("guardrail_reject", guardrail_reject_node)
     graph.add_node("clarification", clarification_node)
     graph.add_node("repository_agent", repository_node)
@@ -57,6 +59,7 @@ def build_engineering_agent_graph() -> CompiledStateGraph:
         source="route_intent",
         path=route_after_intent,
         path_map={
+            "security_reject": "security_reject",
             "guardrail": "guardrail_reject",
             "clarification": "clarification",
             "repository": "repository_agent",
@@ -71,7 +74,8 @@ def build_engineering_agent_graph() -> CompiledStateGraph:
         }
     )
 
-    # 5. Guardrail and Clarification lead to graph END
+    # 5. Guardrail, Security Reject, and Clarification lead to graph END
+    graph.add_edge("security_reject", END)
     graph.add_edge("guardrail_reject", END)
     graph.add_edge("clarification", END)
 

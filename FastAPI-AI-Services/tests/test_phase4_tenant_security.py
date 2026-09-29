@@ -25,6 +25,9 @@ from app.engineering_agent.llm.base import LLMCompletionResponse
 from app.utils.auth import AuthenticatedUser
 
 
+from app.engineering_agent.reliability import tool_execution_cache
+
+
 class TestPhase4TenantSecurity(unittest.TestCase):
     """Rigorous security test suite for Phase 4 SaaS Tenant Isolation."""
 
@@ -34,6 +37,8 @@ class TestPhase4TenantSecurity(unittest.TestCase):
         cls.client = TestClient(cls.app)
 
     def setUp(self):
+        # Clear tool cache before each test
+        asyncio.run(tool_execution_cache.clear())
         # Provide fast mock LLM provider for security tests
         self.mock_llm = MagicMock()
         self.mock_llm.complete = AsyncMock(return_value=LLMCompletionResponse(

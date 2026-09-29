@@ -30,6 +30,7 @@ from app.engineering_agent.tools.schemas import (
     GetDashboardAnalyticsInput
 )
 from app.engineering_agent.tools.express_client import express_api_client
+from app.engineering_agent.reliability import tool_execution_cache
 from app.utils.logger import logger
 
 
@@ -187,7 +188,15 @@ class ToolRegistry:
                 is_read_only=True
             )
 
-        return await tool.execute(args, auth_token=auth_token, tenant_id=tenant_id)
+        # Check Cache to prevent duplicate identical tool calls
+        cached = await tool_execution_cache.get(tenant_id, name, args)
+        if cached:
+            return cached
+
+        res = await tool.execute(args, auth_token=auth_token, tenant_id=tenant_id)
+        if res.success:
+            await tool_execution_cache.set(tenant_id, name, args, res)
+        return res
 
     # -------------------------------------------------------------------------
     # Tool Handlers Registration (17 Tools)

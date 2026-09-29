@@ -16,6 +16,7 @@ from app.engineering_agent.schemas.response import (
 )
 from app.engineering_agent.state.agent_state import AgentState
 from app.engineering_agent.agents.orchestrator import engineering_orchestrator
+from app.engineering_agent.reliability import tenant_rate_limiter, ReliabilityMetricsTracker
 from app.utils.auth import AuthenticatedUser
 from app.utils.logger import logger
 
@@ -52,6 +53,17 @@ class EngineeringAgentService:
             )
 
         tenant_id = user.organization_id
+
+        # 3. Tenant Rate Limiting (Phase 16: Production Reliability)
+        is_allowed, retry_after = await tenant_rate_limiter.check_rate_limit(tenant_id)
+        if not is_allowed:
+            logger.warning(f"[EngineeringAgentService] Rate limit exceeded for tenant '{tenant_id}' (user '{user.id}').")
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Rate limit exceeded. Please retry after {retry_after} seconds.",
+                headers={"Retry-After": str(int(retry_after) + 1)}
+            )
+
         conversation_id = request.conversation_id or f"eng-conv-{uuid.uuid4().hex[:12]}"
         message_id = f"eng-msg-{uuid.uuid4().hex[:12]}"
 

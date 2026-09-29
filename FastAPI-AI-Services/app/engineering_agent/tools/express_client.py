@@ -8,6 +8,7 @@ from typing import Dict, Any, List, Optional
 import httpx
 
 from app.config import settings
+from app.engineering_agent.reliability import express_circuit_breaker, CircuitBreakerOpenError
 from app.utils.logger import logger
 
 
@@ -40,35 +41,66 @@ class ExpressApiClient:
         tenant_id: Optional[str],
         params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Execute an authenticated READ-ONLY GET request against Express."""
+        """Execute an authenticated READ-ONLY GET request against Express with Circuit Breaker protection."""
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         headers = self._get_headers(auth_token, tenant_id)
         start_ts = time.time()
 
-        try:
+        async def _perform_request():
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 res = await client.get(url, headers=headers, params=params)
-                duration_ms = (time.time() - start_ts) * 1000.0
+                return res
 
-                if res.status_code >= 400:
-                    logger.warning(f"[ExpressClient] GET {endpoint} returned {res.status_code} ({duration_ms:.1f}ms): {res.text[:120]}")
-                    return {
-                        "success": False,
-                        "status_code": res.status_code,
-                        "error": f"Backend API returned status {res.status_code}",
-                        "raw": res.text,
-                        "duration_ms": duration_ms
-                    }
+        try:
+            # Check Circuit Breaker
+            if express_circuit_breaker.state.value == "open":
+                raise CircuitBreakerOpenError("express_backend", 15.0)
 
-                data = res.json()
-                logger.info(f"[ExpressClient] GET {endpoint} -> 200 OK ({duration_ms:.1f}ms)")
+            res = await _perform_request()
+            duration_ms = (time.time() - start_ts) * 1000.0
+
+            if res.status_code >= 500:
+                await express_circuit_breaker.record_failure()
+                logger.warning(f"[ExpressClient] GET {endpoint} returned server error {res.status_code} ({duration_ms:.1f}ms)")
                 return {
-                    "success": True,
+                    "success": False,
                     "status_code": res.status_code,
-                    "data": data.get("data", data),
+                    "error": f"Backend server error {res.status_code}",
+                    "raw": res.text,
                     "duration_ms": duration_ms
                 }
+            elif res.status_code >= 400:
+                # 4xx client errors do not trip the circuit breaker
+                logger.warning(f"[ExpressClient] GET {endpoint} returned {res.status_code} ({duration_ms:.1f}ms): {res.text[:120]}")
+                return {
+                    "success": False,
+                    "status_code": res.status_code,
+                    "error": f"Backend API returned status {res.status_code}",
+                    "raw": res.text,
+                    "duration_ms": duration_ms
+                }
+
+            await express_circuit_breaker.record_success()
+            data = res.json()
+            logger.info(f"[ExpressClient] GET {endpoint} -> 200 OK ({duration_ms:.1f}ms)")
+            return {
+                "success": True,
+                "status_code": res.status_code,
+                "data": data.get("data", data),
+                "duration_ms": duration_ms
+            }
+
+        except CircuitBreakerOpenError as e:
+            duration_ms = (time.time() - start_ts) * 1000.0
+            logger.warning(f"[ExpressClient] Request blocked by circuit breaker: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "circuit_open": True,
+                "duration_ms": duration_ms
+            }
         except httpx.RequestError as e:
+            await express_circuit_breaker.record_failure(e)
             duration_ms = (time.time() - start_ts) * 1000.0
             logger.error(f"[ExpressClient] Connection error on GET {endpoint}: {str(e)}")
             return {

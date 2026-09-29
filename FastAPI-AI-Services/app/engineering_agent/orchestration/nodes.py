@@ -24,6 +24,7 @@ from app.engineering_agent.agents.developer_agent import developer_agent
 from app.engineering_agent.agents.project_agent import project_agent
 from app.engineering_agent.agents.analytics_agent import analytics_agent
 from app.engineering_agent.agents.general_it_agent import general_it_agent
+from app.engineering_agent.security import security_guardrail_validator
 from app.engineering_agent.llm import agent_llm_factory, LLMError
 from app.engineering_agent.prompts.system_prompts import (
     ENGINEERING_ORCHESTRATOR_SYSTEM_PROMPT,
@@ -68,9 +69,24 @@ async def validate_context_node(state: GraphState) -> Dict[str, Any]:
 
 async def route_intent_node(state: GraphState) -> Dict[str, Any]:
     """Execute hybrid intent router with conversation memory to determine intent, confidence, and entities."""
+    # Step 0: Security & Guardrails Inspection (Phase 15: Security Validation)
+    user_prompt = state.get("user_request", "")
+    sec_res = security_guardrail_validator.validate_prompt(user_prompt)
+    if not sec_res.is_safe:
+        logger.warning(f"[route_intent_node] Security violation detected ({sec_res.violation_type}): {user_prompt[:50]}")
+        return {
+            "detected_intent": "security_violation",
+            "security_violation": sec_res.rejection_message,
+            "requires_clarification": False,
+            "actions": [
+                {"label": "Explore Dashboard", "href": "/dashboard"},
+                {"label": "View Repositories", "href": "/repositories"}
+            ]
+        }
+
     session = state.get("memory_session")
     routing_result = await engineering_intent_router.route(
-        prompt=state["user_request"],
+        prompt=user_prompt,
         project_id=state.get("project_id"),
         repository_id=state.get("repository_id"),
         developer_id=state.get("developer_id"),
@@ -168,6 +184,22 @@ async def route_intent_node(state: GraphState) -> Dict[str, Any]:
 # =============================================================================
 # 2. Guardrail & Clarification Nodes
 # =============================================================================
+
+async def security_reject_node(state: GraphState) -> Dict[str, Any]:
+    """Explicitly reject security policy violations (prompt injection, write attempts, secret exfiltration)."""
+    violation_msg = state.get("security_violation") or (
+        "🔒 **Security Policy Violation:** The requested operation violates the security constraints of the GitMonitor AI Agent."
+    )
+    actions = [
+        {"label": "Explore Dashboard", "href": "/dashboard"},
+        {"label": "View Repositories", "href": "/repositories"}
+    ]
+    return {
+        "selected_agent": "Security_Guardrail",
+        "final_response": violation_msg,
+        "actions": actions
+    }
+
 
 async def guardrail_reject_node(state: GraphState) -> Dict[str, Any]:
     """Politely handle non-IT or unsupported queries without invoking tools."""
@@ -426,6 +458,8 @@ async def generate_response_node(state: GraphState) -> Dict[str, Any]:
 
 def route_after_intent(state: GraphState) -> str:
     """Conditional router evaluated after route_intent_node."""
+    if state.get("security_violation") or state.get("detected_intent") == "security_violation":
+        return "security_reject"
     if state.get("detected_intent") == IntentCategory.UNSUPPORTED_NON_IT.value:
         return "guardrail"
     if state.get("requires_clarification"):
