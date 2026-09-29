@@ -7,6 +7,9 @@ async function resetDatabase() {
 
   try {
     await client.query(`
+      DROP TABLE IF EXISTS chatbot_messages CASCADE;
+      DROP TABLE IF EXISTS chatbot_conversations CASCADE;
+      DROP TABLE IF EXISTS project_repositories CASCADE;
       DROP TABLE IF EXISTS schema_migrations CASCADE;
       DROP TABLE IF EXISTS sync_jobs CASCADE;
       DROP TABLE IF EXISTS webhook_events CASCADE;

@@ -8,6 +8,8 @@ async function cleanDataOnly() {
     // Truncate data tables while preserving database schema and migration history
     await client.query(`
       TRUNCATE TABLE 
+        chatbot_messages,
+        chatbot_conversations,
         sync_jobs,
         webhook_events,
         activity_events,
@@ -19,6 +21,7 @@ async function cleanDataOnly() {
         repository_developers,
         developers,
         repositories,
+        project_repositories,
         projects,
         users
       RESTART IDENTITY CASCADE;
