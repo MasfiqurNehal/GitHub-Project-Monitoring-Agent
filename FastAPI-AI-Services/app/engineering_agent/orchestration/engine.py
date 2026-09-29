@@ -16,6 +16,7 @@ from app.engineering_agent.orchestration.nodes import (
     project_node,
     analytics_node,
     multi_agent_composite_node,
+    general_it_knowledge_node,
     aggregate_results_node,
     generate_response_node,
     route_after_intent
@@ -40,6 +41,7 @@ def build_engineering_agent_graph() -> CompiledStateGraph:
     graph.add_node("developer_agent", developer_node)
     graph.add_node("project_agent", project_node)
     graph.add_node("analytics_agent", analytics_node)
+    graph.add_node("general_it_knowledge", general_it_knowledge_node)
     graph.add_node("multi_agent_composite", multi_agent_composite_node)
     graph.add_node("aggregate_results", aggregate_results_node)
     graph.add_node("generate_response", generate_response_node)
@@ -64,6 +66,7 @@ def build_engineering_agent_graph() -> CompiledStateGraph:
             "developer": "developer_agent",
             "project": "project_agent",
             "analytics": "analytics_agent",
+            "general_it_knowledge": "general_it_knowledge",
             "multi_agent": "multi_agent_composite"
         }
     )
@@ -80,6 +83,7 @@ def build_engineering_agent_graph() -> CompiledStateGraph:
     graph.add_edge("developer_agent", "aggregate_results")
     graph.add_edge("project_agent", "aggregate_results")
     graph.add_edge("analytics_agent", "aggregate_results")
+    graph.add_edge("general_it_knowledge", "aggregate_results")
     graph.add_edge("multi_agent_composite", "aggregate_results")
 
     # 7. Aggregate results -> Generate Response -> END

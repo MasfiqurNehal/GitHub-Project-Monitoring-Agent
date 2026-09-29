@@ -23,6 +23,7 @@ from app.engineering_agent.agents.issue_agent import issue_agent
 from app.engineering_agent.agents.developer_agent import developer_agent
 from app.engineering_agent.agents.project_agent import project_agent
 from app.engineering_agent.agents.analytics_agent import analytics_agent
+from app.engineering_agent.agents.general_it_agent import general_it_agent
 from app.engineering_agent.llm import agent_llm_factory, LLMError
 from app.engineering_agent.prompts.system_prompts import (
     ENGINEERING_ORCHESTRATOR_SYSTEM_PROMPT,
@@ -170,15 +171,32 @@ async def route_intent_node(state: GraphState) -> Dict[str, Any]:
 
 async def guardrail_reject_node(state: GraphState) -> Dict[str, Any]:
     """Politely handle non-IT or unsupported queries without invoking tools."""
-    actions = [{"label": opt, "href": "/dashboard"} for opt in state.get("suggested_options", [])]
+    actions = [
+        {"label": "Explore Dashboard", "href": "/dashboard"},
+        {"label": "View Repositories", "href": "/repositories"},
+        {"label": "Developer Velocity", "href": "/developers"}
+    ]
     return {
         "selected_agent": "Guardrail_Reject",
         "final_response": (
-            "👋 I am the **GitMonitor Engineering Intelligence Agent**, specialized exclusively in "
-            "GitHub repository monitoring, developer velocity, code churn, and software engineering analytics.\n\n"
-            "How can I assist you with your projects, commits, pull requests, or team contributions today?"
+            "👋 I am the **GitMonitor Engineering Intelligence Agent**, focused exclusively on "
+            "software engineering, computer systems, IT architectures, and GitHub repository monitoring.\n\n"
+            "I am unable to answer general lifestyle, tourism, or non-technical questions. "
+            "How can I assist you with your repositories, code architectures, hardware systems, or team metrics today?"
         ),
         "actions": actions
+    }
+
+
+async def general_it_knowledge_node(state: GraphState) -> Dict[str, Any]:
+    """Execute General IT & Software Engineering Specialist Agent (Category B)."""
+    agent_state = _get_agent_state_from_graph(state)
+    res = await general_it_agent.analyze(agent_state, state.get("entities"))
+    return {
+        "selected_agent": general_it_agent.name,
+        "telemetry_data": {**state.get("telemetry_data", {}), **res.data},
+        "metrics": (state.get("metrics", []) + res.metrics),
+        "actions": (state.get("actions", []) + res.actions)
     }
 
 
@@ -428,5 +446,7 @@ def route_after_intent(state: GraphState) -> str:
         return "developer"
     elif intent == IntentCategory.PROJECT_INFO.value:
         return "project"
+    elif intent == IntentCategory.GENERAL_ENGINEERING_QA.value:
+        return "general_it_knowledge"
     else:
         return "analytics"

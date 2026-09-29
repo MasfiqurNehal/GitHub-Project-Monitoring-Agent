@@ -18,6 +18,7 @@ from app.engineering_agent.agents.issue_agent import issue_agent, IssueAgent
 from app.engineering_agent.agents.developer_agent import developer_agent, DeveloperAgent
 from app.engineering_agent.agents.project_agent import project_agent, ProjectAgent
 from app.engineering_agent.agents.analytics_agent import analytics_agent, AnalyticsAgent
+from app.engineering_agent.agents.general_it_agent import general_it_agent, GeneralITKnowledgeAgent
 from app.engineering_agent.agents.registry import specialist_registry, SpecialistAgentRegistry
 from app.engineering_agent.agents.orchestrator import engineering_orchestrator, EngineeringOrchestrator
 
@@ -38,6 +39,8 @@ __all__ = [
     "ProjectAgent",
     "analytics_agent",
     "AnalyticsAgent",
+    "general_it_agent",
+    "GeneralITKnowledgeAgent",
     "specialist_registry",
     "SpecialistAgentRegistry",
     "engineering_orchestrator",

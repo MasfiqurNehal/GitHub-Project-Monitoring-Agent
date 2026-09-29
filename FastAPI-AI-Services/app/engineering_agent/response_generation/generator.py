@@ -132,6 +132,32 @@ class ResponseGenerator:
         grounding_sources = [t.get("tool_name", "api") for t in (state.get("tools_executed") or [])]
         time_period = getattr(state.get("entities"), "timeframe", None) or "recent"
 
+        # 0. Handle General IT & Software Engineering Knowledge (Category B)
+        if (
+            selected_agent in ("General IT & Software Engineering Specialist", "general_it_agent") or
+            state.get("detected_intent") == "general_engineering_qa" or
+            "explanation" in telemetry
+        ):
+            explanation_text = telemetry.get("explanation") or "Technical engineering synthesis complete."
+            summary = explanation_text.split("\n\n")[0].replace("#", "").strip()
+            if len(summary) > 200:
+                summary = summary[:197] + "..."
+
+            return FactCheckedResponse(
+                summary=summary,
+                markdown_content=explanation_text,
+                data_availability=DataAvailabilityStatus.AVAILABLE,
+                key_metrics=[],
+                entities_involved=entities_involved,
+                time_period="n/a",
+                grounding_sources=["LLM Parametric Knowledge"],
+                actions=state.get("actions") or [
+                    {"label": "Explore Dashboard", "href": "/dashboard"},
+                    {"label": "View Repositories", "href": "/repositories"}
+                ],
+                freshness_tier=state.get("data_freshness_tier")
+            )
+
         # 1. Handle Empty Telemetry (Enforce Zero Data Fabrication)
         if self.check_telemetry_emptiness(telemetry) and selected_agent not in ("Guardrail_Reject", "Clarification_Router"):
             logger.info(f"[ResponseGenerator] Empty telemetry detected for query '{user_request}'. Enforcing zero fabrication.")

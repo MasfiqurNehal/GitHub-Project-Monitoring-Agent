@@ -38,8 +38,13 @@ TIMEFRAME_PATTERNS = [
 
 
 NON_IT_PATTERNS = [
-    r"\b(recipe|cook|food|pasta|pizza|cake|weather|horoscope|football|soccer|cricket|nba|movie|song|lyrics|joke|dating)\b",
-    r"\b(president|capital\s+of|weather\s+in|who\s+won|stock\s+price\s+of)\b",
+    r"\b(recipe|cook|cooking|bake|food|pasta|pizza|cake|chocolate|soup|curry|salad|dinner|lunch|breakfast)\b",
+    r"\b(tourist|tourism|vacation|sightseeing|travel|hotel|resort|flight|ticket\s+booking|trip\s+to|visit\s+to)\b",
+    r"\b(weather|temperature|forecast|rain\s+today|sunny\s+today|humidity|climate|weather\s+in)\b",
+    r"\b(football|soccer|cricket|nba|nfl|tennis|super\s+bowl|olympics|sports\s+match|world\s+cup)\b",
+    r"\b(movie|cinema|actor|actress|hollywood|bollywood|song|lyrics|singer|album|celebrity|gossip)\b",
+    r"\b(horoscope|astrology|zodiac|fortune|joke|dating|relationship)\b",
+    r"\b(president|capital\s+of|who\s+won\s+the\s+election|who\s+won|stock\s+price\s+of)\b",
 ]
 
 class DeterministicIntentMatcher:
@@ -159,9 +164,12 @@ class DeterministicIntentMatcher:
         if re.search(r"\b(repository|repositories|repo|repos|codebase|stars|forks|default\s+branch|language\s+breakdown)\b", norm):
             return IntentCategory.REPOSITORY_INFO, 0.85, entities
 
-        # 10. General Engineering / IT Architecture QA
-        if re.search(r"\b(what\s+is|how\s+to|explain|difference\s+between|architecture|rest|graphql|docker|kubernetes|ci/cd|git\s+rebase|git\s+merge|refactor|design\s+pattern)\b", norm):
-            return IntentCategory.GENERAL_ENGINEERING_QA, 0.82, entities
+        # 10. General Engineering / IT Architecture / Hardware QA
+        if (
+            re.search(r"\b(quantum\s+computing|qubit|processor|gaming\s+processor|best\s+cpu|intel\s+vs\s+amd|ryzen|core\s+i[3579]|gpu|ram|ssd|chipset|arm\s+vs\s+x86)\b", norm) or
+            re.search(r"\b(what\s+is|how\s+to|explain|difference\s+between|architecture|rest|graphql|docker|kubernetes|ci/cd|git\s+rebase|git\s+merge|refactor|design\s+pattern|concurrency|asyncio|microservices)\b", norm)
+        ):
+            return IntentCategory.GENERAL_ENGINEERING_QA, 0.85, entities
 
         # Fallback / Ambiguous
         return None, 0.30, entities

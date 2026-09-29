@@ -12,12 +12,13 @@ from app.engineering_agent.agents.issue_agent import issue_agent
 from app.engineering_agent.agents.developer_agent import developer_agent
 from app.engineering_agent.agents.project_agent import project_agent
 from app.engineering_agent.agents.analytics_agent import analytics_agent
+from app.engineering_agent.agents.general_it_agent import general_it_agent
 from app.engineering_agent.router.schemas import IntentCategory
 from app.utils.logger import logger
 
 
 class SpecialistAgentRegistry:
-    """Registry managing the 7 domain-specific engineering specialist agents."""
+    """Registry managing domain-specific engineering specialist agents."""
 
     def __init__(self):
         self._agents: Dict[str, BaseSpecialistAgent] = {
@@ -28,6 +29,7 @@ class SpecialistAgentRegistry:
             developer_agent.agent_id: developer_agent,
             project_agent.agent_id: project_agent,
             analytics_agent.agent_id: analytics_agent,
+            general_it_agent.agent_id: general_it_agent,
         }
 
         # Intent to Specialist Agent mapping
@@ -41,7 +43,7 @@ class SpecialistAgentRegistry:
             IntentCategory.PROJECT_INFO: project_agent,
             IntentCategory.DASHBOARD_ANALYTICS: analytics_agent,
             IntentCategory.CROSS_REPOSITORY_ANALYTICS: analytics_agent,
-            IntentCategory.GENERAL_ENGINEERING_QA: analytics_agent,
+            IntentCategory.GENERAL_ENGINEERING_QA: general_it_agent,
         }
 
     def get_agent(self, agent_id: str) -> Optional[BaseSpecialistAgent]:
