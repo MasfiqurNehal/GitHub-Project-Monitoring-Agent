@@ -33,6 +33,21 @@ class TestPhase4TenantSecurity(unittest.TestCase):
         cls.app = create_application()
         cls.client = TestClient(cls.app)
 
+    def setUp(self):
+        # Provide fast mock LLM provider for security tests
+        self.mock_llm = MagicMock()
+        self.mock_llm.complete = AsyncMock(return_value=LLMCompletionResponse(
+            content="### Security Verified\nTenant boundary preserved.",
+            model="mock-model",
+            provider="mock-provider",
+            latency_ms=5.0
+        ))
+        self.llm_patcher = patch.object(agent_llm_factory, "get_provider", return_value=self.mock_llm)
+        self.llm_patcher.start()
+
+    def tearDown(self):
+        self.llm_patcher.stop()
+
     def generate_jwt(self, user_id: str = "usr-sec-1", org_id: str = "org-company-a", role: str = "admin") -> str:
         """Helper to create valid signed JWTs."""
         payload = {
@@ -131,7 +146,7 @@ class TestPhase4TenantSecurity(unittest.TestCase):
         )
 
         with patch.object(express_api_client, "list_repositories", new_callable=AsyncMock) as mock_list_repos, \
-             patch.object(express_api_client, "list_developers", new_callable=AsyncMock) as mock_list_devs:
+             patch.object(express_api_client, "get_repository_developers", new_callable=AsyncMock) as mock_list_devs:
             
             mock_list_repos.return_value = {"success": True, "data": []}
             mock_list_devs.return_value = {"success": True, "data": []}
@@ -169,7 +184,7 @@ class TestPhase4TenantSecurity(unittest.TestCase):
             project_id="prj-foreign-company-b"
         )
 
-        with patch.object(express_api_client, "get_project_detail", new_callable=AsyncMock) as mock_proj:
+        with patch.object(express_api_client, "get_project", new_callable=AsyncMock) as mock_proj:
             mock_proj.return_value = {
                 "success": False,
                 "status_code": 404,
@@ -202,7 +217,7 @@ class TestPhase4TenantSecurity(unittest.TestCase):
             repository_id="repo-foreign-company-b"
         )
 
-        with patch.object(express_api_client, "get_repository_detail", new_callable=AsyncMock) as mock_repo:
+        with patch.object(express_api_client, "get_repository", new_callable=AsyncMock) as mock_repo:
             mock_repo.return_value = {
                 "success": False,
                 "status_code": 404,
@@ -243,22 +258,24 @@ class TestPhase4TenantSecurity(unittest.TestCase):
         )
 
         with patch.object(express_api_client, "list_repositories", new_callable=AsyncMock) as mock_list, \
-             patch.object(express_api_client, "get_repository_detail", new_callable=AsyncMock) as mock_detail:
+             patch.object(express_api_client, "get_repository_commits", new_callable=AsyncMock) as mock_commits:
             
             mock_list.return_value = {"success": True, "data": company_a_repos}
-            mock_detail.return_value = {
+            mock_commits.return_value = {
                 "success": True,
-                "data": {"id": "repo-company-a-frontend", "name": "frontend", "commits_count": 42}
+                "data": [{"sha": "abc12345", "message": "feat: init"}]
             }
 
             resp = asyncio.run(engineering_agent_service.execute_agent(req, user, token_company_a))
             self.assertTrue(resp.success)
             
-            # Assert detail was fetched for Company A's specific ID
-            mock_detail.assert_called_once_with(
+            # Assert commits were fetched for Company A's specific ID
+            mock_commits.assert_called_once_with(
                 repository_id="repo-company-a-frontend",
                 auth_token=token_company_a,
-                tenant_id="org-company-a"
+                tenant_id="org-company-a",
+                limit=50,
+                page=1
             )
 
     # -------------------------------------------------------------------------
