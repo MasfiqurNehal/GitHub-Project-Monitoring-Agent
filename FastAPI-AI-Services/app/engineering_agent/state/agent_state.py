@@ -41,6 +41,8 @@ class AgentState:
     message_id: str = field(default_factory=lambda: f"eng-msg-{uuid.uuid4().hex[:12]}")
     detected_intent: Optional[str] = None
     selected_agent: Optional[str] = None
+    memory_session: Optional[Any] = None
+    recent_turns: List[Any] = field(default_factory=list)
     
     # Tool Execution & Telemetry
     tool_results: List[ToolExecutionResult] = field(default_factory=list)

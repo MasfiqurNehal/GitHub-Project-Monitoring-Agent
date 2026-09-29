@@ -1,6 +1,7 @@
 """
 Master Engineering AI Agent Intent Router.
-Combines deterministic pattern recognition, entity extraction, LLM disambiguation, and clarification prompting.
+Combines deterministic pattern recognition, conversation memory resolution,
+entity extraction, LLM disambiguation, and clarification prompting.
 """
 from typing import Optional, Dict, Any, List
 
@@ -11,11 +12,12 @@ from app.engineering_agent.router.schemas import (
 )
 from app.engineering_agent.router.deterministic_matcher import deterministic_intent_matcher
 from app.engineering_agent.router.llm_classifier import llm_intent_classifier
+from app.engineering_agent.memory import memory_context_resolver, ConversationSession
 from app.utils.logger import logger
 
 class EngineeringIntentRouter:
     """
-    Intelligent routing orchestrator for the Engineering AI Agent.
+    Intelligent routing orchestrator for the Engineering AI Agent with Episodic Memory Support.
     """
 
     SUGGESTED_CLARIFICATION_OPTIONS = {
@@ -30,23 +32,51 @@ class EngineeringIntentRouter:
         self,
         prompt: str,
         project_id: Optional[str] = None,
-        repository_id: Optional[str] = None
+        repository_id: Optional[str] = None,
+        developer_id: Optional[str] = None,
+        session: Optional[ConversationSession] = None
     ) -> IntentClassificationResult:
         """
-        Classify user intent with confidence scoring and entity resolution.
+        Classify user intent with confidence scoring, episodic conversation memory, and entity resolution.
         """
         # Step 1: Execute fast deterministic matcher
         det_intent, confidence, entities = deterministic_intent_matcher.match(prompt)
 
-        # Contextual boost if user is inside a specific project/repository page
+        # Contextual boost if user is inside a specific project/repository/developer page
         if project_id and not entities.project_name:
             entities.project_name = project_id
         if repository_id and not entities.repository_name:
             entities.repository_name = repository_id
+        if developer_id and not entities.developer_name:
+            entities.developer_name = developer_id
 
-        # High confidence deterministic match -> Return immediately
+        # Step 1.5: Conversation Memory Follow-Up Resolution (Phase 12: Memory)
+        if session and session.turns:
+            follow_up = memory_context_resolver.resolve(
+                query=prompt,
+                session=session,
+                current_entities=entities,
+                current_intent=det_intent,
+                confidence=confidence
+            )
+            if follow_up.is_follow_up:
+                logger.info(f"[IntentRouter] Memory follow-up resolved: {follow_up.reasoning}")
+                if follow_up.inherited_intent:
+                    det_intent = follow_up.inherited_intent
+                confidence = max(confidence, follow_up.confidence_boost)
+
+                if follow_up.inherited_repository_name and not entities.repository_name:
+                    entities.repository_name = follow_up.inherited_repository_name
+                if follow_up.inherited_project_name and not entities.project_name:
+                    entities.project_name = follow_up.inherited_project_name
+                if follow_up.inherited_developer_name and not entities.developer_name:
+                    entities.developer_name = follow_up.inherited_developer_name
+                if follow_up.updated_timeframe:
+                    entities.timeframe = follow_up.updated_timeframe
+
+        # High confidence deterministic/memory match -> Return immediately
         if det_intent is not None and confidence >= 0.80:
-            logger.info(f"[IntentRouter] Fast deterministic match: {det_intent.value} ({confidence:.2f})")
+            logger.info(f"[IntentRouter] Confident routing match: {det_intent.value} ({confidence:.2f})")
             
             # Generate suggested options based on intent
             options = self.SUGGESTED_CLARIFICATION_OPTIONS.get(det_intent, [
@@ -61,11 +91,11 @@ class EngineeringIntentRouter:
                 entities=entities,
                 requires_clarification=False,
                 suggested_options=options,
-                routing_strategy="deterministic"
+                routing_strategy="memory" if (session and session.turns) else "deterministic"
             )
 
         # Step 2: Fallback to LLM intent disambiguation for complex / borderline natural language
-        logger.info(f"[IntentRouter] Deterministic confidence ({confidence:.2f}) is borderline. Invoking LLM disambiguation...")
+        logger.info(f"[IntentRouter] Confidence ({confidence:.2f}) is borderline. Invoking LLM disambiguation...")
         llm_result = await llm_intent_classifier.classify(prompt)
 
         if llm_result:
@@ -74,6 +104,8 @@ class EngineeringIntentRouter:
                 llm_result.entities.repository_name = entities.repository_name
             if not llm_result.entities.developer_name and entities.developer_name:
                 llm_result.entities.developer_name = entities.developer_name
+            if not llm_result.entities.project_name and entities.project_name:
+                llm_result.entities.project_name = entities.project_name
             if not llm_result.entities.timeframe and entities.timeframe:
                 llm_result.entities.timeframe = entities.timeframe
 

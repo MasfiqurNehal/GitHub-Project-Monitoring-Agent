@@ -117,6 +117,28 @@ class EngineeringAgentService:
             for art in state.artifacts
         ]
 
+        # Record episodic turn into isolated conversation memory store (Phase 12: Memory)
+        try:
+            from app.engineering_agent.memory import conversation_memory_store, ConversationTurn
+            turn = ConversationTurn(
+                user_message=request.message,
+                agent_response=state.final_response or "Analysis complete.",
+                detected_intent=state.detected_intent,
+                selected_agent=state.selected_agent,
+                resolved_repository_name=state.repository_id,
+                resolved_project_name=state.project_id,
+                resolved_developer_name=state.developer_id,
+                metrics_summary=[m.model_dump() for m in metrics] if metrics else []
+            )
+            await conversation_memory_store.add_turn(
+                tenant_id=tenant_id,
+                user_id=user.id,
+                conversation_id=conversation_id,
+                turn=turn
+            )
+        except Exception as mem_err:
+            logger.warning(f"[EngineeringAgentService] Failed to record turn in memory store: {mem_err}")
+
         return EngineeringAgentResponse(
             success=state.error is None,
             conversation_id=state.conversation_id,

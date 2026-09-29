@@ -68,7 +68,8 @@ class DeterministicIntentMatcher:
         stopwords = {
             "the", "a", "an", "all", "our", "recent", "last", "this", "my",
             "project", "repo", "repository", "commits", "commit", "prs", "pr",
-            "developer", "devloper", "dev", "contributor", "author", "issues"
+            "developer", "devloper", "dev", "contributor", "author", "issues",
+            "review", "reviews", "code", "work", "activity", "changes", "pull"
         }
         for dev_match in re.finditer(
             r"(?:by|from|for|author|dev|developer)\s+(?:developer\s+|dev\s+|contributor\s+)?([a-zA-Z0-9_\-\.]+)|([a-zA-Z0-9_\-\.]+)(?:'s|\s+did|\s+pushed)",

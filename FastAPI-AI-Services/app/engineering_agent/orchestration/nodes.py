@@ -31,17 +31,32 @@ from app.engineering_agent.prompts.system_prompts import (
 from app.utils.logger import logger
 
 
+from app.engineering_agent.memory import conversation_memory_store, ConversationSession
+
 # =============================================================================
 # 1. Validation & Intent Routing Nodes
 # =============================================================================
 
 async def validate_context_node(state: GraphState) -> Dict[str, Any]:
-    """Validate presence of authenticated tenant context and initialize containers."""
+    """Validate presence of authenticated tenant context, load conversation memory, and initialize containers."""
     tenant_id = state.get("tenant_id")
+    user_id = state.get("user_id")
+    conv_id = state.get("conversation_id")
     if not tenant_id:
         return {"error": "Tenant context is missing from graph state."}
     
+    session = None
+    recent_turns = []
+    if tenant_id and user_id and conv_id:
+        try:
+            session = await conversation_memory_store.get_session(tenant_id, user_id, conv_id)
+            recent_turns = await conversation_memory_store.get_recent_turns(tenant_id, user_id, conv_id, max_turns=5)
+        except Exception as e:
+            logger.warning(f"[validate_context_node] Failed to load conversation memory: {e}")
+
     return {
+        "memory_session": session,
+        "recent_turns": recent_turns,
         "telemetry_data": state.get("telemetry_data") or {},
         "metrics": state.get("metrics") or [],
         "actions": state.get("actions") or [],
@@ -51,11 +66,14 @@ async def validate_context_node(state: GraphState) -> Dict[str, Any]:
 
 
 async def route_intent_node(state: GraphState) -> Dict[str, Any]:
-    """Execute hybrid intent router to determine intent category, confidence, and entities."""
+    """Execute hybrid intent router with conversation memory to determine intent, confidence, and entities."""
+    session = state.get("memory_session")
     routing_result = await engineering_intent_router.route(
         prompt=state["user_request"],
         project_id=state.get("project_id"),
-        repository_id=state.get("repository_id")
+        repository_id=state.get("repository_id"),
+        developer_id=state.get("developer_id"),
+        session=session
     )
 
     # Evaluate data freshness requirement (Phase 8: Data Freshness Strategy)

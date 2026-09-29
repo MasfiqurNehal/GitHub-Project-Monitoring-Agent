@@ -21,6 +21,8 @@ class GraphState(TypedDict, total=False):
     developer_id: Optional[str]
     conversation_id: str
     message_id: str
+    memory_session: Optional[Any]
+    recent_turns: List[Any]
     
     # Intent Routing & Entities
     detected_intent: Optional[str]
