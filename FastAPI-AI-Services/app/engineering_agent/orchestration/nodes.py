@@ -9,9 +9,10 @@ from typing import Dict, Any, List, Optional
 from app.engineering_agent.orchestration.state import GraphState
 from app.engineering_agent.state.agent_state import AgentState
 from app.engineering_agent.router import engineering_intent_router, IntentCategory
-
 from app.engineering_agent.freshness import freshness_evaluator, FreshnessMetadata, FreshnessTier
+from app.engineering_agent.entity_resolution import entity_resolver, tenant_entity_loader, EntityType
 from app.engineering_agent.agents.registry import specialist_registry
+
 
 from app.engineering_agent.agents.repository_agent import repository_agent
 from app.engineering_agent.agents.commit_agent import commit_agent
@@ -62,25 +63,84 @@ async def route_intent_node(state: GraphState) -> Dict[str, Any]:
         entities=routing_result.entities
     )
 
+    entities = routing_result.entities
+    requires_clarification = routing_result.requires_clarification
+    clarification_prompt = routing_result.clarification_prompt
+    suggested_options = routing_result.suggested_options
+    resolved_repo_id = state.get("repository_id")
+    resolved_proj_id = state.get("project_id")
+
+    tenant_id = state.get("tenant_id")
+    auth_token = state.get("auth_token")
+
+    # Perform Tenant-Scoped Entity Resolution (Phase 9: Entity Resolution)
+    if tenant_id and entities and not requires_clarification:
+        # 1. Resolve repository name
+        if entities.repository_name:
+            try:
+                repos = await tenant_entity_loader.get_tenant_repositories(tenant_id, auth_token)
+                res_repo = entity_resolver.resolve_repository(entities.repository_name, repos)
+                if res_repo.clarification_needed:
+                    requires_clarification = True
+                    clarification_prompt = res_repo.clarification_message
+                    suggested_options = res_repo.suggested_options
+                elif res_repo.resolved_entity:
+                    resolved_repo_id = res_repo.resolved_entity.entity_id
+                    entities.repository_name = res_repo.resolved_entity.entity_name
+            except Exception as e:
+                logger.warning(f"[route_intent_node] Failed to resolve repository entity: {e}")
+
+        # 2. Resolve project name
+        if entities.project_name and not requires_clarification:
+            try:
+                projects = await tenant_entity_loader.get_tenant_projects(tenant_id, auth_token)
+                res_proj = entity_resolver.resolve_project(entities.project_name, projects)
+                if res_proj.clarification_needed:
+                    requires_clarification = True
+                    clarification_prompt = res_proj.clarification_message
+                    suggested_options = res_proj.suggested_options
+                elif res_proj.resolved_entity:
+                    resolved_proj_id = res_proj.resolved_entity.entity_id
+                    entities.project_name = res_proj.resolved_entity.entity_name
+            except Exception as e:
+                logger.warning(f"[route_intent_node] Failed to resolve project entity: {e}")
+
+        # 3. Resolve developer name
+        if entities.developer_name and not requires_clarification:
+            try:
+                devs = await tenant_entity_loader.get_tenant_developers(tenant_id, auth_token)
+                res_dev = entity_resolver.resolve_developer(entities.developer_name, devs)
+                if res_dev.clarification_needed:
+                    requires_clarification = True
+                    clarification_prompt = res_dev.clarification_message
+                    suggested_options = res_dev.suggested_options
+                elif res_dev.resolved_entity:
+                    entities.developer_name = res_dev.resolved_entity.entity_name
+            except Exception as e:
+                logger.warning(f"[route_intent_node] Failed to resolve developer entity: {e}")
+
     # Check for multi-agent query pattern: mentions both project and developer/ranking
     prompt_lower = state["user_request"].lower()
     is_multi_agent = bool(
         ("who" in prompt_lower or "most" in prompt_lower or "top" in prompt_lower or "compare" in prompt_lower) and
-        ("project" in prompt_lower or routing_result.intent == IntentCategory.PROJECT_INFO or state.get("project_id"))
+        ("project" in prompt_lower or routing_result.intent == IntentCategory.PROJECT_INFO or resolved_proj_id)
     )
 
     return {
         "detected_intent": routing_result.intent.value,
         "confidence": routing_result.confidence,
-        "entities": routing_result.entities,
-        "requires_clarification": routing_result.requires_clarification,
-        "clarification_prompt": routing_result.clarification_prompt,
-        "suggested_options": routing_result.suggested_options,
+        "entities": entities,
+        "requires_clarification": requires_clarification,
+        "clarification_prompt": clarification_prompt,
+        "suggested_options": suggested_options,
         "is_multi_agent_pipeline": is_multi_agent,
+        "repository_id": resolved_repo_id,
+        "project_id": resolved_proj_id,
         "freshness_metadata": freshness_eval.freshness_metadata.model_dump(),
         "data_freshness_tier": freshness_eval.tier.value,
         "force_fresh": freshness_eval.force_fresh
     }
+
 
 
 

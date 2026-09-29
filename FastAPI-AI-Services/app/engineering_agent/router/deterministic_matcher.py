@@ -80,10 +80,10 @@ class DeterministicIntentMatcher:
                 entities.developer_name = candidate.strip()
                 break
 
-        # 2. Extract repository mentions: e.g. "show me nexora commits", "commits in frontend repo", "hospital-management-frontend"
+        # 2. Extract repository mentions: e.g. "show me nexora commits", "commits in the backend repo", "hospital-management-frontend"
         repo_stopwords = {"the", "a", "an", "all", "our", "recent", "last", "this", "my", "project", "developer", "commit", "commits", "pr", "prs", "issues", "code", "repo", "repository"}
         for repo_match in re.finditer(
-            r"(?:show\s+me|in|for|of|repo|repository)\s+(?:repo\s+|repository\s+)?([a-zA-Z0-9_\-\.\/]+)(?:\s+commits|\s+prs|\s+repo|\s+repository|\s+issues)?",
+            r"(?:show\s+me|in|for|of|repo|repository)\s+(?:the\s+|a\s+|our\s+)?(?:repo\s+|repository\s+)?([a-zA-Z0-9_\-\.\/]+)(?:\s+commits|\s+prs|\s+repo|\s+repository|\s+issues)?",
             normalized_text,
             re.IGNORECASE
         ):
@@ -91,6 +91,7 @@ class DeterministicIntentMatcher:
             if candidate.lower() not in repo_stopwords:
                 entities.repository_name = candidate
                 break
+
 
         # 3. Target metrics identification
         if "commit" in normalized_text:
