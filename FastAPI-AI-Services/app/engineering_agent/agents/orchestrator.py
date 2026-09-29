@@ -13,7 +13,7 @@ from app.engineering_agent.prompts.system_prompts import (
     SPECIALIZED_INTENT_PROMPTS
 )
 from app.engineering_agent.llm import agent_llm_factory, LLMError
-from app.agents.detector import agent_detector
+from app.engineering_agent.router import engineering_intent_router, IntentCategory
 from app.utils.logger import logger
 
 class EngineeringOrchestrator:
@@ -24,22 +24,51 @@ class EngineeringOrchestrator:
     async def orchestrate(self, state: AgentState) -> None:
         """
         Execute full multi-step engineering analysis workflow:
-        1. Classify intent.
-        2. Plan and execute context tool calls.
+        1. Classify intent via hybrid intent router.
+        2. Plan and execute context tool calls based on extracted entities.
         3. Formulate structured engineering prompt with real backend telemetry.
         4. Query AI Provider.
         5. Populate state with response, metrics, and actions.
         """
         logger.info(f"[EngineeringAgent] Orchestrating request for user '{state.user_id}' in tenant '{state.tenant_id}'")
-        state.add_reasoning_step("Initiating engineering intent classification and tool planning.", action="classify_intent")
+        state.add_reasoning_step("Initiating engineering intent classification and entity extraction.", action="classify_intent")
 
-        # Step 1: Detect intent
-        detection = agent_detector.detect_intent(state.user_request)
-        state.detected_intent = detection.task_category if detection.requires_agent else "general_engineering_analysis"
-        state.selected_agent = "EngineeringOrchestrator"
+        # Step 1: Execute Intent Router
+        routing_result = await engineering_intent_router.route(
+            prompt=state.user_request,
+            project_id=state.project_id,
+            repository_id=state.repository_id
+        )
+
+        state.detected_intent = routing_result.intent.value
+        state.selected_agent = f"Specialist_{routing_result.intent.value.title().replace('_', '')}"
+
+        # Handle unsupported non-IT questions
+        if routing_result.intent == IntentCategory.UNSUPPORTED_NON_IT:
+            state.final_response = (
+                "👋 I am the **GitMonitor Engineering Intelligence Agent**, specialized exclusively in "
+                "GitHub repository monitoring, developer velocity, code churn, and software engineering analytics.\n\n"
+                "How can I assist you with your projects, commits, pull requests, or team contributions today?"
+            )
+            for opt in routing_result.suggested_options:
+                state.add_action(opt, href="/dashboard")
+            state.add_reasoning_step("Handled out-of-scope non-IT query gracefully.", action="guardrail_reject")
+            return
+
+        # Handle clarification if confidence is too low
+        if routing_result.requires_clarification and routing_result.clarification_prompt:
+            state.final_response = (
+                f"### 🔍 Clarification Needed\n\n"
+                f"{routing_result.clarification_prompt}\n\n"
+                f"Please choose one of the options below or rephrase your request."
+            )
+            for opt in routing_result.suggested_options:
+                state.add_action(opt, href="/projects")
+            state.add_reasoning_step("Requested user clarification due to ambiguous query.", action="request_clarification")
+            return
 
         state.add_reasoning_step(
-            f"Detected engineering intent category: '{state.detected_intent}'",
+            f"Resolved intent '{state.detected_intent}' (confidence: {routing_result.confidence:.2f}) using {routing_result.routing_strategy} strategy.",
             action="plan_tools"
         )
 
