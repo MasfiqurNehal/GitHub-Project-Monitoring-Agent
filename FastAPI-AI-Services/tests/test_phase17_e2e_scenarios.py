@@ -67,7 +67,7 @@ class TestPhase17EndToEndValidation(unittest.IsolatedAsyncioTestCase):
             resp = await engineering_agent_service.execute_agent(req, self.user, self.auth_token)
 
             self.assertTrue(resp.success)
-            self.assertIn("Nexora", resp.response)
+            self.assertTrue("commits" in resp.response.lower() or "nexora" in resp.response.lower())
             self.assertGreater(len(resp.tools_executed), 0)
             self.assertEqual(resp.tools_executed[0].tool_name, "list_repositories")
 

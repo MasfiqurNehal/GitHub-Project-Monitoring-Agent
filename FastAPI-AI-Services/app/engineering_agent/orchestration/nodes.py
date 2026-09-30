@@ -52,6 +52,25 @@ async def validate_context_node(state: GraphState) -> Dict[str, Any]:
     if tenant_id and user_id and conv_id:
         try:
             session = await conversation_memory_store.get_session(tenant_id, user_id, conv_id)
+            if not session:
+                from app.db.connection import db_manager
+                if db_manager.session_factory:
+                    from app.db.engineering_repository import engineering_chat_repository
+                    async with db_manager.get_session() as db_sess:
+                        conv_model = await engineering_chat_repository.get_conversation(
+                            db_sess,
+                            conversation_id=conv_id,
+                            user_id=user_id,
+                            organization_id=tenant_id,
+                            include_messages=True
+                        )
+                        if conv_model and conv_model.messages:
+                            session = await conversation_memory_store.hydrate_from_messages(
+                                tenant_id=tenant_id,
+                                user_id=user_id,
+                                conversation_id=conv_id,
+                                messages=conv_model.messages
+                            )
             recent_turns = await conversation_memory_store.get_recent_turns(tenant_id, user_id, conv_id, max_turns=5)
         except Exception as e:
             logger.warning(f"[validate_context_node] Failed to load conversation memory: {e}")

@@ -50,18 +50,32 @@ export interface ChatMessageItem {
   failedPrompt?: string;
 }
 
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  project_id?: string | null;
+  repository_id?: string | null;
+  developer_id?: string | null;
+  is_pinned?: boolean;
+  created_at: string;
+  updated_at: string;
+  messages_count?: number;
+}
+
 export interface ConversationThread {
   id: string;
   title: string;
   updatedAt: string;
+  createdAt?: string;
   messages: ChatMessageItem[];
   projectId?: string;
   repositoryId?: string;
   developerId?: string;
+  isPinned?: boolean;
 }
 
 export interface SendMessageOptions {
-  conversationId: string;
+  conversationId?: string;
   userMessage: string;
   projectId?: string;
   repositoryId?: string;
@@ -70,112 +84,201 @@ export interface SendMessageOptions {
   parameters?: Record<string, any>;
 }
 
+export interface SendMessageResult {
+  success: boolean;
+  conversationId: string;
+  data: ChatMessageItem;
+}
+
 export const MOCK_CONVERSATIONS: ConversationThread[] = [];
 
-export async function fetchUserConversations(): Promise<ConversationThread[]> {
+/**
+ * List all persistent engineering agent conversations for authenticated user & organization.
+ * Ordered by updated_at DESC for ChatGPT-style recency.
+ */
+export async function listEngineeringConversations(limit = 50, offset = 0): Promise<ConversationThread[]> {
   try {
-    const res = await fetchAiApi<{ success: boolean; conversations: any[] }>('/chatbot/conversations');
+    const res = await fetchAiApi<{ success: boolean; conversations: any[] }>(
+      `/engineering-agent/conversations?limit=${limit}&offset=${offset}`
+    );
     if (res && res.conversations) {
       return res.conversations.map((c) => ({
         id: c.id,
-        title: c.title || 'Conversation',
+        title: c.title || 'New Engineering Analysis',
         updatedAt: c.updated_at || c.created_at || new Date().toISOString(),
-        messages: (c.messages || []).map((m: any) => ({
-          id: m.id || m.message_id,
-          role: m.sender === 'user' ? 'user' : 'assistant',
-          content: m.content || m.response || '',
-          timestamp: m.created_at || new Date().toISOString(),
-          metrics: m.metrics,
-          sources: m.sources,
-          actions: m.actions,
-          artifacts: m.artifacts,
-          toolsExecuted: m.tools_executed,
-          detectedIntent: m.detected_intent,
-          selectedAgent: m.selected_agent,
-        })),
+        createdAt: c.created_at || new Date().toISOString(),
+        projectId: c.project_id || undefined,
+        repositoryId: c.repository_id || undefined,
+        developerId: c.developer_id || undefined,
+        isPinned: Boolean(c.is_pinned),
+        messages: [],
       }));
     }
     return [];
   } catch (err) {
-    console.warn('[AI API] Failed to fetch user conversations from FastAPI:', err);
-    return [];
+    console.warn('[AI API] Failed to list engineering conversations:', err);
+    throw err;
   }
 }
 
-export async function fetchConversationDetails(conversationId: string): Promise<ConversationThread | null> {
+/**
+ * Fetch a single persistent engineering conversation with full ordered messages (created_at ASC).
+ */
+export async function getEngineeringConversation(conversationId: string): Promise<ConversationThread | null> {
   try {
-    const res = await fetchAiApi<{ success: boolean; conversation: any }>(`/chatbot/conversations/${conversationId}`);
+    const res = await fetchAiApi<{ success: boolean; conversation: any }>(
+      `/engineering-agent/conversations/${conversationId}`
+    );
     if (res && res.conversation) {
       const c = res.conversation;
       return {
         id: c.id,
-        title: c.title || 'Conversation',
+        title: c.title || 'New Engineering Analysis',
         updatedAt: c.updated_at || c.created_at || new Date().toISOString(),
+        createdAt: c.created_at || new Date().toISOString(),
+        projectId: c.project_id || undefined,
+        repositoryId: c.repository_id || undefined,
+        developerId: c.developer_id || undefined,
+        isPinned: Boolean(c.is_pinned),
         messages: (c.messages || []).map((m: any) => ({
-          id: m.id || m.message_id,
+          id: m.id || `msg-${Date.now()}`,
           role: m.sender === 'user' ? 'user' : 'assistant',
-          content: m.content || m.response || '',
+          content: m.content || '',
           timestamp: m.created_at || new Date().toISOString(),
-          metrics: m.metrics,
-          sources: m.sources,
-          actions: m.actions,
-          artifacts: m.artifacts,
-          toolsExecuted: m.tools_executed,
           detectedIntent: m.detected_intent,
           selectedAgent: m.selected_agent,
+          metrics: m.metrics || [],
+          artifacts: m.artifacts || [],
+          actions: (m.actions || []).map((act: any) => ({
+            label: act.label,
+            href: act.href || act.target,
+            target: act.target,
+            type: act.action_type || act.action || act.type || 'link',
+          })),
+          toolsExecuted: m.tools_executed || [],
+          executionTimeMs: m.execution_time_ms || 0,
         })),
       };
     }
     return null;
   } catch (err) {
-    console.warn(`[AI API] Failed to fetch conversation ${conversationId}:`, err);
-    return null;
+    console.warn(`[AI API] Failed to get engineering conversation ${conversationId}:`, err);
+    throw err;
   }
 }
 
-export async function createNewConversationApi(title?: string): Promise<ConversationThread | null> {
+/**
+ * Explicitly create a new persistent engineering conversation session.
+ */
+export async function createEngineeringConversation(
+  title = 'New Engineering Analysis',
+  projectId?: string,
+  repositoryId?: string,
+  developerId?: string
+): Promise<ConversationThread | null> {
   try {
-    const res = await fetchAiApi<{ success: boolean; conversation: any }>('/chatbot/conversations', {
-      method: 'POST',
-      body: JSON.stringify({ title: title || 'New Conversation' }),
-    });
+    const payload: Record<string, any> = { title };
+    if (projectId) payload.project_id = projectId;
+    if (repositoryId) payload.repository_id = repositoryId;
+    if (developerId) payload.developer_id = developerId;
+
+    const res = await fetchAiApi<{ success: boolean; conversation: any }>(
+      '/engineering-agent/conversations',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
     if (res && res.conversation) {
       const c = res.conversation;
       return {
         id: c.id,
-        title: c.title || 'New Conversation',
+        title: c.title || title,
         updatedAt: c.updated_at || new Date().toISOString(),
+        createdAt: c.created_at || new Date().toISOString(),
+        projectId: c.project_id || undefined,
+        repositoryId: c.repository_id || undefined,
+        developerId: c.developer_id || undefined,
+        isPinned: Boolean(c.is_pinned),
         messages: [],
       };
     }
     return null;
   } catch (err) {
-    console.warn('[AI API] Failed to create new conversation:', err);
-    return null;
-  }
-}
-
-export async function deleteConversationApi(conversationId: string): Promise<boolean> {
-  try {
-    const res = await fetchAiApi<{ success: boolean }>(`/chatbot/conversations/${conversationId}`, {
-      method: 'DELETE',
-    });
-    return res.success;
-  } catch (err) {
-    console.warn(`[AI API] Failed to delete conversation ${conversationId}:`, err);
-    return false;
+    console.warn('[AI API] Failed to create engineering conversation:', err);
+    throw err;
   }
 }
 
 /**
+ * Rename an existing engineering conversation title.
+ */
+export async function renameEngineeringConversation(
+  conversationId: string,
+  title: string
+): Promise<ConversationThread | null> {
+  try {
+    const res = await fetchAiApi<{ success: boolean; conversation: any }>(
+      `/engineering-agent/conversations/${conversationId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ title }),
+      }
+    );
+    if (res && res.conversation) {
+      const c = res.conversation;
+      return {
+        id: c.id,
+        title: c.title || title,
+        updatedAt: c.updated_at || new Date().toISOString(),
+        createdAt: c.created_at || new Date().toISOString(),
+        projectId: c.project_id || undefined,
+        repositoryId: c.repository_id || undefined,
+        developerId: c.developer_id || undefined,
+        isPinned: Boolean(c.is_pinned),
+        messages: [],
+      };
+    }
+    return null;
+  } catch (err) {
+    console.warn(`[AI API] Failed to rename engineering conversation ${conversationId}:`, err);
+    throw err;
+  }
+}
+
+/**
+ * Soft-delete an engineering conversation.
+ */
+export async function deleteEngineeringConversation(conversationId: string): Promise<boolean> {
+  try {
+    const res = await fetchAiApi<{ success: boolean }>(
+      `/engineering-agent/conversations/${conversationId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    return Boolean(res?.success);
+  } catch (err) {
+    console.warn(`[AI API] Failed to delete engineering conversation ${conversationId}:`, err);
+    throw err;
+  }
+}
+
+// Backward-compatibility aliases for existing callers
+export const fetchUserConversations = listEngineeringConversations;
+export const fetchConversationDetails = getEngineeringConversation;
+export const createNewConversationApi = createEngineeringConversation;
+export const deleteConversationApi = deleteEngineeringConversation;
+
+/**
  * Executes an analytical task with the Engineering AI Agent (FastAPI StateGraph Orchestrator).
- * Scopes analysis to authenticated tenant, with optional project, repository, and developer context.
+ * Scopes analysis to authenticated tenant and persists user/assistant messages to PostgreSQL.
  */
 export async function sendEngineeringAgentMessage(
-  conversationIdOrOptions: string | SendMessageOptions,
+  conversationIdOrOptions?: string | SendMessageOptions,
   maybeUserMessage?: string,
   maybeContext?: { projectId?: string; repositoryId?: string; developerId?: string }
-): Promise<{ success: boolean; data: ChatMessageItem }> {
+): Promise<SendMessageResult> {
   let opts: SendMessageOptions;
   if (typeof conversationIdOrOptions === 'object') {
     opts = conversationIdOrOptions;
@@ -194,9 +297,9 @@ export async function sendEngineeringAgentMessage(
   try {
     const requestPayload: Record<string, any> = {
       message: userMessage,
-      conversation_id: conversationId,
     };
 
+    if (conversationId) requestPayload.conversation_id = conversationId;
     if (projectId) requestPayload.project_id = projectId;
     if (repositoryId) requestPayload.repository_id = repositoryId;
     if (developerId) requestPayload.developer_id = developerId;
@@ -211,6 +314,8 @@ export async function sendEngineeringAgentMessage(
     });
 
     const data = res.data || res;
+    const returnedConvId = data.conversation_id || conversationId || '';
+
     const assistantMsg: ChatMessageItem = {
       id: data.message_id || `ast-${Date.now()}`,
       role: 'assistant',
@@ -231,7 +336,7 @@ export async function sendEngineeringAgentMessage(
       })),
     };
 
-    return { success: true, data: assistantMsg };
+    return { success: true, conversationId: returnedConvId, data: assistantMsg };
   } catch (err: any) {
     const errorContent = err.message || 'Failed to connect to FastAPI Engineering Agent.';
     const errorMsg: ChatMessageItem = {
@@ -243,6 +348,6 @@ export async function sendEngineeringAgentMessage(
       failedPrompt: userMessage,
       metrics: [{ label: 'Status', value: 'API Error', color: 'text-rose-400' }],
     };
-    return { success: false, data: errorMsg };
+    return { success: false, conversationId: conversationId || '', data: errorMsg };
   }
 }

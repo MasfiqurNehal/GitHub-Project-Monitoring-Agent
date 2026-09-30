@@ -1,12 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
-import { 
-  ConversationThread, 
-  ChatMessageItem, 
+'use client';
+
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  ConversationThread,
+  ChatMessageItem,
+  listEngineeringConversations,
+  getEngineeringConversation,
+  createEngineeringConversation,
+  renameEngineeringConversation,
+  deleteEngineeringConversation,
   sendEngineeringAgentMessage,
-  fetchUserConversations,
-  fetchConversationDetails,
-  createNewConversationApi,
-  deleteConversationApi
 } from '../lib/api/ai';
 
 export interface AgentContextScope {
@@ -18,26 +21,30 @@ export interface AgentContextScope {
   developerName?: string;
 }
 
-const DEFAULT_WELCOME_THREAD: ConversationThread = {
-  id: `conv-${Date.now()}`,
-  title: 'Engineering AI Agent',
+export const DRAFT_WELCOME_THREAD: ConversationThread = {
+  id: '',
+  title: 'New Engineering Analysis',
   updatedAt: new Date().toISOString(),
   messages: [
     {
       id: 'welcome-msg',
       role: 'assistant',
-      content: 'Welcome to the **Engineering AI Agent Console**. I provide deterministic, read-only intelligence and multi-agent analysis across your monitored repositories, pull requests, commits, and developer metrics.\n\nHow can I help you today?',
+      content:
+        'Welcome to the **Engineering AI Agent Console**. I provide deterministic, read-only intelligence and multi-agent analysis across your monitored repositories, pull requests, commits, and developer metrics.\n\nHow can I help you today?',
       timestamp: new Date().toISOString(),
     },
   ],
 };
 
 export function useAIAgent(initialContext?: AgentContextScope) {
-  const [conversations, setConversations] = useState<ConversationThread[]>([DEFAULT_WELCOME_THREAD]);
-  const [activeConversationId, setActiveConversationId] = useState<string>(DEFAULT_WELCOME_THREAD.id);
+  const [conversations, setConversations] = useState<ConversationThread[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isConversationsLoading, setIsConversationsLoading] = useState<boolean>(true);
+  const [isMessagesLoading, setIsMessagesLoading] = useState<boolean>(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const [contextScope, setContextScope] = useState<AgentContextScope>(initialContext || {});
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Update context scope if initialContext changes from URL/parent
   useEffect(() => {
@@ -49,51 +56,90 @@ export function useAIAgent(initialContext?: AgentContextScope) {
     }
   }, [initialContext?.projectId, initialContext?.repositoryId, initialContext?.developerId]);
 
-  // Load user conversations on initial mount
+  // Load persistent conversations on initial mount
   useEffect(() => {
     let isMounted = true;
     async function loadInitialConversations() {
+      setIsConversationsLoading(true);
+      setErrorMessage(null);
       try {
-        const fetched = await fetchUserConversations();
-        if (isMounted && fetched.length > 0) {
-          setConversations(fetched);
-          setActiveConversationId(fetched[0].id);
+        const fetched = await listEngineeringConversations();
+        if (isMounted) {
+          if (fetched.length > 0) {
+            setConversations(fetched);
+            const firstId = fetched[0].id;
+            setActiveConversationId(firstId);
 
-          // Fetch full message details for the first conversation
-          const details = await fetchConversationDetails(fetched[0].id);
-          if (details && isMounted) {
-            setConversations((prev) =>
-              prev.map((c) => (c.id === details.id ? details : c))
-            );
+            // Fetch full ordered messages for the first active conversation
+            setIsMessagesLoading(true);
+            try {
+              const details = await getEngineeringConversation(firstId);
+              if (details && isMounted) {
+                setConversations((prev) =>
+                  prev.map((c) => (c.id === firstId ? { ...c, ...details } : c))
+                );
+              }
+            } catch (err) {
+              console.warn('[useAIAgent] Failed to load messages for initial conversation:', err);
+            } finally {
+              if (isMounted) setIsMessagesLoading(false);
+            }
+          } else {
+            setConversations([]);
+            setActiveConversationId('');
           }
         }
-      } catch (err) {
-        console.warn('[useAIAgent] Failed to load conversations:', err);
+      } catch (err: any) {
+        console.warn('[useAIAgent] Failed to load persistent conversations:', err);
+        if (isMounted) {
+          setErrorMessage(err?.message || 'Unable to load conversation history.');
+        }
+      } finally {
+        if (isMounted) setIsConversationsLoading(false);
       }
     }
+
     loadInitialConversations();
     return () => {
       isMounted = false;
     };
   }, []);
 
-  // Handler to switch active conversation and fetch its messages
-  const handleSelectConversation = useCallback(async (convId: string) => {
-    setActiveConversationId(convId);
-    try {
-      const details = await fetchConversationDetails(convId);
-      if (details) {
-        setConversations((prev) =>
-          prev.map((c) => (c.id === convId ? details : c))
-        );
+  // Handler to switch active conversation and fetch its historical messages
+  const handleSelectConversation = useCallback(
+    async (convId: string) => {
+      if (!convId) {
+        setActiveConversationId('');
+        return;
       }
-    } catch (err) {
-      console.warn(`[useAIAgent] Failed to fetch details for conversation ${convId}:`, err);
+      setActiveConversationId(convId);
+      setIsMessagesLoading(true);
+      try {
+        const details = await getEngineeringConversation(convId);
+        if (details) {
+          setConversations((prev) =>
+            prev.map((c) => (c.id === convId ? { ...c, ...details } : c))
+          );
+        }
+      } catch (err) {
+        console.warn(`[useAIAgent] Failed to fetch details for conversation ${convId}:`, err);
+      } finally {
+        setIsMessagesLoading(false);
+      }
+    },
+    []
+  );
+
+  // Derive the active conversation object
+  const activeConversation: ConversationThread = useMemo(() => {
+    if (!activeConversationId) {
+      return DRAFT_WELCOME_THREAD;
     }
-  }, []);
+    const found = conversations.find((c) => c.id === activeConversationId);
+    return found || DRAFT_WELCOME_THREAD;
+  }, [conversations, activeConversationId]);
 
-  const activeConversation = conversations.find((c) => c.id === activeConversationId) || conversations[0] || DEFAULT_WELCOME_THREAD;
-
+  // Handle sending a message in the active session
   const handleSendMessage = async (promptText: string) => {
     if (!promptText.trim() || isLoading) return;
 
@@ -104,75 +150,134 @@ export function useAIAgent(initialContext?: AgentContextScope) {
       timestamp: new Date().toISOString(),
     };
 
-    const targetConvId = activeConversationId;
+    const currentConvId = activeConversationId;
+    const isNewDraft = !currentConvId;
 
-    // Append user message immediately
-    setConversations((prev) =>
-      prev.map((thread) => {
-        if (thread.id === targetConvId) {
-          const updatedMessages = [...thread.messages, userMessage];
-          return {
-            ...thread,
-            title: thread.messages.length <= 1 ? promptText.slice(0, 35) : thread.title,
-            updatedAt: new Date().toISOString(),
-            messages: updatedMessages,
-          };
-        }
-        return thread;
-      })
-    );
+    // Optimistically update visible messages
+    if (isNewDraft) {
+      // Draft mode: start with user message
+      const tempThread: ConversationThread = {
+        id: '',
+        title: promptText.slice(0, 40),
+        updatedAt: new Date().toISOString(),
+        messages: [userMessage],
+        projectId: contextScope.projectId,
+        repositoryId: contextScope.repositoryId,
+        developerId: contextScope.developerId,
+      };
+      setConversations((prev) => [tempThread, ...prev]);
+    } else {
+      setConversations((prev) =>
+        prev.map((thread) => {
+          if (thread.id === currentConvId) {
+            return {
+              ...thread,
+              updatedAt: new Date().toISOString(),
+              messages: [...thread.messages, userMessage],
+            };
+          }
+          return thread;
+        })
+      );
+    }
 
     setIsLoading(true);
 
     try {
       const res = await sendEngineeringAgentMessage({
-        conversationId: targetConvId,
+        conversationId: currentConvId || undefined,
         userMessage: promptText,
         projectId: contextScope.projectId,
         repositoryId: contextScope.repositoryId,
         developerId: contextScope.developerId,
       });
 
+      const actualConvId = res.conversationId;
+
+      setConversations((prev) => {
+        let updatedList: ConversationThread[];
+        if (isNewDraft) {
+          // Replace temp draft thread with real persisted thread
+          const realThread: ConversationThread = {
+            id: actualConvId,
+            title: promptText.slice(0, 40),
+            updatedAt: new Date().toISOString(),
+            messages: [userMessage, res.data],
+            projectId: contextScope.projectId,
+            repositoryId: contextScope.repositoryId,
+            developerId: contextScope.developerId,
+          };
+          updatedList = [realThread, ...prev.filter((t) => t.id !== '')];
+        } else {
+          updatedList = prev.map((thread) => {
+            if (thread.id === currentConvId || thread.id === actualConvId) {
+              return {
+                ...thread,
+                id: actualConvId,
+                updatedAt: new Date().toISOString(),
+                messages: [...thread.messages, res.data],
+              };
+            }
+            return thread;
+          });
+        }
+
+        // Re-sort conversations by updatedAt DESC so the active conversation moves to top
+        return updatedList.sort(
+          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        );
+      });
+
+      if (isNewDraft && actualConvId) {
+        setActiveConversationId(actualConvId);
+      }
+    } catch (err: any) {
+      console.error('[useAIAgent] Send message error:', err);
+      const errorMsg: ChatMessageItem = {
+        id: `err-${Date.now()}`,
+        role: 'assistant',
+        content: `⚠️ Error: ${err?.message || 'Failed to process engineering analysis.'}`,
+        timestamp: new Date().toISOString(),
+        isError: true,
+        failedPrompt: promptText,
+      };
+
       setConversations((prev) =>
         prev.map((thread) => {
-          if (thread.id === targetConvId) {
+          if (thread.id === currentConvId || (isNewDraft && thread.id === '')) {
             return {
               ...thread,
               updatedAt: new Date().toISOString(),
-              messages: [...thread.messages, res.data],
+              messages: [...thread.messages, errorMsg],
             };
           }
           return thread;
         })
       );
-    } catch (err) {
-      console.error('[useAIAgent] Send message error:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Retry a failed prompt
   const retryMessage = async (failedMessageId?: string) => {
     const thread = activeConversation;
     if (!thread || isLoading) return;
 
     let promptToRetry = '';
-    let updatedMessages = [...thread.messages];
+    const updatedMessages = [...thread.messages];
 
     if (failedMessageId) {
       const errorMsgIndex = updatedMessages.findIndex((m) => m.id === failedMessageId);
       if (errorMsgIndex >= 0) {
         const errorMsg = updatedMessages[errorMsgIndex];
         promptToRetry = errorMsg.failedPrompt || '';
-        // Find preceding user message if failedPrompt is not set
         if (!promptToRetry && errorMsgIndex > 0 && updatedMessages[errorMsgIndex - 1].role === 'user') {
           promptToRetry = updatedMessages[errorMsgIndex - 1].content;
         }
-        // Remove error message
         updatedMessages.splice(errorMsgIndex, 1);
       }
     } else {
-      // Find last error message
       const lastMsg = updatedMessages[updatedMessages.length - 1];
       if (lastMsg && lastMsg.isError) {
         promptToRetry = lastMsg.failedPrompt || '';
@@ -181,7 +286,6 @@ export function useAIAgent(initialContext?: AgentContextScope) {
     }
 
     if (!promptToRetry) {
-      // Look for the last user message
       const lastUserMsg = [...updatedMessages].reverse().find((m) => m.role === 'user');
       if (lastUserMsg) {
         promptToRetry = lastUserMsg.content;
@@ -190,7 +294,6 @@ export function useAIAgent(initialContext?: AgentContextScope) {
 
     if (!promptToRetry) return;
 
-    // Update messages to remove the failed node
     setConversations((prev) =>
       prev.map((t) => (t.id === activeConversationId ? { ...t, messages: updatedMessages } : t))
     );
@@ -198,7 +301,7 @@ export function useAIAgent(initialContext?: AgentContextScope) {
     setIsLoading(true);
     try {
       const res = await sendEngineeringAgentMessage({
-        conversationId: activeConversationId,
+        conversationId: activeConversationId || undefined,
         userMessage: promptToRetry,
         projectId: contextScope.projectId,
         repositoryId: contextScope.repositoryId,
@@ -224,33 +327,57 @@ export function useAIAgent(initialContext?: AgentContextScope) {
     }
   };
 
-  const createNewChat = async () => {
-    try {
-      const created = await createNewConversationApi('New Conversation');
-      if (created) {
-        setConversations((prev) => [created, ...prev]);
-        setActiveConversationId(created.id);
-        return;
-      }
-    } catch (err) {
-      console.warn('[useAIAgent] Failed to create chat via API, creating local thread:', err);
-    }
+  // Prepare a clean new chat session without polluting PostgreSQL with empty records
+  const createNewChat = () => {
+    setActiveConversationId('');
+  };
 
-    const fallbackId = `conv-${Date.now()}`;
-    const newThread: ConversationThread = {
-      id: fallbackId,
-      title: 'New Conversation',
-      updatedAt: new Date().toISOString(),
-      messages: [],
-      projectId: contextScope.projectId,
-      repositoryId: contextScope.repositoryId,
-      developerId: contextScope.developerId,
-    };
-    setConversations((prev) => [newThread, ...prev]);
-    setActiveConversationId(fallbackId);
+  // Rename conversation title via PATCH API
+  const renameConversation = async (conversationId: string, newTitle: string): Promise<boolean> => {
+    if (!conversationId || !newTitle.trim()) return false;
+    try {
+      const updated = await renameEngineeringConversation(conversationId, newTitle.trim());
+      if (updated) {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === conversationId ? { ...c, title: updated.title, updatedAt: updated.updatedAt } : c
+          )
+        );
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error(`[useAIAgent] Failed to rename conversation ${conversationId}:`, err);
+      return false;
+    }
+  };
+
+  // Soft-delete conversation via DELETE API
+  const deleteConversation = async (conversationId: string): Promise<boolean> => {
+    if (!conversationId) return false;
+    try {
+      const success = await deleteEngineeringConversation(conversationId);
+      if (success) {
+        const remaining = conversations.filter((c) => c.id !== conversationId);
+        setConversations(remaining);
+        if (activeConversationId === conversationId) {
+          if (remaining.length > 0) {
+            handleSelectConversation(remaining[0].id);
+          } else {
+            setActiveConversationId('');
+          }
+        }
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error(`[useAIAgent] Failed to delete conversation ${conversationId}:`, err);
+      return false;
+    }
   };
 
   const clearCurrentChat = () => {
+    if (!activeConversationId) return;
     setConversations((prev) =>
       prev.map((thread) => {
         if (thread.id === activeConversationId) {
@@ -279,32 +406,14 @@ export function useAIAgent(initialContext?: AgentContextScope) {
     }
   };
 
-  const deleteConversation = async (id: string) => {
-    await deleteConversationApi(id);
-    const remaining = conversations.filter((c) => c.id !== id);
-    if (remaining.length > 0) {
-      setConversations(remaining);
-      if (activeConversationId === id) {
-        setActiveConversationId(remaining[0].id);
-      }
-    } else {
-      const newThread = await createNewConversationApi('New Conversation');
-      if (newThread) {
-        setConversations([newThread]);
-        setActiveConversationId(newThread.id);
-      } else {
-        setConversations([DEFAULT_WELCOME_THREAD]);
-        setActiveConversationId(DEFAULT_WELCOME_THREAD.id);
-      }
-    }
-  };
-
   return {
     conversations,
     activeConversation,
     activeConversationId,
     setActiveConversationId: handleSelectConversation,
     isLoading,
+    isConversationsLoading,
+    isMessagesLoading,
     isSidebarOpen,
     setIsSidebarOpen,
     contextScope,
@@ -313,7 +422,9 @@ export function useAIAgent(initialContext?: AgentContextScope) {
     handleSendMessage,
     retryMessage,
     createNewChat,
-    clearCurrentChat,
+    renameConversation,
     deleteConversation,
+    clearCurrentChat,
+    errorMessage,
   };
 }

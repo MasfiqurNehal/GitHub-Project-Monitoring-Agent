@@ -1,5 +1,6 @@
 """
 Engineering Agent Core Service Facade.
+Provides Multi-Tenant Persistent Execution, Cold-Start Memory Hydration, and PostgreSQL Auditing (Phase 22).
 """
 import uuid
 import time
@@ -17,11 +18,16 @@ from app.engineering_agent.schemas.response import (
 from app.engineering_agent.state.agent_state import AgentState
 from app.engineering_agent.agents.orchestrator import engineering_orchestrator
 from app.engineering_agent.reliability import tenant_rate_limiter, ReliabilityMetricsTracker
+from app.engineering_agent.memory import conversation_memory_store, ConversationTurn
+from app.engineering_agent.memory.scrubber import secret_scrubber
+from app.db.connection import db_manager
+from app.db.engineering_repository import engineering_chat_repository
 from app.utils.auth import AuthenticatedUser
 from app.utils.logger import logger
 
+
 class EngineeringAgentService:
-    """High-level service facade for processing Engineering AI Agent requests."""
+    """High-level service facade for processing Engineering AI Agent requests with PostgreSQL persistence."""
 
     async def execute_agent(
         self,
@@ -31,7 +37,7 @@ class EngineeringAgentService:
     ) -> EngineeringAgentResponse:
         """
         Execute an engineering agent task within the authenticated tenant context.
-        Enforces strict SaaS tenant boundary validation and prevents IDOR attacks.
+        Enforces strict SaaS tenant boundary validation, PostgreSQL persistence, and memory hydration.
         """
         # 1. Require verified organization_id from the authenticated user token
         if not user.organization_id:
@@ -64,10 +70,69 @@ class EngineeringAgentService:
                 headers={"Retry-After": str(int(retry_after) + 1)}
             )
 
-        conversation_id = request.conversation_id or f"eng-conv-{uuid.uuid4().hex[:12]}"
+        # 4. PostgreSQL Persistent Conversation Resolution & Validation
+        conversation_id: str = request.conversation_id or f"eng-conv-{uuid.uuid4().hex[:12]}"
+        scrubbed_user_message = secret_scrubber.scrub(request.message)
+
+        if db_manager.session_factory:
+            async with db_manager.get_session() as db_sess:
+                if request.conversation_id:
+                    # Validate ownership & existence in PostgreSQL
+                    conv = await engineering_chat_repository.get_conversation(
+                        db_sess,
+                        conversation_id=request.conversation_id,
+                        user_id=user.id,
+                        organization_id=tenant_id,
+                        include_messages=True
+                    )
+                    if not conv:
+                        logger.warning(
+                            f"[EngineeringAgentService] Conversation '{request.conversation_id}' not found "
+                            f"or unowned by user '{user.id}' (org: '{tenant_id}')."
+                        )
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Conversation not found."
+                        )
+                    conversation_id = conv.id
+
+                    # If in-memory memory store is cold, hydrate from persistent messages
+                    existing_session = await conversation_memory_store.get_session(tenant_id, user.id, conversation_id)
+                    if not existing_session and conv.messages:
+                        await conversation_memory_store.hydrate_from_messages(
+                            tenant_id=tenant_id,
+                            user_id=user.id,
+                            conversation_id=conversation_id,
+                            messages=conv.messages
+                        )
+                else:
+                    # Automatically create a persistent conversation in PostgreSQL
+                    conv = await engineering_chat_repository.create_conversation(
+                        db_sess,
+                        user_id=user.id,
+                        organization_id=tenant_id,
+                        title="New Engineering Analysis",
+                        project_id=request.project_id,
+                        repository_id=request.repository_id,
+                        developer_id=request.developer_id
+                    )
+                    conversation_id = conv.id
+
+                # 5. Persist the incoming USER message to PostgreSQL
+                user_msg_id = f"eng-msg-{uuid.uuid4().hex[:12]}"
+                await engineering_chat_repository.create_message(
+                    db_sess,
+                    conversation_id=conversation_id,
+                    organization_id=tenant_id,
+                    user_id=user.id,
+                    sender="user",
+                    content=scrubbed_user_message,
+                    custom_id=user_msg_id
+                )
+
         message_id = f"eng-msg-{uuid.uuid4().hex[:12]}"
 
-        # Initialize isolated agent execution state strictly bounded to user's tenant
+        # 6. Initialize isolated agent execution state strictly bounded to user's tenant
         state = AgentState(
             user_request=request.message,
             tenant_id=tenant_id,
@@ -80,6 +145,7 @@ class EngineeringAgentService:
             message_id=message_id
         )
 
+        # 7. Execute Multi-Agent LangGraph Orchestration
         try:
             await engineering_orchestrator.orchestrate(state)
         except Exception as e:
@@ -90,6 +156,7 @@ class EngineeringAgentService:
 
         duration_ms = state.finalize()
 
+        # 8. Transform Output Artifacts & Telemetry
         tools_executed = [
             ToolExecutionSummary(
                 tool_name=t.tool_name,
@@ -129,12 +196,37 @@ class EngineeringAgentService:
             for art in state.artifacts
         ]
 
-        # Record episodic turn into isolated conversation memory store (Phase 12: Memory)
+        scrubbed_assistant_response = secret_scrubber.scrub(state.final_response or "Analysis complete.")
+
+        # 9. Persist ASSISTANT Response + Telemetry to PostgreSQL & Touch updated_at
+        if db_manager.session_factory:
+            try:
+                async with db_manager.get_session() as db_sess:
+                    await engineering_chat_repository.create_message(
+                        db_sess,
+                        conversation_id=conversation_id,
+                        organization_id=tenant_id,
+                        user_id=user.id,
+                        sender="assistant",
+                        content=scrubbed_assistant_response,
+                        detected_intent=state.detected_intent,
+                        selected_agent=state.selected_agent,
+                        metrics=[m.model_dump() for m in metrics] if metrics else [],
+                        artifacts=[art.model_dump() for art in artifacts] if artifacts else [],
+                        actions=[a.model_dump() for a in actions] if actions else [],
+                        tools_executed=[t.model_dump() for t in tools_executed] if tools_executed else [],
+                        execution_time_ms=round(duration_ms, 2),
+                        custom_id=message_id
+                    )
+            except Exception as db_err:
+                logger.error(f"[EngineeringAgentService] Failed to persist assistant response in PostgreSQL: {db_err}")
+
+        # 10. Record turn into in-memory conversation memory cache
         try:
-            from app.engineering_agent.memory import conversation_memory_store, ConversationTurn
             turn = ConversationTurn(
-                user_message=request.message,
-                agent_response=state.final_response or "Analysis complete.",
+                turn_id=message_id,
+                user_message=scrubbed_user_message,
+                agent_response=scrubbed_assistant_response,
                 detected_intent=state.detected_intent,
                 selected_agent=state.selected_agent,
                 resolved_repository_name=state.repository_id,
@@ -166,4 +258,6 @@ class EngineeringAgentService:
             error=state.error
         )
 
+
 engineering_agent_service = EngineeringAgentService()
+

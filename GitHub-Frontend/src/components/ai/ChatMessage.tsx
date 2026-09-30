@@ -46,9 +46,37 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
     }
   };
 
-  const formattedTime = message.timestamp
-    ? new Date(message.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-    : null;
+  const formattedTime = React.useMemo(() => {
+    if (!message.timestamp) return null;
+    const date = new Date(message.timestamp);
+    if (isNaN(date.getTime())) return null;
+
+    const now = new Date();
+    const isToday =
+      date.getDate() === now.getDate() &&
+      date.getMonth() === now.getMonth() &&
+      date.getFullYear() === now.getFullYear();
+
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday =
+      date.getDate() === yesterday.getDate() &&
+      date.getMonth() === yesterday.getMonth() &&
+      date.getFullYear() === yesterday.getFullYear();
+
+    const timeStr = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+    if (isToday) {
+      return timeStr;
+    }
+    if (isYesterday) {
+      return `Yesterday, ${timeStr}`;
+    }
+    if (date.getFullYear() === now.getFullYear()) {
+      return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${timeStr}`;
+    }
+    return `${date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}, ${timeStr}`;
+  }, [message.timestamp]);
 
   return (
     <div

@@ -31,6 +31,8 @@ function AIWorkspaceContent() {
     activeConversationId,
     setActiveConversationId,
     isLoading,
+    isConversationsLoading,
+    isMessagesLoading,
     isSidebarOpen,
     setIsSidebarOpen,
     contextScope,
@@ -38,6 +40,7 @@ function AIWorkspaceContent() {
     handleSendMessage,
     retryMessage,
     createNewChat,
+    renameConversation,
     clearCurrentChat,
     deleteConversation,
   } = useAIAgent({
@@ -81,8 +84,10 @@ function AIWorkspaceContent() {
               <ConversationList
                 conversations={conversations}
                 activeConversationId={activeConversationId}
+                isLoadingConversations={isConversationsLoading}
                 onSelectConversation={(id) => setActiveConversationId(id)}
                 onNewChat={createNewChat}
+                onRenameConversation={renameConversation}
                 onDeleteConversation={deleteConversation}
               />
             )}
@@ -91,19 +96,26 @@ function AIWorkspaceContent() {
             <div className="flex-1 flex flex-col min-h-0 bg-slate-950/60">
               {/* Messages Container */}
               <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
-                {activeConversation.messages.map((msg) => (
-                  <ChatMessage 
-                    key={msg.id} 
-                    message={msg} 
-                    onRetry={(msgId) => retryMessage(msgId)} 
-                  />
-                ))}
+                {isMessagesLoading ? (
+                  <div className="py-12 flex flex-col items-center justify-center space-y-2 text-slate-500">
+                    <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-xs">Loading conversation history...</span>
+                  </div>
+                ) : (
+                  activeConversation.messages.map((msg) => (
+                    <ChatMessage 
+                      key={msg.id} 
+                      message={msg} 
+                      onRetry={(msgId) => retryMessage(msgId)} 
+                    />
+                  ))
+                )}
 
                 {/* Thinking / Processing State Indicator */}
                 {isLoading && <ThinkingState />}
 
-                {/* Suggested Prompt Chips (rendered if conversation has <= 1 message) */}
-                {activeConversation.messages.length <= 1 && !isLoading && (
+                {/* Suggested Prompt Chips (rendered if conversation has <= 1 message and not loading) */}
+                {!isMessagesLoading && activeConversation.messages.length <= 1 && !isLoading && (
                   <SuggestedPrompts 
                     onSelectPrompt={handleSendMessage} 
                     contextScope={contextScope} 

@@ -187,9 +187,24 @@ class ResponseGenerator:
                 freshness_tier=state.get("data_freshness_tier")
             )
 
-        # 2. Build Grounded LLM Prompt
+        # 2. Build Grounded LLM Prompt with Conversational Context
+        recent_turns = state.get("recent_turns") or []
+        history_context_str = ""
+        if recent_turns:
+            history_lines = []
+            for t in recent_turns[-3:]:
+                u_msg = getattr(t, "user_message", "") or (t.get("user_message") if isinstance(t, dict) else "")
+                a_msg = getattr(t, "agent_response", "") or (t.get("agent_response") if isinstance(t, dict) else "")
+                if u_msg:
+                    history_lines.append(f"User: {u_msg}")
+                if a_msg:
+                    history_lines.append(f"Assistant: {a_msg[:250]}")
+            if history_lines:
+                history_context_str = "PREVIOUS CONVERSATION CONTEXT:\n" + "\n".join(history_lines) + "\n\n"
+
         telemetry_str = json.dumps(telemetry, default=str)[:3500]
         user_content = (
+            f"{history_context_str}"
             f"USER QUERY: {user_request}\n\n"
             f"AUTHENTICATED TENANT: {tenant_id}\n"
             f"SPECIALIST AGENT: {selected_agent}\n"

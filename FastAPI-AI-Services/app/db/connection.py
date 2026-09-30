@@ -2,6 +2,7 @@
 Neon PostgreSQL Async Database Connection Manager using SQLAlchemy & asyncpg.
 """
 from typing import AsyncGenerator
+from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 
@@ -62,6 +63,7 @@ class DatabaseManager:
             await self.engine.dispose()
             logger.info("Neon PostgreSQL Async Connection Engine closed.")
 
+    @asynccontextmanager
     async def get_session(self) -> AsyncGenerator[AsyncSession, None]:
         if not self.session_factory:
             raise RuntimeError("Database session factory is not initialized.")

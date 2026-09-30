@@ -3,7 +3,9 @@ Thread-safe In-Memory and Persistent Conversation Memory Store.
 Enforces strict Tenant, User, and Conversation isolation with TTL expiration and secret scrubbing.
 """
 import time
+import uuid
 import asyncio
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 from collections import OrderedDict
 
@@ -169,9 +171,102 @@ class ConversationMemoryStore:
             logger.info(f"[MemoryStore] Cleaned up {evicted_count} expired conversation sessions.")
         return evicted_count
 
+    async def hydrate_from_messages(
+        self,
+        tenant_id: str,
+        user_id: str,
+        conversation_id: str,
+        messages: List[Any]
+    ) -> ConversationSession:
+        """
+        Hydrate in-memory session from persistent PostgreSQL messages (e.g. after cold start / server restart).
+        Sorts messages chronologically and reconstructs ConversationTurns.
+        """
+        key = self._make_key(tenant_id, user_id, conversation_id)
+        now = time.time()
+
+        def _get_field(obj: Any, name: str, default: Any = None) -> Any:
+            if hasattr(obj, name):
+                return getattr(obj, name)
+            if isinstance(obj, dict):
+                return obj.get(name, default)
+            return default
+
+        # Sort messages by created_at ASC
+        sorted_msgs = sorted(
+            messages,
+            key=lambda m: _get_field(m, "created_at") or datetime.min.replace(tzinfo=timezone.utc)
+        )
+
+        turns: List[ConversationTurn] = []
+        pending_user_msg = None
+
+        for msg in sorted_msgs:
+            sender = _get_field(msg, "sender", "")
+            content = _get_field(msg, "content", "")
+
+            if sender == "user":
+                pending_user_msg = msg
+            elif sender == "assistant":
+                user_text = ""
+                if pending_user_msg:
+                    user_text = _get_field(pending_user_msg, "content", "")
+
+                detected_intent = _get_field(msg, "detected_intent")
+                selected_agent = _get_field(msg, "selected_agent")
+                metrics_json = _get_field(msg, "metrics_json") or []
+                msg_time = _get_field(msg, "created_at")
+                ts = msg_time.timestamp() if (msg_time and hasattr(msg_time, "timestamp")) else now
+
+                turn = ConversationTurn(
+                    turn_id=_get_field(msg, "id") or f"turn-{uuid.uuid4().hex[:8]}",
+                    user_message=secret_scrubber.scrub(user_text),
+                    agent_response=secret_scrubber.scrub(content),
+                    detected_intent=detected_intent,
+                    selected_agent=selected_agent,
+                    metrics_summary=metrics_json if isinstance(metrics_json, list) else [],
+                    timestamp=ts
+                )
+                turns.append(turn)
+                pending_user_msg = None
+
+        async with self._lock:
+            session = self._store.get(key)
+            if not session:
+                session = ConversationSession(
+                    conversation_id=conversation_id,
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    created_at=now,
+                    updated_at=now,
+                    turns=[]
+                )
+                self._store[key] = session
+
+            session.updated_at = now
+            session.turns = turns[-self.max_turns:]
+
+            if session.turns:
+                last_turn = session.turns[-1]
+                if last_turn.detected_intent:
+                    session.last_intent = last_turn.detected_intent
+                if last_turn.resolved_repository_name:
+                    session.last_repository_name = last_turn.resolved_repository_name
+                if last_turn.resolved_project_name:
+                    session.last_project_name = last_turn.resolved_project_name
+                if last_turn.resolved_developer_name:
+                    session.last_developer_name = last_turn.resolved_developer_name
+
+            logger.info(
+                f"[MemoryStore] Hydrated session '{conversation_id}' from DB for tenant '{tenant_id}' "
+                f"({len(session.turns)} turns loaded)"
+            )
+            return session
+
     def get_active_sessions_count(self) -> int:
         """Returns current total active sessions in memory."""
         return len(self._store)
 
 
 conversation_memory_store = ConversationMemoryStore()
+
