@@ -13,8 +13,10 @@ from app.engineering_agent.schemas.response import (
     MetricItem,
     ArtifactItem,
     ActionItem,
-    ToolExecutionSummary
+    ToolExecutionSummary,
+    ExecutionTelemetryTrace
 )
+from app.config import settings
 from app.engineering_agent.state.agent_state import AgentState
 from app.engineering_agent.agents.orchestrator import engineering_orchestrator
 from app.engineering_agent.reliability import tenant_rate_limiter, ReliabilityMetricsTracker
@@ -243,6 +245,40 @@ class EngineeringAgentService:
         except Exception as mem_err:
             logger.warning(f"[EngineeringAgentService] Failed to record turn in memory store: {mem_err}")
 
+        # 11. Construct safe internal tool execution telemetry trace (Phase 25K)
+        trace_id = f"trace-{uuid.uuid4().hex[:16]}"
+        llm_diag = state.get("llm_diagnostics") or {}
+        provider_name = llm_diag.get("provider") or getattr(settings, "ENGINEERING_AGENT_LLM_PROVIDER", "unknown")
+        model_name = llm_diag.get("model") or getattr(settings, "ENGINEERING_AGENT_LLM_MODEL", "unknown")
+        llm_status = llm_diag.get("status")
+        llm_called_flag = llm_status in ("success", "fallback") or True
+
+        tools_called_telemetry = [
+            {
+                "name": t.tool_name,
+                "duration_ms": round(t.duration_ms, 2),
+                "success": t.success
+            }
+            for t in state.tool_results
+        ]
+
+        response_gen_metrics = {
+            "llm_called": llm_called_flag,
+            "duration_ms": round(llm_diag.get("latency_ms", 0.0), 2)
+        }
+
+        telemetry_trace = ExecutionTelemetryTrace(
+            trace_id=trace_id,
+            intent=state.detected_intent or "unknown",
+            llm_provider=provider_name,
+            llm_model=model_name,
+            llm_called=llm_called_flag,
+            tools_called=tools_called_telemetry,
+            response_generation=response_gen_metrics
+        )
+
+        logger.info(f"[EngineeringAgentService] Telemetry trace '{trace_id}' recorded for conversation '{conversation_id}'.")
+
         return EngineeringAgentResponse(
             success=state.error is None,
             conversation_id=state.conversation_id,
@@ -255,6 +291,8 @@ class EngineeringAgentService:
             actions=actions,
             tools_executed=tools_executed,
             execution_time_ms=round(duration_ms, 2),
+            llm_diagnostics=state.get("llm_diagnostics"),
+            execution_telemetry=telemetry_trace,
             error=state.error
         )
 

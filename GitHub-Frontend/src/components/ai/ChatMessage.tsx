@@ -22,6 +22,8 @@ import {
   Sparkles
 } from 'lucide-react';
 
+import { MarkdownRenderer } from './MarkdownRenderer';
+
 interface ChatMessageProps {
   message: ChatMessageItem;
   onRetry?: (messageId: string) => void;
@@ -137,9 +139,11 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
         )}
 
         {/* Main Text Content */}
-        <div className="whitespace-pre-wrap leading-relaxed">
-          {message.content}
-        </div>
+        {isUser ? (
+          <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
+        ) : (
+          <MarkdownRenderer content={message.content} />
+        )}
 
         {/* 1. Metrics Grid (if response contains metrics) */}
         {!isUser && message.metrics && message.metrics.length > 0 && (

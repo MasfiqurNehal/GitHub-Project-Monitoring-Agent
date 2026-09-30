@@ -3,6 +3,7 @@ Response Generator Engine for Engineering AI Agent.
 Coordinates factual synthesis, empty-data handling, anti-hallucination verification,
 CoT suppression, and structured FactCheckedResponse packaging.
 """
+import time
 import re
 import json
 from typing import Dict, Any, List, Optional
@@ -21,6 +22,7 @@ from app.engineering_agent.response_generation.prompts import (
 )
 from app.engineering_agent.freshness import freshness_evaluator, FreshnessMetadata
 from app.engineering_agent.llm import agent_llm_factory, LLMError
+from app.config import settings
 from app.utils.logger import logger
 
 
@@ -65,6 +67,95 @@ class ResponseGenerator:
             break
 
         return all_empty
+
+    def _format_clean_fallback_markdown(
+        self,
+        selected_agent: str,
+        tenant_id: str,
+        telemetry: Dict[str, Any],
+        entities: Dict[str, List[str]]
+    ) -> str:
+        """Format clean, human-readable natural language Markdown summary when LLM fallback occurs."""
+        lines = []
+        proj_name = (entities.get("projects") or [None])[0] or "your project"
+        repos = entities.get("repositories", [])
+        devs = entities.get("developers", [])
+
+        # Project Overview extraction
+        proj_overview = telemetry.get("project_overview") or {}
+        repo_count = proj_overview.get("repository_count") or len(repos) or len(telemetry.get("repositories", [])) or 1
+        dev_count = proj_overview.get("contributor_count") or len(devs) or len(telemetry.get("developers", [])) or 1
+
+        lines.append("## Project Summary\n")
+        lines.append(f"The **{proj_name}** currently contains **{repo_count} repository/repositories** and **{dev_count} active contributor(s)**.\n")
+
+        # Repositories Table / List
+        repo_items = telemetry.get("repositories") or []
+        if isinstance(repo_items, list) and repo_items:
+            lines.append("### Repositories\n")
+            lines.append("| Repository | Commits | PRs | Issues |")
+            lines.append("|---|---:|---:|---:|")
+            for r in repo_items:
+                if isinstance(r, dict):
+                    r_name = r.get("name") or r.get("repository_name") or "Unknown"
+                    r_commits = r.get("commits_count") or r.get("commit_count") or 0
+                    r_prs = r.get("pull_requests_count") or r.get("pr_count") or 0
+                    r_issues = r.get("issues_count") or r.get("issue_count") or 0
+                    lines.append(f"| `{r_name}` | {r_commits} | {r_prs} | {r_issues} |")
+            lines.append("")
+        elif "commits" in telemetry and isinstance(telemetry["commits"], list):
+            commits = telemetry["commits"]
+            lines.append("### Repositories\n")
+            lines.append("| Repository | Commits | PRs | Issues |")
+            lines.append("|---|---:|---:|---:|")
+            main_repo = repos[0] if repos else "Monitored Repository"
+            prs_cnt = len(telemetry.get("pull_requests", [])) if isinstance(telemetry.get("pull_requests"), list) else 0
+            issues_cnt = len(telemetry.get("issues", [])) if isinstance(telemetry.get("issues"), list) else 0
+            lines.append(f"| `{main_repo}` | {len(commits)} | {prs_cnt} | {issues_cnt} |")
+            lines.append("")
+
+        # Code Churn Section
+        if "code_churn" in telemetry and isinstance(telemetry["code_churn"], dict):
+            churn = telemetry["code_churn"]
+            added = churn.get("linesAdded") or churn.get("lines_added", 0)
+            deleted = churn.get("linesDeleted") or churn.get("lines_deleted", 0)
+            lines.append("### Code Impact & Churn\n")
+            lines.append(f"- **Lines Added**: `+{added:,}`")
+            lines.append(f"- **Lines Deleted**: `-{deleted:,}`")
+            lines.append("")
+
+        # Contributor Activity Section
+        if "developers" in telemetry and isinstance(telemetry["developers"], list):
+            dev_list = telemetry["developers"]
+            lines.append("### Contributor Activity\n")
+            for d in dev_list[:5]:
+                if isinstance(d, dict):
+                    d_name = d.get("name") or d.get("login") or d.get("githubUserId") or "Contributor"
+                    d_commits = d.get("commits_count") or d.get("commitsCount") or d.get("commit_count") or 0
+                    d_prs = d.get("prs_count") or d.get("pull_requests_count") or 0
+                    lines.append(f"**{d_name}**")
+                    lines.append(f"- Commits: **{d_commits}**")
+                    lines.append(f"- Pull Requests: **{d_prs}**")
+            lines.append("")
+
+        # Tool & Upstream API Failure Notices (Phase 25L)
+        if "github_api_error" in telemetry or telemetry.get("error") == "github_api_failed":
+            lines.append("> ⚠️ **Upstream GitHub API Notice**: Unable to fetch live activity from GitHub API. No hypothetical data has been substituted.\n")
+
+        tool_failures = telemetry.get("failed_tools") or []
+        if tool_failures and isinstance(tool_failures, list):
+            lines.append("### ⚠️ Information Retrieval Warning\n")
+            for ft in tool_failures:
+                t_name = ft.get("tool_name") if isinstance(ft, dict) else str(ft)
+                t_err = ft.get("error") if isinstance(ft, dict) else "execution error"
+                lines.append(f"- Unable to retrieve complete information from tool `{t_name}`: {t_err}")
+            lines.append("")
+
+        # Data Freshness Section
+        lines.append("### Data Freshness\n")
+        lines.append("Data source: live/project monitoring backend.\n")
+
+        return "\n".join(lines).strip()
 
     def extract_metrics(self, state: GraphState) -> List[MetricItem]:
         """Extract structured metrics from state telemetry and specialist results."""
@@ -158,6 +249,38 @@ class ResponseGenerator:
                 freshness_tier=state.get("data_freshness_tier")
             )
 
+        # 0.5 Phase 25L Failure Handling: Project Not Found & Unconnected Repository
+        if telemetry.get("error") == "project_not_found" or state.get("project_not_found"):
+            proj_target = (entities_involved.get("projects") or ["requested"])[0]
+            not_found_md = f"### ⚠️ Project Not Found\n\nThe requested project **{proj_target}** could not be found in your organization.\n\n*Please verify the project title or check your dashboard projects list.*"
+            return FactCheckedResponse(
+                summary=f"The requested project '{proj_target}' could not be found.",
+                markdown_content=not_found_md,
+                data_availability=DataAvailabilityStatus.EMPTY,
+                key_metrics=[],
+                entities_involved=entities_involved,
+                time_period=time_period,
+                grounding_sources=grounding_sources,
+                actions=[{"label": "View Projects", "href": "/projects"}],
+                freshness_tier=state.get("data_freshness_tier")
+            )
+
+        if telemetry.get("error") == "repo_not_in_project" or state.get("repo_not_in_project"):
+            repo_target = (entities_involved.get("repositories") or ["requested"])[0]
+            proj_target = (entities_involved.get("projects") or ["requested"])[0]
+            unconnected_md = f"### ⚠️ Repository Not Connected to Project\n\nThe repository `{repo_target}` is not connected to project **{proj_target}**. Unrelated repository data was excluded to preserve answer accuracy."
+            return FactCheckedResponse(
+                summary=f"Repository '{repo_target}' is not connected to project '{proj_target}'.",
+                markdown_content=unconnected_md,
+                data_availability=DataAvailabilityStatus.EMPTY,
+                key_metrics=[],
+                entities_involved=entities_involved,
+                time_period=time_period,
+                grounding_sources=grounding_sources,
+                actions=[{"label": "View Repositories", "href": "/repositories"}],
+                freshness_tier=state.get("data_freshness_tier")
+            )
+
         # 1. Handle Empty Telemetry (Enforce Zero Data Fabrication)
         if self.check_telemetry_emptiness(telemetry) and selected_agent not in ("Guardrail_Reject", "Clarification_Router"):
             logger.info(f"[ResponseGenerator] Empty telemetry detected for query '{user_request}'. Enforcing zero fabrication.")
@@ -176,7 +299,7 @@ class ResponseGenerator:
                     pass
 
             return FactCheckedResponse(
-                summary="No engineering activity records were found for the specified criteria.",
+                summary="I don't have enough current data to answer that accurately.",
                 markdown_content=empty_markdown,
                 data_availability=DataAvailabilityStatus.EMPTY,
                 key_metrics=[],
@@ -220,22 +343,35 @@ class ResponseGenerator:
         ]
 
         markdown_content = ""
+        llm_diag: Dict[str, Any] = {
+            "provider": getattr(settings, "ENGINEERING_AGENT_LLM_PROVIDER", "unknown"),
+            "model": getattr(settings, "ENGINEERING_AGENT_LLM_MODEL", "unknown"),
+            "endpoint": f"{getattr(settings, 'ENGINEERING_AGENT_LLM_BASE_URL', '').rstrip('/')}/chat/completions",
+            "status": "pending",
+            "latency_ms": 0.0
+        }
+        t_llm_start = time.time()
+
         try:
             provider = agent_llm_factory.get_provider()
             completion = await provider.complete(messages=messages, temperature=0.2)
+            llm_diag["latency_ms"] = round((time.time() - t_llm_start) * 1000.0, 2)
+            llm_diag["status"] = "success"
+            llm_diag["provider"] = provider.provider_name
+            llm_diag["model"] = provider.model
             markdown_content = self.clean_chain_of_thought(completion.content or "")
         except LLMError as e:
+            llm_diag["latency_ms"] = round((time.time() - t_llm_start) * 1000.0, 2)
+            llm_diag["status"] = "fallback"
+            llm_diag["error_reason"] = f"{e.__class__.__name__}: {e.message}"
             logger.warning(f"[ResponseGenerator] LLM synthesis failed ({e.__class__.__name__}): {e.message}. Using deterministic fallback.")
-            markdown_content = (
-                f"### ⚙️ Engineering Analysis ({selected_agent})\n\n"
-                f"Telemetry gathered successfully for tenant `{tenant_id}`.\n\n"
-                f"- **Data Points**: {len(telemetry)} items recorded.\n"
-                f"- **Specialist**: {selected_agent}\n\n"
-                f"```json\n{telemetry_str[:800]}\n```"
-            )
+            markdown_content = self._format_clean_fallback_markdown(selected_agent, tenant_id, telemetry, entities_involved)
         except Exception as e:
+            llm_diag["latency_ms"] = round((time.time() - t_llm_start) * 1000.0, 2)
+            llm_diag["status"] = "fallback"
+            llm_diag["error_reason"] = f"Unexpected: {str(e)}"
             logger.error(f"[ResponseGenerator] Unexpected synthesis error: {e}")
-            markdown_content = f"### ⚙️ Engineering Telemetry ({selected_agent})\n\nAnalysis gathered successfully."
+            markdown_content = self._format_clean_fallback_markdown(selected_agent, tenant_id, telemetry, entities_involved)
 
         # 3. Append Freshness Provenance Footnote
         if freshness_dict and "Data Source:" not in markdown_content:
@@ -259,7 +395,8 @@ class ResponseGenerator:
             time_period=time_period,
             grounding_sources=grounding_sources,
             actions=state.get("actions") or [],
-            freshness_tier=state.get("data_freshness_tier")
+            freshness_tier=state.get("data_freshness_tier"),
+            llm_diagnostics=llm_diag
         )
 
 

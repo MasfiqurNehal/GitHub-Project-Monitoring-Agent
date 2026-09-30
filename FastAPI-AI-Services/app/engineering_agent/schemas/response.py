@@ -31,6 +31,16 @@ class ToolExecutionSummary(BaseModel):
     status: str = Field(..., description="Success or error status")
     duration_ms: float = Field(..., description="Execution time in milliseconds")
 
+class ExecutionTelemetryTrace(BaseModel):
+    """Internal execution telemetry trace safely captured for every Engineering Agent request (Phase 25K)."""
+    trace_id: str = Field(..., description="Unique trace identifier")
+    intent: Optional[str] = Field(None, description="Detected intent category")
+    llm_provider: str = Field(..., description="LLM provider name")
+    llm_model: str = Field(..., description="LLM model name")
+    llm_called: bool = Field(True, description="Whether an LLM endpoint was called")
+    tools_called: List[Dict[str, Any]] = Field(default_factory=list, description="Safe summary of tool calls")
+    response_generation: Dict[str, Any] = Field(default_factory=dict, description="Response generation step metrics")
+
 class EngineeringAgentResponse(BaseModel):
     """Main response envelope returned by the Engineering AI Agent."""
     success: bool = Field(True, description="Indicates whether the agent executed successfully")
@@ -44,4 +54,6 @@ class EngineeringAgentResponse(BaseModel):
     actions: List[ActionItem] = Field(default_factory=list, description="Recommended next actions")
     tools_executed: List[ToolExecutionSummary] = Field(default_factory=list, description="Public summary of tools used")
     execution_time_ms: float = Field(0.0, description="Total agent execution duration in milliseconds")
+    llm_diagnostics: Optional[Dict[str, Any]] = Field(None, description="Safe LLM runtime execution diagnostics")
+    execution_telemetry: Optional[ExecutionTelemetryTrace] = Field(None, description="Safe internal execution telemetry trace (Phase 25K)")
     error: Optional[str] = Field(None, description="Error message if execution encountered a failure")

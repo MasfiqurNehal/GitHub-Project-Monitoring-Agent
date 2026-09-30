@@ -381,7 +381,7 @@ async def multi_agent_composite_node(state: GraphState) -> Dict[str, Any]:
     """
     Executes a multi-specialist workflow for cross-cutting queries:
     1. Project Agent identifies project repositories.
-    2. Concurrently runs Developer Agent & Commit Agent via asyncio.gather.
+    2. Concurrently runs Developer, Commit, and Pull Request Agents via asyncio.gather.
     3. Runs Analytics Agent to aggregate KPIs and rankings across repositories.
     """
     agent_state = _get_agent_state_from_graph(state)
@@ -391,10 +391,11 @@ async def multi_agent_composite_node(state: GraphState) -> Dict[str, Any]:
     # Step 1: Project Agent scope resolution
     proj_res = await project_agent.analyze(agent_state, entities)
 
-    # Step 2: Parallel execution of Developer Agent and Commit Agent
+    # Step 2: Parallel execution of Developer, Commit, and PR Agents
     dev_task = developer_agent.analyze(agent_state, entities)
     commit_task = commit_agent.analyze(agent_state, entities)
-    dev_res, commit_res = await asyncio.gather(dev_task, commit_task, return_exceptions=False)
+    pr_task = pull_request_agent.analyze(agent_state, entities)
+    dev_res, commit_res, pr_res = await asyncio.gather(dev_task, commit_task, pr_task, return_exceptions=False)
 
     # Step 3: Analytics Agent aggregation
     analytics_res = await analytics_agent.analyze(agent_state, entities)
@@ -404,6 +405,7 @@ async def multi_agent_composite_node(state: GraphState) -> Dict[str, Any]:
         "project_scope": proj_res.data,
         "developer_velocity": dev_res.data,
         "commit_metrics": commit_res.data,
+        "pull_requests": pr_res.data,
         "analytics_summary": analytics_res.data
     }
 
@@ -412,6 +414,7 @@ async def multi_agent_composite_node(state: GraphState) -> Dict[str, Any]:
         proj_res.metrics +
         dev_res.metrics +
         commit_res.metrics +
+        pr_res.metrics +
         analytics_res.metrics
     )
 
@@ -419,15 +422,17 @@ async def multi_agent_composite_node(state: GraphState) -> Dict[str, Any]:
         state.get("actions", []) +
         proj_res.actions +
         dev_res.actions +
+        pr_res.actions +
         analytics_res.actions
     )
 
     return {
-        "selected_agent": "Multi-Agent Composite (Project + Developer + Commit + Analytics)",
+        "selected_agent": "Multi-Agent Composite (Project + Developer + Commit + PR + Analytics)",
         "active_specialists": [
             project_agent.name,
             developer_agent.name,
             commit_agent.name,
+            pull_request_agent.name,
             analytics_agent.name
         ],
         "telemetry_data": combined_telemetry,
@@ -465,7 +470,8 @@ async def generate_response_node(state: GraphState) -> Dict[str, Any]:
     return {
         "final_response": fact_checked_resp.markdown_content,
         "metrics": [m.model_dump() for m in fact_checked_resp.key_metrics] if fact_checked_resp.key_metrics else state.get("metrics", []),
-        "actions": fact_checked_resp.actions or state.get("actions", [])
+        "actions": fact_checked_resp.actions or state.get("actions", []),
+        "llm_diagnostics": fact_checked_resp.llm_diagnostics
     }
 
 

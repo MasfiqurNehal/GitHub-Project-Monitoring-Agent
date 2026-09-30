@@ -38,4 +38,5 @@ class FactCheckedResponse(BaseModel):
     grounding_sources: List[str] = Field(default_factory=list, description="Tools or endpoints providing factual grounding")
     actions: List[Dict[str, str]] = Field(default_factory=list, description="Interactive quick-links or follow-up actions")
     freshness_tier: Optional[str] = Field(None, description="Freshness tier (historical, recent_sync, live_current)")
+    llm_diagnostics: Optional[Dict[str, Any]] = Field(None, description="Safe LLM runtime execution diagnostics (provider, model, status, latency_ms)")
     as_of: str = Field(default_factory=lambda: datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"))
