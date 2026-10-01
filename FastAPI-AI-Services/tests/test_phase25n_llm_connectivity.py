@@ -28,10 +28,14 @@ class DummySuccessProvider(BaseAgentLLMProvider):
     def provider_name(self) -> str:
         return "mock-betopia"
 
+    async def test_connection(self) -> bool:
+        return True
+
     async def complete(self, messages, temperature=0.0, max_tokens=None, **kwargs):
         return LLMCompletionResponse(
             content="PONG - Diagnostic Probe OK",
             model="openai/gpt-5.4-mini",
+            provider="mock-betopia",
             latency_ms=142.5
         )
 
@@ -42,6 +46,9 @@ class DummyAuthErrorProvider(BaseAgentLLMProvider):
     def provider_name(self) -> str:
         return "mock-betopia"
 
+    async def test_connection(self) -> bool:
+        return False
+
     async def complete(self, messages, temperature=0.0, max_tokens=None, **kwargs):
         raise LLMAuthenticationError("Authentication failed (HTTP 401): Invalid API key")
 
@@ -51,6 +58,9 @@ class DummyTimeoutProvider(BaseAgentLLMProvider):
     @property
     def provider_name(self) -> str:
         return "mock-betopia"
+
+    async def test_connection(self) -> bool:
+        return False
 
     async def complete(self, messages, temperature=0.0, max_tokens=None, **kwargs):
         raise LLMTimeoutError("LLM request timed out after 30.0s")

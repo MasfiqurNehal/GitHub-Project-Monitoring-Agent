@@ -493,19 +493,19 @@ def route_after_intent(state: GraphState) -> str:
         return "multi_agent"
 
     intent = state.get("detected_intent")
-    if intent == IntentCategory.REPOSITORY_INFO.value:
+    if intent in (IntentCategory.REPOSITORY_INFO.value, IntentCategory.REPOSITORY_QUERY.value):
         return "repository"
-    elif intent in (IntentCategory.COMMIT_INFO.value, IntentCategory.CODE_IMPACT.value):
+    elif intent in (IntentCategory.COMMIT_INFO.value, IntentCategory.COMMIT_QUERY.value, IntentCategory.CODE_IMPACT.value, IntentCategory.ENGINEERING_ANALYSIS.value):
         return "commit"
-    elif intent == IntentCategory.PULL_REQUEST_INFO.value:
+    elif intent in (IntentCategory.PULL_REQUEST_INFO.value, IntentCategory.PULL_REQUEST_QUERY.value):
         return "pull_request"
-    elif intent == IntentCategory.ISSUE_INFO.value:
+    elif intent in (IntentCategory.ISSUE_INFO.value, IntentCategory.ISSUE_QUERY.value):
         return "issue"
-    elif intent == IntentCategory.DEVELOPER_INFO.value:
+    elif intent in (IntentCategory.DEVELOPER_INFO.value, IntentCategory.DEVELOPER_QUERY.value):
         return "developer"
-    elif intent == IntentCategory.PROJECT_INFO.value:
+    elif intent in (IntentCategory.PROJECT_INFO.value, IntentCategory.PROJECT_QUERY.value):
         return "project"
-    elif intent == IntentCategory.GENERAL_ENGINEERING_QA.value:
+    elif intent in (IntentCategory.GENERAL_ENGINEERING_QA.value, IntentCategory.GENERAL_TECHNICAL_QA.value):
         return "general_it_knowledge"
     else:
         return "analytics"

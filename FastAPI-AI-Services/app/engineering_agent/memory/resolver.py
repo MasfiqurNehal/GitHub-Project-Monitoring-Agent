@@ -109,7 +109,10 @@ class MemoryContextResolver:
                 try:
                     inherited_intent = IntentCategory(inherited_intent_str)
                 except ValueError:
-                    pass
+                    try:
+                        inherited_intent = IntentCategory[inherited_intent_str.upper()]
+                    except (KeyError, AttributeError):
+                        pass
 
             # If current query specifies a metric (e.g. "What about pull requests last week?"), use that intent
             final_intent = current_intent or inherited_intent
@@ -160,6 +163,21 @@ class MemoryContextResolver:
                     updated_timeframe=current_entities.timeframe or session.last_timeframe,
                     confidence_boost=0.88,
                     reasoning="Resolved developer pronoun antecedent from memory"
+                )
+
+        if self._has_proj_pronoun(norm_query) and not current_entities.project_name:
+            inherited_proj = session.last_project_name
+            if inherited_proj:
+                logger.info(f"[MemoryContextResolver] Resolved pronoun 'this/the project' -> Project: '{inherited_proj}'")
+                return ResolvedFollowUpContext(
+                    is_follow_up=True,
+                    inherited_intent=current_intent or (IntentCategory(session.last_intent) if session.last_intent else None),
+                    inherited_repository_name=session.last_repository_name,
+                    inherited_project_name=inherited_proj,
+                    inherited_developer_name=session.last_developer_name,
+                    updated_timeframe=current_entities.timeframe or session.last_timeframe,
+                    confidence_boost=0.88,
+                    reasoning="Resolved project pronoun antecedent from memory"
                 )
 
         # Case 3: Entity Pivot with Intent Continuity (e.g. Turn 1: "Show frontend commits", Turn 2: "What about backend repo?")

@@ -3,6 +3,7 @@ Commit Specialist Agent.
 Specialized in commit history, commit frequency, author attribution, and code changes.
 """
 import time
+import asyncio
 from typing import Optional, Dict, Any, List
 
 from app.engineering_agent.agents.base import BaseSpecialistAgent
@@ -50,18 +51,27 @@ class CommitAgent(BaseSpecialistAgent):
                     # Default to first repository in tenant
                     target_repo_id = repos_res.data[0].get("id")
 
-        # 2. Fetch commits for the target repository
+        # 2. Fetch commits and churn for the target repository concurrently (Part 8)
         if target_repo_id:
-            commits_res = await self.call_tool(
+            timeframe_preset = entities.timeframe or "30d" if entities else "30d"
+            commits_task = self.call_tool(
                 "get_repository_commits",
                 {"repository_id": target_repo_id, "limit": 50},
                 state
             )
-            tools_used.append("get_repository_commits")
+            churn_task = self.call_tool(
+                "get_code_impact",
+                {"repository_id": target_repo_id, "timeframe": timeframe_preset},
+                state
+            )
+            tools_used.extend(["get_repository_commits", "get_code_impact"])
+
+            commits_res, churn_res = await asyncio.gather(commits_task, churn_task, return_exceptions=False)
+
             if commits_res.success and isinstance(commits_res.data, list):
                 data["commits"] = commits_res.data
                 metrics.append({"label": "Recent Commits", "value": len(commits_res.data), "color": "emerald"})
-                
+
                 # Fetch details for the latest commit if available
                 if commits_res.data:
                     latest_commit_id = commits_res.data[0].get("sha") or commits_res.data[0].get("id")
@@ -75,13 +85,6 @@ class CommitAgent(BaseSpecialistAgent):
                         if commit_detail_res.success:
                             data["latest_commit_details"] = commit_detail_res.data
 
-            # 3. Fetch code impact / churn
-            churn_res = await self.call_tool(
-                "get_code_impact",
-                {"repository_id": target_repo_id, "timeframe": entities.timeframe or "30d" if entities else "30d"},
-                state
-            )
-            tools_used.append("get_code_impact")
             if churn_res.success and isinstance(churn_res.data, dict):
                 data["code_churn"] = churn_res.data
                 churn_data = churn_res.data

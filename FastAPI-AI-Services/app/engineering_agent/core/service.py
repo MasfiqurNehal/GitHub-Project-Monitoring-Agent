@@ -161,9 +161,12 @@ class EngineeringAgentService:
         # 8. Transform Output Artifacts & Telemetry
         tools_executed = [
             ToolExecutionSummary(
-                tool_name=t.tool_name,
-                status="success" if t.success else "error",
-                duration_ms=round(t.duration_ms, 2)
+                tool_name=getattr(t, "tool_name", t.get("tool_name", "unknown") if isinstance(t, dict) else "unknown"),
+                status="success" if (getattr(t, "success", True) if not isinstance(t, dict) else t.get("success", True)) else "error",
+                duration_ms=round(getattr(t, "duration_ms", 0.0) if not isinstance(t, dict) else float(t.get("duration_ms", 0.0)), 2),
+                start_time=getattr(t, "start_time", None) if not isinstance(t, dict) else t.get("start_time"),
+                end_time=getattr(t, "end_time", None) if not isinstance(t, dict) else t.get("end_time"),
+                error=getattr(t, "error_message", None) if not isinstance(t, dict) else t.get("error_message")
             )
             for t in state.tool_results
         ]
@@ -245,55 +248,123 @@ class EngineeringAgentService:
         except Exception as mem_err:
             logger.warning(f"[EngineeringAgentService] Failed to record turn in memory store: {mem_err}")
 
-        # 11. Construct safe internal tool execution telemetry trace (Phase 25K)
+        # 11. Construct safe structured execution telemetry trace (Phase 25K & Part 6)
         trace_id = f"trace-{uuid.uuid4().hex[:16]}"
-        llm_diag = state.get("llm_diagnostics") or {}
+        request_id = f"req-{uuid.uuid4().hex[:12]}"
+        if isinstance(state, dict):
+            llm_diag = state.get("llm_diagnostics") or {}
+            detected_intent = state.get("detected_intent")
+            selected_agent_name = state.get("selected_agent", "")
+            raw_tools = state.get("tool_results", [])
+        else:
+            llm_diag = getattr(state, "llm_diagnostics", {}) or {}
+            detected_intent = getattr(state, "detected_intent", None)
+            selected_agent_name = getattr(state, "selected_agent", "") or ""
+            raw_tools = getattr(state, "tool_results", [])
+
         provider_name = llm_diag.get("provider") or getattr(settings, "ENGINEERING_AGENT_LLM_PROVIDER", "unknown")
         model_name = llm_diag.get("model") or getattr(settings, "ENGINEERING_AGENT_LLM_MODEL", "unknown")
         llm_status = llm_diag.get("status")
-        llm_called_flag = llm_status in ("success", "fallback") or True
+        llm_called_flag = bool(llm_status in ("success", "fallback") or llm_diag.get("called", True))
+        llm_latency_ms = round(float(llm_diag.get("latency_ms", 0.0)), 2)
 
-        tools_called_telemetry = [
-            {
-                "name": t.tool_name,
-                "duration_ms": round(t.duration_ms, 2),
-                "success": t.success
-            }
-            for t in state.tool_results
-        ]
+        # Route categorization
+        if detected_intent in ("general_technical_qa", "general_engineering_qa"):
+            route_type = "direct_llm"
+        elif "Multi-Agent" in selected_agent_name:
+            route_type = "multi_agent"
+        elif "Clarification" in selected_agent_name:
+            route_type = "clarification"
+        elif "Guardrail" in selected_agent_name or "Security" in selected_agent_name:
+            route_type = "guardrail"
+        else:
+            route_type = "tool_first"
+
+        tools_executed_names: List[str] = []
+        tools_called_telemetry = []
+        total_tool_latency = 0.0
+
+        for t in raw_tools:
+            if hasattr(t, "tool_name"):
+                t_name = t.tool_name
+                t_dur = round(getattr(t, "duration_ms", 0.0), 2)
+                t_succ = getattr(t, "success", True)
+            elif isinstance(t, dict):
+                t_name = t.get("name") or t.get("tool_name", "unknown")
+                t_dur = round(float(t.get("duration_ms", 0.0)), 2)
+                t_succ = bool(t.get("success", True))
+            else:
+                t_name = "unknown"
+                t_dur = 0.0
+                t_succ = True
+
+            tools_executed_names.append(t_name)
+            total_tool_latency += t_dur
+            tools_called_telemetry.append({
+                "name": t_name,
+                "duration_ms": t_dur,
+                "success": t_succ
+            })
 
         response_gen_metrics = {
             "llm_called": llm_called_flag,
-            "duration_ms": round(llm_diag.get("latency_ms", 0.0), 2)
+            "duration_ms": llm_latency_ms
         }
 
+        resp_error = state.get("error") if isinstance(state, dict) else getattr(state, "error", None)
+
         telemetry_trace = ExecutionTelemetryTrace(
+            request_id=request_id,
             trace_id=trace_id,
-            intent=state.detected_intent or "unknown",
+            query=scrubbed_user_message,
+            intent=detected_intent or "unknown",
+            route=route_type,
             llm_provider=provider_name,
             llm_model=model_name,
             llm_called=llm_called_flag,
+            llm_latency_ms=llm_latency_ms,
+            tools_selected=tools_executed_names,
+            tools_executed=tools_executed_names,
             tools_called=tools_called_telemetry,
+            tool_latency_ms=round(total_tool_latency, 2),
+            database_latency_ms=0.0,
+            total_latency_ms=round(duration_ms, 2),
+            success=resp_error is None,
+            error_type=type(resp_error).__name__ if resp_error else None,
             response_generation=response_gen_metrics
         )
 
-        logger.info(f"[EngineeringAgentService] Telemetry trace '{trace_id}' recorded for conversation '{conversation_id}'.")
+        logger.info(
+            f"[EngineeringAgentService] Request '{request_id}' (Trace: '{trace_id}') | "
+            f"Intent: {detected_intent} | Route: {route_type} | Tools: {len(tools_executed_names)} | "
+            f"LLM: {provider_name}/{model_name} ({llm_latency_ms}ms) | Total: {duration_ms:.2f}ms"
+        )
+
+        resp_error = state.get("error") if isinstance(state, dict) else getattr(state, "error", None)
+        resp_conv_id = state.get("conversation_id", conversation_id) if isinstance(state, dict) else getattr(state, "conversation_id", conversation_id)
+        resp_msg_id = state.get("message_id") if isinstance(state, dict) else getattr(state, "message_id", None)
+        if not resp_msg_id:
+            resp_msg_id = f"eng-msg-{uuid.uuid4().hex[:12]}"
+
+        resp_response = state.get("final_response") if isinstance(state, dict) else getattr(state, "final_response", None)
+        resp_detected_intent = state.get("detected_intent") if isinstance(state, dict) else getattr(state, "detected_intent", None)
+        resp_selected_agent = state.get("selected_agent") if isinstance(state, dict) else getattr(state, "selected_agent", None)
 
         return EngineeringAgentResponse(
-            success=state.error is None,
-            conversation_id=state.conversation_id,
-            message_id=state.message_id,
-            response=state.final_response or "Analysis complete.",
-            detected_intent=state.detected_intent,
-            selected_agent=state.selected_agent,
+            success=resp_error is None,
+            conversation_id=resp_conv_id,
+            message_id=resp_msg_id,
+            response=resp_response or "Analysis complete.",
+            detected_intent=resp_detected_intent,
+            selected_agent=resp_selected_agent,
             metrics=metrics,
             artifacts=artifacts,
             actions=actions,
             tools_executed=tools_executed,
             execution_time_ms=round(duration_ms, 2),
-            llm_diagnostics=state.get("llm_diagnostics"),
+            llm_diagnostics=llm_diag,
             execution_telemetry=telemetry_trace,
-            error=state.error
+            error=resp_error
         )
 
 

@@ -13,6 +13,7 @@ import {
 } from '../lib/api/ai';
 
 export interface AgentContextScope {
+  conversationId?: string;
   projectId?: string;
   projectName?: string;
   repositoryId?: string;
@@ -38,7 +39,9 @@ export const DRAFT_WELCOME_THREAD: ConversationThread = {
 
 export function useAIAgent(initialContext?: AgentContextScope) {
   const [conversations, setConversations] = useState<ConversationThread[]>([]);
-  const [activeConversationId, setActiveConversationId] = useState<string>('');
+  const [activeConversationId, setActiveConversationId] = useState<string>(
+    initialContext?.conversationId || ''
+  );
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isConversationsLoading, setIsConversationsLoading] = useState<boolean>(true);
   const [isMessagesLoading, setIsMessagesLoading] = useState<boolean>(false);
@@ -56,7 +59,7 @@ export function useAIAgent(initialContext?: AgentContextScope) {
     }
   }, [initialContext?.projectId, initialContext?.repositoryId, initialContext?.developerId]);
 
-  // Load persistent conversations on initial mount
+  // Load persistent conversations on initial mount without forcing old conversation selection
   useEffect(() => {
     let isMounted = true;
     async function loadInitialConversations() {
@@ -65,28 +68,25 @@ export function useAIAgent(initialContext?: AgentContextScope) {
       try {
         const fetched = await listEngineeringConversations();
         if (isMounted) {
-          if (fetched.length > 0) {
-            setConversations(fetched);
-            const firstId = fetched[0].id;
-            setActiveConversationId(firstId);
+          setConversations(fetched);
 
-            // Fetch full ordered messages for the first active conversation
+          // If a specific conversationId was requested in initialContext, load it
+          if (initialContext?.conversationId) {
+            const requestedId = initialContext.conversationId;
+            setActiveConversationId(requestedId);
             setIsMessagesLoading(true);
             try {
-              const details = await getEngineeringConversation(firstId);
+              const details = await getEngineeringConversation(requestedId);
               if (details && isMounted) {
                 setConversations((prev) =>
-                  prev.map((c) => (c.id === firstId ? { ...c, ...details } : c))
+                  prev.map((c) => (c.id === requestedId ? { ...c, ...details } : c))
                 );
               }
             } catch (err) {
-              console.warn('[useAIAgent] Failed to load messages for initial conversation:', err);
+              console.warn('[useAIAgent] Failed to load requested conversation:', err);
             } finally {
               if (isMounted) setIsMessagesLoading(false);
             }
-          } else {
-            setConversations([]);
-            setActiveConversationId('');
           }
         }
       } catch (err: any) {
@@ -103,9 +103,9 @@ export function useAIAgent(initialContext?: AgentContextScope) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [initialContext?.conversationId]);
 
-  // Handler to switch active conversation and fetch its historical messages
+  // Handler to switch active conversation and fetch its historical messages if not cached
   const handleSelectConversation = useCallback(
     async (convId: string) => {
       if (!convId) {
@@ -113,6 +113,17 @@ export function useAIAgent(initialContext?: AgentContextScope) {
         return;
       }
       setActiveConversationId(convId);
+
+      // Check if messages already cached
+      setConversations((prev) => {
+        const existing = prev.find((c) => c.id === convId);
+        if (existing && existing.messages && existing.messages.length > 1) {
+          // Already cached messages present
+          return prev;
+        }
+        return prev;
+      });
+
       setIsMessagesLoading(true);
       try {
         const details = await getEngineeringConversation(convId);
@@ -130,10 +141,11 @@ export function useAIAgent(initialContext?: AgentContextScope) {
     []
   );
 
-  // Derive the active conversation object
+  // Derive the active conversation object (supporting optimistic draft updates)
   const activeConversation: ConversationThread = useMemo(() => {
     if (!activeConversationId) {
-      return DRAFT_WELCOME_THREAD;
+      const draftThread = conversations.find((c) => c.id === '');
+      return draftThread || DRAFT_WELCOME_THREAD;
     }
     const found = conversations.find((c) => c.id === activeConversationId);
     return found || DRAFT_WELCOME_THREAD;

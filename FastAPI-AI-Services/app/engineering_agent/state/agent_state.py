@@ -17,13 +17,15 @@ class ReasoningStep:
 
 @dataclass
 class ToolExecutionResult:
-    """Record of an individual tool invocation."""
+    """Record of an individual tool invocation with timestamp telemetry."""
     tool_name: str
     input_args: Dict[str, Any]
     output_data: Any
     success: bool = True
     error_message: Optional[str] = None
     duration_ms: float = 0.0
+    start_time: Optional[float] = None
+    end_time: Optional[float] = None
 
 @dataclass
 class AgentState:
@@ -80,16 +82,20 @@ class AgentState:
         output_data: Any,
         success: bool = True,
         error_message: Optional[str] = None,
-        duration_ms: float = 0.0
+        duration_ms: float = 0.0,
+        start_time: Optional[float] = None,
+        end_time: Optional[float] = None
     ) -> None:
-        """Record the output of a tool call."""
+        """Record the output of a tool call with timestamps."""
         res = ToolExecutionResult(
             tool_name=tool_name,
             input_args=input_args,
             output_data=output_data,
             success=success,
             error_message=error_message,
-            duration_ms=duration_ms
+            duration_ms=duration_ms,
+            start_time=start_time,
+            end_time=end_time
         )
         self.tool_results.append(res)
 

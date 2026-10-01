@@ -3,6 +3,7 @@ Project Specialist Agent.
 Specialized in aggregating multiple repositories belonging to a project, project health, and cross-repo project scope.
 """
 import time
+import asyncio
 from typing import Optional, Dict, Any, List
 
 from app.engineering_agent.agents.base import BaseSpecialistAgent
@@ -49,26 +50,28 @@ class ProjectAgent(BaseSpecialistAgent):
                     if match:
                         target_project_id = match.get("id")
 
-        # 2. Fetch specific Project details, linked repositories, and aggregated statistics
+        # 2. Fetch specific Project details, linked repositories, and aggregated statistics concurrently (Part 8)
         if target_project_id:
-            proj_res = await self.call_tool("get_project", {"project_id": target_project_id}, state)
-            tools_used.append("get_project")
-            if proj_res.success:
+            timeframe_preset = entities.timeframe or "30d" if entities else "30d"
+            proj_task = self.call_tool("get_project", {"project_id": target_project_id}, state)
+            repos_task = self.call_tool("get_project_repositories", {"project_id": target_project_id}, state)
+            stats_task = self.call_tool(
+                "get_project_statistics",
+                {"project_id": target_project_id, "preset": timeframe_preset},
+                state
+            )
+            tools_used.extend(["get_project", "get_project_repositories", "get_project_statistics"])
+
+            proj_res, repos_res, stats_res = await asyncio.gather(proj_task, repos_task, stats_task, return_exceptions=False)
+
+            if proj_res.success and proj_res.data:
                 data["project_detail"] = proj_res.data
                 state.project_context = proj_res.data
 
-            repos_res = await self.call_tool("get_project_repositories", {"project_id": target_project_id}, state)
-            tools_used.append("get_project_repositories")
             if repos_res.success and isinstance(repos_res.data, list):
                 data["project_repositories"] = repos_res.data
                 metrics.append({"label": "Linked Repositories", "value": len(repos_res.data), "color": "blue"})
 
-            stats_res = await self.call_tool(
-                "get_project_statistics",
-                {"project_id": target_project_id, "preset": entities.timeframe or "30d" if entities else "30d"},
-                state
-            )
-            tools_used.append("get_project_statistics")
             if stats_res.success and isinstance(stats_res.data, dict):
                 data["project_statistics"] = stats_res.data
                 s = stats_res.data

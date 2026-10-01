@@ -3,6 +3,7 @@ Repository Specialist Agent.
 Specialized in repository metadata, branches, sync status, and codebase activity.
 """
 import time
+import asyncio
 from typing import Optional, Dict, Any, List
 
 from app.engineering_agent.agents.base import BaseSpecialistAgent
@@ -32,15 +33,14 @@ class RepositoryAgent(BaseSpecialistAgent):
         target_repo_id = state.repository_id
         target_repo_name = entities.repository_name if entities else None
 
-        # 1. If no specific repo ID was provided, list all monitored repositories
+        # 1. List repositories to populate repository overview and resolve repository ID if needed
         repos_res = await self.call_tool("list_repositories", {"limit": 50}, state)
         tools_used.append("list_repositories")
-        
+
         if repos_res.success and isinstance(repos_res.data, list):
             data["repositories"] = repos_res.data
             metrics.append({"label": "Monitored Repos", "value": len(repos_res.data), "color": "blue"})
-            
-            # Match repository by name if target_repo_name is extracted
+
             if not target_repo_id and target_repo_name:
                 match = next(
                     (r for r in repos_res.data if isinstance(r, dict) and (
@@ -52,21 +52,26 @@ class RepositoryAgent(BaseSpecialistAgent):
                 if match:
                     target_repo_id = match.get("id")
 
-        # 2. Fetch specific repository details and branches if a target repository is identified
+        # 2. Fetch specific repository details and branches concurrently (Part 8)
         if target_repo_id:
-            repo_detail_res = await self.call_tool("get_repository", {"repository_id": target_repo_id}, state)
-            tools_used.append("get_repository")
-            if repo_detail_res.success:
+            detail_task = self.call_tool("get_repository", {"repository_id": target_repo_id}, state)
+            branches_task = self.call_tool("get_repository_branches", {"repository_id": target_repo_id}, state)
+            tools_used.extend(["get_repository", "get_repository_branches"])
+
+            repo_detail_res, branches_res = await asyncio.gather(detail_task, branches_task, return_exceptions=False)
+
+            if repo_detail_res.success and repo_detail_res.data:
                 data["repository_detail"] = repo_detail_res.data
                 state.repository_context = repo_detail_res.data
-                r_data = repo_detail_res.data or {}
+                if "repositories" not in data:
+                    data["repositories"] = [repo_detail_res.data] if isinstance(repo_detail_res.data, dict) else repo_detail_res.data
+                r_data = repo_detail_res.data
                 if "commits_count" in r_data or "commitsCount" in r_data:
                     metrics.append({"label": "Total Commits", "value": r_data.get("commits_count") or r_data.get("commitsCount", 0)})
                 if "stars_count" in r_data or "stars" in r_data:
                     metrics.append({"label": "GitHub Stars", "value": r_data.get("stars_count") or r_data.get("stars", 0)})
 
-            branches_res = await self.call_tool("get_repository_branches", {"repository_id": target_repo_id}, state)
-            tools_used.append("get_repository_branches")
+
             if branches_res.success:
                 data["branches"] = branches_res.data
 

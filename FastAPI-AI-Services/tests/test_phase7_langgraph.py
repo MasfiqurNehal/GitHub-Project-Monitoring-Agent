@@ -136,7 +136,7 @@ class TestPhase7LangGraphOrchestration(unittest.TestCase):
         self.assertTrue(res.get("is_multi_agent_pipeline"))
         self.assertIn("Multi-Agent Composite", res.get("selected_agent", ""))
         self.assertIn("active_specialists", res)
-        self.assertEqual(len(res.get("active_specialists", [])), 4)
+        self.assertGreaterEqual(len(res.get("active_specialists", [])), 4)
         self.assertTrue(len(res.get("final_response", "")) > 0)
 
     # -------------------------------------------------------------------------

@@ -49,7 +49,8 @@ class DummyLLMProvider(BaseAgentLLMProvider):
         return LLMCompletionResponse(
             content=self.response_text,
             model="openai/gpt-5.4-mini",
-            finish_reason="stop"
+            provider="mock-betopia",
+            latency_ms=12.5
         )
 
 
@@ -63,7 +64,7 @@ class TestPhase25MRealUserQuestions(unittest.IsolatedAsyncioTestCase):
     # =========================================================================
     # TEST 1: "What repositories are in the test nehal project?"
     # =========================================================================
-    @patch("app.engineering_agent.llm.agent_llm_factory.get_provider")
+    @patch("app.engineering_agent.llm.AgentLLMProviderFactory.get_provider")
     async def test_1_repositories_in_project(self, mock_get_provider):
         """Test 1: Verify project resolution, repo tool execution, repo count (3), and LLM response."""
         llm_response = (
@@ -113,7 +114,7 @@ class TestPhase25MRealUserQuestions(unittest.IsolatedAsyncioTestCase):
     # =========================================================================
     # TEST 2: "How many developers are working on the test nehal project?"
     # =========================================================================
-    @patch("app.engineering_agent.llm.agent_llm_factory.get_provider")
+    @patch("app.engineering_agent.llm.AgentLLMProviderFactory.get_provider")
     async def test_2_developer_count_in_project(self, mock_get_provider):
         """Test 2: Verify developer tool execution, correct count (1), and natural language answer."""
         llm_response = (
@@ -146,7 +147,7 @@ class TestPhase25MRealUserQuestions(unittest.IsolatedAsyncioTestCase):
     # =========================================================================
     # TEST 3: "How many commits were made in the test nehal project?"
     # =========================================================================
-    @patch("app.engineering_agent.llm.agent_llm_factory.get_provider")
+    @patch("app.engineering_agent.llm.AgentLLMProviderFactory.get_provider")
     async def test_3_total_commits_aggregation(self, mock_get_provider):
         """Test 3: Verify commit tool execution, commit aggregation (80), and final LLM synthesis."""
         llm_response = (
@@ -183,7 +184,7 @@ class TestPhase25MRealUserQuestions(unittest.IsolatedAsyncioTestCase):
     # =========================================================================
     # TEST 4: "Which developer made the most commits?"
     # =========================================================================
-    @patch("app.engineering_agent.llm.agent_llm_factory.get_provider")
+    @patch("app.engineering_agent.llm.AgentLLMProviderFactory.get_provider")
     async def test_4_top_developer_identification(self, mock_get_provider):
         """Test 4: Verify developer activity tool, ranking aggregation, top developer (MasfiqurNehal), and count (56)."""
         llm_response = (
@@ -216,7 +217,7 @@ class TestPhase25MRealUserQuestions(unittest.IsolatedAsyncioTestCase):
     # =========================================================================
     # TEST 5: "What about their PRs?"
     # =========================================================================
-    @patch("app.engineering_agent.llm.agent_llm_factory.get_provider")
+    @patch("app.engineering_agent.llm.AgentLLMProviderFactory.get_provider")
     async def test_5_conversational_pr_followup(self, mock_get_provider):
         """Test 5: Verify conversation context resolution, developer reference (MasfiqurNehal), PR tool execution, and final answer."""
         llm_response = (
@@ -227,7 +228,7 @@ class TestPhase25MRealUserQuestions(unittest.IsolatedAsyncioTestCase):
         mock_get_provider.return_value = mock_provider
 
         session = ConversationSession(
-            session_id="sess-5",
+            conversation_id="sess-5",
             tenant_id=self.tenant_id,
             user_id=self.user_id,
             turns=[
@@ -279,7 +280,7 @@ class TestPhase25MRealUserQuestions(unittest.IsolatedAsyncioTestCase):
     # =========================================================================
     # TEST 6: "What happened yesterday in this project?"
     # =========================================================================
-    @patch("app.engineering_agent.llm.agent_llm_factory.get_provider")
+    @patch("app.engineering_agent.llm.AgentLLMProviderFactory.get_provider")
     async def test_6_yesterday_activity_summary(self, mock_get_provider):
         """Test 6: Verify date interpretation (yesterday), project context, activity tools, and structured response."""
         llm_response = (
@@ -290,7 +291,7 @@ class TestPhase25MRealUserQuestions(unittest.IsolatedAsyncioTestCase):
         mock_get_provider.return_value = mock_provider
 
         session = ConversationSession(
-            session_id="sess-6",
+            conversation_id="sess-6",
             tenant_id=self.tenant_id,
             user_id=self.user_id,
             turns=[
@@ -338,7 +339,7 @@ class TestPhase25MRealUserQuestions(unittest.IsolatedAsyncioTestCase):
     # =========================================================================
     # TEST 7: "Tell me about this project."
     # =========================================================================
-    @patch("app.engineering_agent.llm.agent_llm_factory.get_provider")
+    @patch("app.engineering_agent.llm.AgentLLMProviderFactory.get_provider")
     async def test_7_comprehensive_project_overview(self, mock_get_provider):
         """Test 7: Verify project resolution, multi-tool execution, comprehensive summary, and LLM synthesis."""
         llm_response = (
@@ -363,7 +364,7 @@ class TestPhase25MRealUserQuestions(unittest.IsolatedAsyncioTestCase):
         query = "Tell me about this project."
 
         session = ConversationSession(
-            session_id="sess-7",
+            conversation_id="sess-7",
             tenant_id=self.tenant_id,
             user_id=self.user_id,
             turns=[

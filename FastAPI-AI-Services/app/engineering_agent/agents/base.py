@@ -40,20 +40,25 @@ class BaseSpecialistAgent(ABC):
         state: AgentState
     ) -> ToolResult:
         """
-        Execute a tool via tool_registry and record its result in AgentState.
+        Execute a tool via tool_registry and record its result in AgentState with execution timestamps.
         """
+        t_start = time.time()
         res = await tool_registry.execute_tool(
             name=tool_name,
             args=args,
             auth_token=state.auth_token,
             tenant_id=state.tenant_id
         )
+        t_end = time.time()
         state.record_tool_result(
             tool_name=tool_name,
             input_args=args,
             output_data=res.data,
             success=res.success,
             error_message=res.error,
-            duration_ms=res.duration_ms
+            duration_ms=res.duration_ms,
+            start_time=t_start,
+            end_time=t_end
         )
         return res
+

@@ -30,16 +30,34 @@ class ToolExecutionSummary(BaseModel):
     tool_name: str = Field(..., description="Name of executed tool")
     status: str = Field(..., description="Success or error status")
     duration_ms: float = Field(..., description="Execution time in milliseconds")
+    start_time: Optional[float] = Field(None, description="Tool start epoch timestamp")
+    end_time: Optional[float] = Field(None, description="Tool end epoch timestamp")
+    error: Optional[str] = Field(None, description="Error message if tool execution failed")
+
+import uuid
 
 class ExecutionTelemetryTrace(BaseModel):
-    """Internal execution telemetry trace safely captured for every Engineering Agent request (Phase 25K)."""
-    trace_id: str = Field(..., description="Unique trace identifier")
+    """Internal execution telemetry trace safely captured for every Engineering Agent request (Phase 25K & Part 6)."""
+    request_id: Optional[str] = Field(default_factory=lambda: f"req-{uuid.uuid4().hex[:12]}", description="Unique request identifier")
+    trace_id: Optional[str] = Field(default_factory=lambda: f"trace-{uuid.uuid4().hex[:16]}", description="Unique trace identifier alias")
+    query: Optional[str] = Field(None, description="User query prompt")
     intent: Optional[str] = Field(None, description="Detected intent category")
+    route: Optional[str] = Field(None, description="Execution route: direct_llm, tool_first, multi_agent, etc.")
     llm_provider: str = Field(..., description="LLM provider name")
     llm_model: str = Field(..., description="LLM model name")
     llm_called: bool = Field(True, description="Whether an LLM endpoint was called")
+    llm_latency_ms: float = Field(0.0, description="LLM invocation latency in milliseconds")
+    tools_selected: List[str] = Field(default_factory=list, description="List of tools selected for execution")
+    tools_executed: List[str] = Field(default_factory=list, description="List of tool names executed")
     tools_called: List[Dict[str, Any]] = Field(default_factory=list, description="Safe summary of tool calls")
+    tool_latency_ms: float = Field(0.0, description="Sum or aggregate tool execution duration in ms")
+    database_latency_ms: float = Field(0.0, description="Database / cache retrieval duration in ms")
+    total_latency_ms: float = Field(0.0, description="Total request processing latency in ms")
+    success: bool = Field(True, description="Whether the request succeeded")
+    error_type: Optional[str] = Field(None, description="Type or category of error if failed")
     response_generation: Dict[str, Any] = Field(default_factory=dict, description="Response generation step metrics")
+
+
 
 class EngineeringAgentResponse(BaseModel):
     """Main response envelope returned by the Engineering AI Agent."""

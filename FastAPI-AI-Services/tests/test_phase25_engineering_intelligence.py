@@ -338,7 +338,7 @@ class TestPhase25EngineeringIntelligence(unittest.IsolatedAsyncioTestCase):
         from app.engineering_agent.memory import memory_context_resolver
 
         session = ConversationSession(
-            session_id="sess-25i",
+            conversation_id="sess-25i",
             tenant_id="org-test-25",
             user_id="usr-25",
             turns=[

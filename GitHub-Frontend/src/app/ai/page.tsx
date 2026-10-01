@@ -18,6 +18,7 @@ function AIWorkspaceContent() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const searchParams = useSearchParams();
 
+  const conversationId = searchParams.get('conversationId') || searchParams.get('conversation_id') || undefined;
   const projectId = searchParams.get('projectId') || searchParams.get('project_id') || undefined;
   const projectName = searchParams.get('projectName') || undefined;
   const repositoryId = searchParams.get('repositoryId') || searchParams.get('repository_id') || undefined;
@@ -44,6 +45,7 @@ function AIWorkspaceContent() {
     clearCurrentChat,
     deleteConversation,
   } = useAIAgent({
+    conversationId,
     projectId,
     projectName,
     repositoryId,
