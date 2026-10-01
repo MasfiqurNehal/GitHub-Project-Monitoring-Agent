@@ -27,6 +27,7 @@ class SecretScrubber:
         # Generic API keys & Passwords
         (r"(?i)(?:api_key|apikey|secret_key|private_key|client_secret|password)\s*[:=]\s*['\"]?([a-zA-Z0-9_\-]{16,})['\"]?", "api_key=[REDACTED_SECRET]"),
         (r"(?i)(?:sk_live_|sk_test_|pk_live_|pk_test_)[a-zA-Z0-9]{24,}", "[REDACTED_API_KEY]"),
+        (r"\b(?:sk-|sk-proj-)[a-zA-Z0-9_\-]{15,}\b", "[REDACTED_API_KEY]"),
     ]
 
     def scrub(self, text: Optional[str]) -> str:

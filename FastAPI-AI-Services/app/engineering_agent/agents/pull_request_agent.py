@@ -49,6 +49,20 @@ class PullRequestAgent(BaseSpecialistAgent):
             metrics.append({"label": "Open PRs", "value": len(open_prs), "color": "amber" if open_prs else "emerald"})
             metrics.append({"label": "Merged/Closed", "value": len(closed_prs), "color": "purple"})
 
+            # Filter and isolate developer-specific PRs if developer entity is present (Part 19: Follow-up)
+            target_dev = entities.developer_name if entities else None
+            if target_dev and prs_list:
+                dev_prs = [
+                    p for p in prs_list
+                    if isinstance(p, dict) and (
+                        target_dev.lower() in (p.get("author") or p.get("user") or p.get("developer_name") or "").lower() or
+                        target_dev.lower() in (p.get("author_login") or "").lower()
+                    )
+                ]
+                data["developer_pull_requests"] = dev_prs
+                data["target_developer"] = target_dev
+                metrics.append({"label": f"{target_dev}'s PRs", "value": len(dev_prs), "color": "indigo"})
+
             # Fetch deep details for the first active/recent PR
             if prs_list:
                 first_pr_id = prs_list[0].get("id")
