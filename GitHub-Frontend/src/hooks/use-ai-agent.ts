@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   ConversationThread,
   ChatMessageItem,
@@ -10,6 +10,11 @@ import {
   renameEngineeringConversation,
   deleteEngineeringConversation,
   sendEngineeringAgentMessage,
+  getCachedSummaries,
+  setCachedSummaries,
+  getCachedConversationMessages,
+  setCachedConversationMessages,
+  invalidateConversationCache,
 } from '../lib/api/ai';
 
 export interface AgentContextScope {
@@ -38,16 +43,24 @@ export const DRAFT_WELCOME_THREAD: ConversationThread = {
 };
 
 export function useAIAgent(initialContext?: AgentContextScope) {
-  const [conversations, setConversations] = useState<ConversationThread[]>([]);
+  // Navigation performance: initialize with cached summaries if returning to /ai (Part 16)
+  const cachedInitial = getCachedSummaries();
+  const [conversations, setConversations] = useState<ConversationThread[]>(cachedInitial || []);
   const [activeConversationId, setActiveConversationId] = useState<string>(
     initialContext?.conversationId || ''
   );
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isConversationsLoading, setIsConversationsLoading] = useState<boolean>(true);
+  const [isConversationsLoading, setIsConversationsLoading] = useState<boolean>(!cachedInitial || cachedInitial.length === 0);
   const [isMessagesLoading, setIsMessagesLoading] = useState<boolean>(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const [contextScope, setContextScope] = useState<AgentContextScope>(initialContext || {});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [executionStage, setExecutionStage] = useState<string>('Understanding request...');
+  const [activeTool, setActiveTool] = useState<string | undefined>(undefined);
+
+  // Stale request abortion & duplicate prevention refs (Part 15)
+  const activeFetchAbortRef = useRef<AbortController | null>(null);
+  const isFetchingSummariesRef = useRef<boolean>(false);
 
   // Update context scope if initialContext changes from URL/parent
   useEffect(() => {
@@ -59,18 +72,24 @@ export function useAIAgent(initialContext?: AgentContextScope) {
     }
   }, [initialContext?.projectId, initialContext?.repositoryId, initialContext?.developerId]);
 
-  // Load persistent conversations on initial mount without forcing old conversation selection
+  // Load persistent conversations on initial mount without forcing old conversation selection (Part 15)
   useEffect(() => {
     let isMounted = true;
+    if (isFetchingSummariesRef.current) return;
+    isFetchingSummariesRef.current = true;
+
     async function loadInitialConversations() {
-      setIsConversationsLoading(true);
+      if (!cachedInitial || cachedInitial.length === 0) {
+        setIsConversationsLoading(true);
+      }
       setErrorMessage(null);
       try {
         const fetched = await listEngineeringConversations();
         if (isMounted) {
           setConversations(fetched);
+          setCachedSummaries(fetched);
 
-          // If a specific conversationId was requested in initialContext, load it
+          // If a specific conversationId was explicitly requested in initialContext/URL, load it
           if (initialContext?.conversationId) {
             const requestedId = initialContext.conversationId;
             setActiveConversationId(requestedId);
@@ -96,16 +115,18 @@ export function useAIAgent(initialContext?: AgentContextScope) {
         }
       } finally {
         if (isMounted) setIsConversationsLoading(false);
+        isFetchingSummariesRef.current = false;
       }
     }
 
     loadInitialConversations();
     return () => {
       isMounted = false;
+      isFetchingSummariesRef.current = false;
     };
   }, [initialContext?.conversationId]);
 
-  // Handler to switch active conversation and fetch its historical messages if not cached
+  // Handler to switch active conversation with AbortController for stale requests & in-memory caching (Part 15 & 16)
   const handleSelectConversation = useCallback(
     async (convId: string) => {
       if (!convId) {
@@ -114,26 +135,36 @@ export function useAIAgent(initialContext?: AgentContextScope) {
       }
       setActiveConversationId(convId);
 
-      // Check if messages already cached
-      setConversations((prev) => {
-        const existing = prev.find((c) => c.id === convId);
-        if (existing && existing.messages && existing.messages.length > 1) {
-          // Already cached messages present
-          return prev;
-        }
-        return prev;
-      });
+      // Check in-memory message cache first
+      const cached = getCachedConversationMessages(convId);
+      if (cached && cached.messages && cached.messages.length > 0) {
+        setConversations((prev) =>
+          prev.map((c) => (c.id === convId ? { ...c, ...cached } : c))
+        );
+        setIsMessagesLoading(false);
+        return;
+      }
+
+      // Abort any in-flight stale conversation fetch
+      if (activeFetchAbortRef.current) {
+        activeFetchAbortRef.current.abort();
+      }
+      const controller = new AbortController();
+      activeFetchAbortRef.current = controller;
 
       setIsMessagesLoading(true);
       try {
-        const details = await getEngineeringConversation(convId);
+        const details = await getEngineeringConversation(convId, { signal: controller.signal });
         if (details) {
+          setCachedConversationMessages(convId, details);
           setConversations((prev) =>
             prev.map((c) => (c.id === convId ? { ...c, ...details } : c))
           );
         }
-      } catch (err) {
-        console.warn(`[useAIAgent] Failed to fetch details for conversation ${convId}:`, err);
+      } catch (err: any) {
+        if (err?.name !== 'AbortError') {
+          console.warn(`[useAIAgent] Failed to fetch details for conversation ${convId}:`, err);
+        }
       } finally {
         setIsMessagesLoading(false);
       }
@@ -151,12 +182,14 @@ export function useAIAgent(initialContext?: AgentContextScope) {
     return found || DRAFT_WELCOME_THREAD;
   }, [conversations, activeConversationId]);
 
-  // Handle sending a message in the active session
+  // Handle sending a message in the active session (Immediate rendering & duplicate prevention - Part 10)
   const handleSendMessage = async (promptText: string) => {
     if (!promptText.trim() || isLoading) return;
 
+    // 1. Immediately render user's message with client message ID
+    const clientTempId = `client-msg-${Date.now()}`;
     const userMessage: ChatMessageItem = {
-      id: `usr-${Date.now()}`,
+      id: clientTempId,
       role: 'user',
       content: promptText,
       timestamp: new Date().toISOString(),
@@ -165,9 +198,8 @@ export function useAIAgent(initialContext?: AgentContextScope) {
     const currentConvId = activeConversationId;
     const isNewDraft = !currentConvId;
 
-    // Optimistically update visible messages
+    // Optimistically update visible messages immediately
     if (isNewDraft) {
-      // Draft mode: start with user message
       const tempThread: ConversationThread = {
         id: '',
         title: promptText.slice(0, 40),
@@ -193,7 +225,10 @@ export function useAIAgent(initialContext?: AgentContextScope) {
       );
     }
 
+    // 2. Disable duplicate submissions & initialize execution progress state (Part 10 & 11)
     setIsLoading(true);
+    setExecutionStage('Understanding request...');
+    setActiveTool(undefined);
 
     try {
       const res = await sendEngineeringAgentMessage({
@@ -202,6 +237,10 @@ export function useAIAgent(initialContext?: AgentContextScope) {
         projectId: contextScope.projectId,
         repositoryId: contextScope.repositoryId,
         developerId: contextScope.developerId,
+        onProgress: (stage, tool) => {
+          setExecutionStage(stage);
+          if (tool) setActiveTool(tool);
+        },
       });
 
       const actualConvId = res.conversationId;
@@ -219,25 +258,29 @@ export function useAIAgent(initialContext?: AgentContextScope) {
             repositoryId: contextScope.repositoryId,
             developerId: contextScope.developerId,
           };
+          setCachedConversationMessages(actualConvId, realThread);
           updatedList = [realThread, ...prev.filter((t) => t.id !== '')];
         } else {
           updatedList = prev.map((thread) => {
             if (thread.id === currentConvId || thread.id === actualConvId) {
-              return {
+              const updatedThread: ConversationThread = {
                 ...thread,
                 id: actualConvId,
                 updatedAt: new Date().toISOString(),
                 messages: [...thread.messages, res.data],
               };
+              setCachedConversationMessages(actualConvId, updatedThread);
+              return updatedThread;
             }
             return thread;
           });
         }
 
-        // Re-sort conversations by updatedAt DESC so the active conversation moves to top
-        return updatedList.sort(
+        const sorted = updatedList.sort(
           (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
         );
+        setCachedSummaries(sorted);
+        return sorted;
       });
 
       if (isNewDraft && actualConvId) {
@@ -245,12 +288,15 @@ export function useAIAgent(initialContext?: AgentContextScope) {
       }
     } catch (err: any) {
       console.error('[useAIAgent] Send message error:', err);
+      // Keep the user message visible on error (Part 10)
       const errorMsg: ChatMessageItem = {
         id: `err-${Date.now()}`,
         role: 'assistant',
-        content: `⚠️ Error: ${err?.message || 'Failed to process engineering analysis.'}`,
+        content: `⚠️ Something went wrong while processing this request.\n\n**Details:** ${err?.message || 'The AI Agent service encountered an unexpected error.'}`,
         timestamp: new Date().toISOString(),
         isError: true,
+        errorCategory: err?.category || 'AGENT_EXECUTION_ERROR',
+        rawErrorDetails: err?.rawDetails,
         failedPrompt: promptText,
       };
 
@@ -268,8 +314,10 @@ export function useAIAgent(initialContext?: AgentContextScope) {
       );
     } finally {
       setIsLoading(false);
+      setActiveTool(undefined);
     }
   };
+
 
   // Retry a failed prompt
   const retryMessage = async (failedMessageId?: string) => {
@@ -350,11 +398,21 @@ export function useAIAgent(initialContext?: AgentContextScope) {
     try {
       const updated = await renameEngineeringConversation(conversationId, newTitle.trim());
       if (updated) {
-        setConversations((prev) =>
-          prev.map((c) =>
+        setConversations((prev) => {
+          const updatedList = prev.map((c) =>
             c.id === conversationId ? { ...c, title: updated.title, updatedAt: updated.updatedAt } : c
-          )
-        );
+          );
+          setCachedSummaries(updatedList);
+          return updatedList;
+        });
+        const cachedThread = getCachedConversationMessages(conversationId);
+        if (cachedThread) {
+          setCachedConversationMessages(conversationId, {
+            ...cachedThread,
+            title: updated.title,
+            updatedAt: updated.updatedAt,
+          });
+        }
         return true;
       }
       return false;
@@ -370,8 +428,10 @@ export function useAIAgent(initialContext?: AgentContextScope) {
     try {
       const success = await deleteEngineeringConversation(conversationId);
       if (success) {
+        invalidateConversationCache(conversationId);
         const remaining = conversations.filter((c) => c.id !== conversationId);
         setConversations(remaining);
+        setCachedSummaries(remaining);
         if (activeConversationId === conversationId) {
           if (remaining.length > 0) {
             handleSelectConversation(remaining[0].id);
@@ -438,5 +498,8 @@ export function useAIAgent(initialContext?: AgentContextScope) {
     deleteConversation,
     clearCurrentChat,
     errorMessage,
+    executionStage,
+    activeTool,
   };
 }
+

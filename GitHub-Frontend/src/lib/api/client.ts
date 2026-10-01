@@ -1,35 +1,143 @@
+export type AgentErrorCategory =
+  | 'NETWORK_ERROR'
+  | 'AUTH_ERROR'
+  | 'VALIDATION_ERROR'
+  | 'TIMEOUT_ERROR'
+  | 'LLM_ERROR'
+  | 'TOOL_ERROR'
+  | 'DATABASE_ERROR'
+  | 'AGENT_EXECUTION_ERROR'
+  | 'UNKNOWN_ERROR';
+
+export class TypedAgentError extends Error {
+  category: AgentErrorCategory;
+  statusCode?: number;
+  rawDetails?: string;
+
+  constructor(
+    category: AgentErrorCategory,
+    userFriendlyMessage: string,
+    statusCode?: number,
+    rawDetails?: string
+  ) {
+    super(userFriendlyMessage);
+    this.name = 'TypedAgentError';
+    this.category = category;
+    this.statusCode = statusCode;
+    this.rawDetails = rawDetails;
+  }
+}
+
+export function classifyAgentError(err: any, statusCode?: number): TypedAgentError {
+  const errMsg = (err?.message || (typeof err === 'string' ? err : 'Unknown error')).toLowerCase();
+  const rawDetails = err?.stack || err?.message || String(err);
+
+  if (statusCode === 401 || statusCode === 403 || errMsg.includes('unauthorized') || errMsg.includes('forbidden') || errMsg.includes('auth')) {
+    return new TypedAgentError(
+      'AUTH_ERROR',
+      'Authentication session expired or unauthorized. Please re-authenticate.',
+      statusCode || 401,
+      rawDetails
+    );
+  }
+
+  if (statusCode === 422 || errMsg.includes('validation') || errMsg.includes('unprocessable') || errMsg.includes('invalid argument')) {
+    return new TypedAgentError(
+      'VALIDATION_ERROR',
+      'The requested query parameters could not be validated.',
+      statusCode || 422,
+      rawDetails
+    );
+  }
+
+  if (statusCode === 504 || statusCode === 408 || errMsg.includes('timeout') || errMsg.includes('timed out') || errMsg.includes('aborted')) {
+    return new TypedAgentError(
+      'TIMEOUT_ERROR',
+      'The agent operation timed out while communicating with external services.',
+      statusCode || 504,
+      rawDetails
+    );
+  }
+
+  if (errMsg.includes('llm') || errMsg.includes('openai') || errMsg.includes('betopia') || errMsg.includes('gemini') || errMsg.includes('model unavailable') || errMsg.includes('quota')) {
+    return new TypedAgentError(
+      'LLM_ERROR',
+      'The configured AI reasoning provider encountered a service error.',
+      statusCode || 502,
+      rawDetails
+    );
+  }
+
+  if (errMsg.includes('github') || errMsg.includes('repository not found') || errMsg.includes('tool failed') || errMsg.includes('express')) {
+    return new TypedAgentError(
+      'TOOL_ERROR',
+      'A required telemetry or GitHub tool could not retrieve live data.',
+      statusCode || 502,
+      rawDetails
+    );
+  }
+
+  if (errMsg.includes('database') || errMsg.includes('neon') || errMsg.includes('postgres') || errMsg.includes('connection pool')) {
+    return new TypedAgentError(
+      'DATABASE_ERROR',
+      'A database connection error occurred while retrieving project telemetry.',
+      statusCode || 500,
+      rawDetails
+    );
+  }
+
+  if (errMsg.includes('failed to fetch') || errMsg.includes('networkerror') || errMsg.includes('connection refused') || errMsg.includes('cors')) {
+    return new TypedAgentError(
+      'NETWORK_ERROR',
+      'Unable to connect to the AI agent service. Please check network connectivity.',
+      statusCode || 0,
+      rawDetails
+    );
+  }
+
+  return new TypedAgentError(
+    'AGENT_EXECUTION_ERROR',
+    err?.message || 'An unexpected error occurred during agent execution.',
+    statusCode || 500,
+    rawDetails
+  );
+}
+
 export class ApiError extends Error {
   status: number;
   code?: string;
+  category?: AgentErrorCategory;
 
-  constructor(message: string, status: number, code?: string) {
+  constructor(message: string, status: number, code?: string, category?: AgentErrorCategory) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.category = category;
   }
 }
 
 export class UnauthorizedError extends ApiError {
   constructor(message = 'Unauthorized access. Please log in or re-authenticate.') {
-    super(message, 401, 'UNAUTHORIZED');
+    super(message, 401, 'UNAUTHORIZED', 'AUTH_ERROR');
     this.name = 'UnauthorizedError';
   }
 }
 
 export class AccessDeniedError extends ApiError {
   constructor(message = 'Repository or resource access denied.') {
-    super(message, 403, 'FORBIDDEN');
+    super(message, 403, 'FORBIDDEN', 'AUTH_ERROR');
     this.name = 'AccessDeniedError';
   }
 }
 
 export class SyncInProgressError extends ApiError {
   constructor(message = 'Synchronization is currently in progress.') {
-    super(message, 409, 'SYNC_IN_PROGRESS');
+    super(message, 409, 'SYNC_IN_PROGRESS', 'AGENT_EXECUTION_ERROR');
     this.name = 'SyncInProgressError';
   }
 }
+
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api').replace(/\/$/, '');
 
@@ -134,7 +242,7 @@ export function getAiApiUrl(endpoint: string): string {
 
 export async function fetchAiApi<T>(
   endpoint: string,
-  options?: RequestInit
+  options?: RequestInit & { timeoutMs?: number }
 ): Promise<T> {
   const url = getAiApiUrl(endpoint);
   const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
@@ -144,15 +252,26 @@ export async function fetchAiApi<T>(
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
+  const timeoutMs = options?.timeoutMs || 30000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  // Link caller signal if provided
+  if (options?.signal) {
+    options.signal.addEventListener('abort', () => controller.abort());
+  }
+
   try {
     const response = await fetch(url, {
       ...options,
+      signal: controller.signal,
       headers: {
         ...defaultHeaders,
         ...options?.headers,
       },
     });
 
+    clearTimeout(timeoutId);
     const body = await response.json().catch(() => ({}));
 
     if (!response.ok) {
@@ -163,17 +282,30 @@ export async function fetchAiApi<T>(
           ? body.error
           : (body.error?.message || body.message || `AI API failed with status ${response.status}`);
 
+      const typedErr = classifyAgentError(errorMessage, response.status);
       if (response.status === 401) {
-        throw new UnauthorizedError(errorMessage);
+        throw new UnauthorizedError(typedErr.message);
       }
-      throw new ApiError(errorMessage, response.status, body.code);
+      throw new ApiError(typedErr.message, response.status, body.code, typedErr.category);
     }
 
     return body;
   } catch (err: any) {
-    if (err instanceof ApiError) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      const timeoutErr = new TypedAgentError(
+        'TIMEOUT_ERROR',
+        `AI Agent request timed out after ${timeoutMs / 1000}s.`,
+        504,
+        'Client AbortController timeout triggered'
+      );
+      throw new ApiError(timeoutErr.message, 504, 'REQUEST_TIMEOUT', 'TIMEOUT_ERROR');
+    }
+    if (err instanceof ApiError || err instanceof TypedAgentError) {
       throw err;
     }
-    throw new ApiError(err.message || 'AI Service connection error', 500);
+    const typedErr = classifyAgentError(err);
+    throw new ApiError(typedErr.message, 500, undefined, typedErr.category);
   }
 }
+

@@ -44,6 +44,8 @@ function AIWorkspaceContent() {
     renameConversation,
     clearCurrentChat,
     deleteConversation,
+    executionStage,
+    activeTool,
   } = useAIAgent({
     conversationId,
     projectId,
@@ -114,7 +116,12 @@ function AIWorkspaceContent() {
                 )}
 
                 {/* Thinking / Processing State Indicator */}
-                {isLoading && <ThinkingState />}
+                {isLoading && (
+                  <ThinkingState 
+                    currentStage={executionStage} 
+                    activeTool={activeTool} 
+                  />
+                )}
 
                 {/* Suggested Prompt Chips (rendered if conversation has <= 1 message and not loading) */}
                 {!isMessagesLoading && activeConversation.messages.length <= 1 && !isLoading && (

@@ -138,11 +138,36 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
           </div>
         )}
 
+        {/* Error Category Header Badge */}
+        {isError && (
+          <div className="flex items-center justify-between gap-2 pb-2 border-b border-rose-900/50">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-rose-900/60 text-rose-300 border border-rose-700/60 uppercase">
+              <AlertTriangle className="w-3 h-3 text-rose-400" />
+              {message.errorCategory || 'AGENT_EXECUTION_ERROR'}
+            </span>
+            <span className="text-[10px] text-rose-400/80 font-medium">Request Unsuccessful</span>
+          </div>
+        )}
+
         {/* Main Text Content */}
         {isUser ? (
           <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
         ) : (
           <MarkdownRenderer content={message.content} />
+        )}
+
+        {/* Raw Technical Error Details Accordion */}
+        {isError && message.rawErrorDetails && (
+          <details className="mt-2 text-[11px] bg-slate-950/80 rounded-lg p-2.5 border border-rose-900/40 text-rose-300">
+            <summary className="cursor-pointer font-mono font-semibold text-rose-400 hover:text-rose-300 select-none">
+              Technical Error Details & Diagnostic Trace
+            </summary>
+            <pre className="mt-2 p-2 bg-slate-900 rounded text-[10px] font-mono text-slate-300 overflow-x-auto whitespace-pre-wrap">
+              {typeof message.rawErrorDetails === 'object'
+                ? JSON.stringify(message.rawErrorDetails, null, 2)
+                : String(message.rawErrorDetails)}
+            </pre>
+          </details>
         )}
 
         {/* 1. Metrics Grid (if response contains metrics) */}

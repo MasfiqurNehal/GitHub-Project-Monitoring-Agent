@@ -367,6 +367,77 @@ class EngineeringAgentService:
             error=resp_error
         )
 
+    async def execute_agent_stream(
+        self,
+        request: EngineeringAgentRequest,
+        user: AuthenticatedUser,
+        raw_token: Optional[str] = None
+    ):
+        """
+        Execute engineering agent task while yielding progressive Server-Sent Events (SSE) (Phase 25 Part 12).
+        """
+        yield {
+            "event": "agent_started",
+            "data": {
+                "message": "Engineering Agent workflow initiated",
+                "conversation_id": request.conversation_id,
+                "project_id": request.project_id,
+                "repository_id": request.repository_id
+            }
+        }
+
+        try:
+            yield {
+                "event": "context_resolved",
+                "data": {
+                    "project_id": request.project_id,
+                    "repository_id": request.repository_id
+                }
+            }
+
+            response = await self.execute_agent(request, user, raw_token)
+
+            if response.detected_intent:
+                yield {
+                    "event": "intent_detected",
+                    "data": {
+                        "intent": response.detected_intent,
+                        "selected_agent": response.selected_agent
+                    }
+                }
+
+            for tool in response.tools_executed:
+                yield {
+                    "event": "tool_completed",
+                    "data": {
+                        "tool": tool.tool_name,
+                        "status": tool.status,
+                        "duration_ms": tool.duration_ms
+                    }
+                }
+
+            yield {
+                "event": "llm_completed",
+                "data": {
+                    "execution_time_ms": response.execution_time_ms
+                }
+            }
+
+            yield {
+                "event": "response_completed",
+                "data": response.model_dump()
+            }
+        except Exception as e:
+            logger.error(f"[EngineeringAgentService] Stream error: {e}", exc_info=True)
+            yield {
+                "event": "error",
+                "data": {
+                    "error": str(e),
+                    "category": "AGENT_EXECUTION_ERROR"
+                }
+            }
+
 
 engineering_agent_service = EngineeringAgentService()
+
 

@@ -28,8 +28,11 @@ from app.utils.logger import logger
 engineering_agent_router = APIRouter(prefix="/engineering-agent", tags=["Engineering AI Agent"])
 
 
+import json
+from fastapi.responses import StreamingResponse
+
 # =============================================================================
-# 1. Agent Execution Endpoint
+# 1. Agent Execution Endpoints (JSON & Server-Sent Events SSE)
 # =============================================================================
 
 @engineering_agent_router.post("/chat", response_model=EngineeringAgentResponse)
@@ -48,6 +51,40 @@ async def execute_engineering_agent(
         user=current_user,
         raw_token=raw_token
     )
+
+
+@engineering_agent_router.post("/chat/stream")
+async def execute_engineering_agent_stream(
+    request: EngineeringAgentRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(security_bearer)
+):
+    """
+    Execute engineering agent analysis with real-time Server-Sent Events (SSE) progress streaming (Phase 25 Part 12).
+    Yields agent_started, intent_detected, tool_completed, llm_completed, and response_completed events.
+    """
+    raw_token = credentials.credentials if credentials else None
+
+    async def event_generator():
+        async for event in engineering_agent_service.execute_agent_stream(
+            request=request,
+            user=current_user,
+            raw_token=raw_token
+        ):
+            event_type = event.get("event", "message")
+            event_data = json.dumps(event.get("data", {}))
+            yield f"event: {event_type}\ndata: {event_data}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
 
 
 # =============================================================================
