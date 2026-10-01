@@ -134,6 +134,53 @@ export function invalidateConversationCache(conversationId?: string) {
   }
 }
 
+// User-scoped active conversation persistence (Phase 26 Parts 1, 2, 3)
+const PRIMARY_ACTIVE_CONVERSATION_KEY = 'engineering_agent_active_conversation_id';
+const LEGACY_ACTIVE_CONVERSATION_KEY = 'last_active_engineering_conversation_id';
+
+function getStorageKey(userId?: string): string {
+  if (userId && userId.trim()) {
+    return `${PRIMARY_ACTIVE_CONVERSATION_KEY}_${userId.trim()}`;
+  }
+  return PRIMARY_ACTIVE_CONVERSATION_KEY;
+}
+
+export function getStoredActiveConversationId(userId?: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const key = getStorageKey(userId);
+    const stored = sessionStorage.getItem(key) || localStorage.getItem(key);
+    if (stored) return stored;
+
+    // Fallback to primary un-scoped key
+    const primary = sessionStorage.getItem(PRIMARY_ACTIVE_CONVERSATION_KEY) || localStorage.getItem(PRIMARY_ACTIVE_CONVERSATION_KEY);
+    if (primary) return primary;
+
+    // Fallback to legacy key if present
+    return sessionStorage.getItem(LEGACY_ACTIVE_CONVERSATION_KEY) || localStorage.getItem(LEGACY_ACTIVE_CONVERSATION_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredActiveConversationId(conversationId: string | null, userId?: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const key = getStorageKey(userId);
+    if (conversationId && conversationId.trim()) {
+      sessionStorage.setItem(key, conversationId.trim());
+      localStorage.setItem(key, conversationId.trim());
+      sessionStorage.setItem(PRIMARY_ACTIVE_CONVERSATION_KEY, conversationId.trim());
+      localStorage.setItem(PRIMARY_ACTIVE_CONVERSATION_KEY, conversationId.trim());
+    } else {
+      sessionStorage.removeItem(key);
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(PRIMARY_ACTIVE_CONVERSATION_KEY);
+      localStorage.removeItem(PRIMARY_ACTIVE_CONVERSATION_KEY);
+    }
+  } catch {}
+}
+
 /**
  * List all persistent engineering agent conversations for authenticated user & organization.
  * Returns lightweight summaries without fetching full message histories.

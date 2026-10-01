@@ -162,20 +162,40 @@ class DeterministicIntentMatcher:
     def match(self, prompt: str) -> Tuple[Optional[IntentCategory], float, ExtractedEntities]:
         """
         Evaluate deterministic rules and calculate confidence score (0.0 to 1.0).
+        Fast, cheap classification before expensive AI pipeline execution.
         """
+        raw_trimmed = prompt.strip()
         norm = self.normalize_text(prompt)
         entities = self.extract_entities(prompt, norm)
 
-        # 0. Check for non-IT / unsupported questions
+        # 0a. Check for Simple Greetings ("hello", "hi", "good morning", etc.)
+        greeting_pattern = r"^(?:hello|hi|hey|good\s+(?:morning|afternoon|evening|day)|greetings|hi\s+there|hello\s+there|howdy|yo)[!.,\s]*$"
+        if re.match(greeting_pattern, norm, re.IGNORECASE):
+            return IntentCategory.GREETING, 1.0, entities
+
+        # 0b. Check for Casual Interaction ("how are you", "who are you", "thanks", etc.)
+        casual_pattern = r"^(?:how\s+are\s+you|who\s+are\s+you|what\s+can\s+you\s+do|help\s+me|what\s+is\s+your\s+name|tell\s+me\s+a\s+joke|thanks|thank\s+you|nice\s+to\s+meet\s+you)[!.,\s]*$"
+        if re.match(casual_pattern, norm, re.IGNORECASE):
+            return IntentCategory.CASUAL, 0.95, entities
+
+        # 0c. Check for Invalid or Garbage Input ("asdf`!@3", symbol noise, keyboard mashes)
+        if (
+            re.search(r"[`~!@#$%^&*()_+\-=\[{\]\};:'\",<>/]{2,}", raw_trimmed) and
+            not any(w in norm.split() for w in ["what", "how", "who", "why", "where", "show", "tell", "list", "get", "view", "is", "are", "about"])
+        ) or (
+            len(raw_trimmed) <= 12 and not re.search(r"[aeiouAEIOU]", raw_trimmed) and not raw_trimmed.replace(" ", "").isdigit()
+        ):
+            return IntentCategory.INVALID_OR_UNCLEAR, 0.95, entities
+
+        # 0d. Check for non-IT / unsupported questions
         for pattern in NON_IT_PATTERNS:
             if re.search(pattern, norm, re.IGNORECASE):
                 return IntentCategory.UNSUPPORTED_NON_IT, 0.95, entities
 
-        # 1. General Conceptual IT & Technical QA (e.g., "What is a pointer?", "What is LangGraph?", "What is dependency injection?", "What is an API?", "What is a quantum computer?")
-        # Route directly to LLM if query is a conceptual question without specific live repository metrics
+        # 1. General Conceptual IT & Technical QA (e.g., "What is quantum computing?", "What is vRAM?", "What architecture should I use for a Next.js SaaS?", "How does Redis caching work?")
         is_conceptual_qa = bool(
-            re.search(r"^(?:what\s+is|what\s+are|how\s+to|explain|definition\s+of|describe|how\s+does|why\s+is|difference\s+between|tell\s+me\s+about\s+(?:the\s+concept\s+of|how))\b", norm) or
-            re.search(r"\b(pointer|pointers|langgraph|langchain|dependency\s+injection|inversion\s+of\s+control|quantum\s+computing|quantum\s+computer|qubits?|clean\s+architecture|solid\s+principles|design\s+patterns?|rest\s+api|graphql\s+api|docker|kubernetes|ci/cd|microservices|asyncio|event\s+loop|multithreading|deadlock|concurrency|data\s+structures?|algorithms?|tcp/ip|http|https|oauth|jwt)\b", norm)
+            re.search(r"^(?:what\s+is|what\s+are|what\s+processor|which\s+processor|what\s+architecture|how\s+does|how\s+to|explain|definition\s+of|describe|why\s+is|difference\s+between|tell\s+me\s+about\s+(?:the\s+concept\s+of|how))\b", norm) or
+            re.search(r"\b(vram|ram|processor|cpu|gpu|workstation|pointer|pointers|langgraph|langchain|dependency\s+injection|inversion\s+of\s+control|quantum\s+computing|quantum\s+computer|qubits?|clean\s+architecture|solid\s+principles|design\s+patterns?|rest\s+api|graphql\s+api|docker|kubernetes|ci/cd|microservices|asyncio|event\s+loop|multithreading|deadlock|concurrency|data\s+structures?|algorithms?|tcp/ip|http|https|oauth|jwt|redis|caching|cache|next\.js|nextjs|saas|architecture)\b", norm)
         )
         is_live_telemetry_query = bool(
             re.search(r"\b(repo\b|repos\b|repository|repositories|project\b|projects\b|developer\b|developers\b|contributor\b|contributors\b|commits?\b|prs?\b|pull\s+requests?|code\s+impact|churn|lines\s+added|lines\s+deleted|issues?\b|bugs?\b|dashboard|stars|forks|default\s+branch|language\s+breakdown|velocity|milestone|how\s+many\s+commits|who\s+committed|who\s+made\s+the\s+most|who\s+worked|who\s+pushed|open\s+prs?|pr\s+turnaround|today'?s\s+report|yesterday)\b", norm) or
@@ -183,7 +203,7 @@ class DeterministicIntentMatcher:
         )
 
         if is_conceptual_qa and not is_live_telemetry_query:
-            return IntentCategory.GENERAL_ENGINEERING_QA, 0.92, entities
+            return IntentCategory.GENERAL_ENGINEERING_QA, 0.95, entities
 
         # 2. Engineering Analysis & Root Cause (e.g., "Why did commit activity decrease?", "Why did velocity drop?")
         if (

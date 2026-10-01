@@ -15,6 +15,8 @@ import {
   getCachedConversationMessages,
   setCachedConversationMessages,
   invalidateConversationCache,
+  getStoredActiveConversationId,
+  setStoredActiveConversationId,
 } from '../lib/api/ai';
 
 export interface AgentContextScope {
@@ -45,10 +47,11 @@ export const DRAFT_WELCOME_THREAD: ConversationThread = {
 export function useAIAgent(initialContext?: AgentContextScope) {
   // Navigation performance: initialize with cached summaries if returning to /ai (Part 16)
   const cachedInitial = getCachedSummaries();
+  const storedActiveId = getStoredActiveConversationId();
+  const initialActiveId = initialContext?.conversationId || storedActiveId || (cachedInitial && cachedInitial.length > 0 ? cachedInitial[0].id : '');
+
   const [conversations, setConversations] = useState<ConversationThread[]>(cachedInitial || []);
-  const [activeConversationId, setActiveConversationId] = useState<string>(
-    initialContext?.conversationId || ''
-  );
+  const [activeConversationId, setActiveConversationId] = useState<string>(initialActiveId);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isConversationsLoading, setIsConversationsLoading] = useState<boolean>(!cachedInitial || cachedInitial.length === 0);
   const [isMessagesLoading, setIsMessagesLoading] = useState<boolean>(false);
@@ -72,7 +75,7 @@ export function useAIAgent(initialContext?: AgentContextScope) {
     }
   }, [initialContext?.projectId, initialContext?.repositoryId, initialContext?.developerId]);
 
-  // Load persistent conversations on initial mount without forcing old conversation selection (Part 15)
+  // Load persistent conversations on initial mount and restore active conversation (Phase 26 Parts 1 & 2)
   useEffect(() => {
     let isMounted = true;
     if (isFetchingSummariesRef.current) return;
@@ -89,23 +92,50 @@ export function useAIAgent(initialContext?: AgentContextScope) {
           setConversations(fetched);
           setCachedSummaries(fetched);
 
-          // If a specific conversationId was explicitly requested in initialContext/URL, load it
-          if (initialContext?.conversationId) {
-            const requestedId = initialContext.conversationId;
-            setActiveConversationId(requestedId);
-            setIsMessagesLoading(true);
-            try {
-              const details = await getEngineeringConversation(requestedId);
-              if (details && isMounted) {
-                setConversations((prev) =>
-                  prev.map((c) => (c.id === requestedId ? { ...c, ...details } : c))
-                );
+          // Determine target conversation to open based on priority:
+          // 1. initialContext.conversationId
+          // 2. storedActiveId (if valid in fetched list)
+          // 3. Most recently active conversation (fetched[0].id)
+          // 4. Clean new draft ('')
+          let targetId = '';
+          const savedActiveId = getStoredActiveConversationId();
+
+          if (initialContext?.conversationId && fetched.some((c) => c.id === initialContext.conversationId)) {
+            targetId = initialContext.conversationId;
+          } else if (savedActiveId && fetched.some((c) => c.id === savedActiveId)) {
+            targetId = savedActiveId;
+          } else if (fetched.length > 0) {
+            targetId = fetched[0].id;
+          }
+
+          if (targetId) {
+            setActiveConversationId(targetId);
+            setStoredActiveConversationId(targetId);
+
+            // Check in-memory cache first
+            const cachedMessages = getCachedConversationMessages(targetId);
+            if (cachedMessages && cachedMessages.messages && cachedMessages.messages.length > 0) {
+              setConversations((prev) =>
+                prev.map((c) => (c.id === targetId ? { ...c, ...cachedMessages } : c))
+              );
+            } else {
+              setIsMessagesLoading(true);
+              try {
+                const details = await getEngineeringConversation(targetId);
+                if (details && isMounted) {
+                  setCachedConversationMessages(targetId, details);
+                  setConversations((prev) =>
+                    prev.map((c) => (c.id === targetId ? { ...c, ...details } : c))
+                  );
+                }
+              } catch (err) {
+                console.warn('[useAIAgent] Failed to load active conversation details:', err);
+              } finally {
+                if (isMounted) setIsMessagesLoading(false);
               }
-            } catch (err) {
-              console.warn('[useAIAgent] Failed to load requested conversation:', err);
-            } finally {
-              if (isMounted) setIsMessagesLoading(false);
             }
+          } else {
+            setActiveConversationId('');
           }
         }
       } catch (err: any) {
@@ -131,9 +161,11 @@ export function useAIAgent(initialContext?: AgentContextScope) {
     async (convId: string) => {
       if (!convId) {
         setActiveConversationId('');
+        setStoredActiveConversationId(null);
         return;
       }
       setActiveConversationId(convId);
+      setStoredActiveConversationId(convId);
 
       // Check in-memory message cache first
       const cached = getCachedConversationMessages(convId);
@@ -283,8 +315,9 @@ export function useAIAgent(initialContext?: AgentContextScope) {
         return sorted;
       });
 
-      if (isNewDraft && actualConvId) {
+      if (actualConvId) {
         setActiveConversationId(actualConvId);
+        setStoredActiveConversationId(actualConvId);
       }
     } catch (err: any) {
       console.error('[useAIAgent] Send message error:', err);
@@ -390,6 +423,7 @@ export function useAIAgent(initialContext?: AgentContextScope) {
   // Prepare a clean new chat session without polluting PostgreSQL with empty records
   const createNewChat = () => {
     setActiveConversationId('');
+    setStoredActiveConversationId(null);
   };
 
   // Rename conversation title via PATCH API
@@ -437,6 +471,7 @@ export function useAIAgent(initialContext?: AgentContextScope) {
             handleSelectConversation(remaining[0].id);
           } else {
             setActiveConversationId('');
+            setStoredActiveConversationId(null);
           }
         }
         return true;

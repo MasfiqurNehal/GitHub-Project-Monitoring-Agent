@@ -6,7 +6,17 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
 class IntentCategory(str, Enum):
-    """Supported Intent Taxonomy for GitHub Engineering Agent."""
+    """Supported Intent Taxonomy for GitHub Engineering Agent (Phase 26)."""
+    # Core 7 Query Routing Classes (Phase 26 Part 8)
+    GREETING = "greeting"
+    CASUAL = "casual"
+    INVALID_OR_UNCLEAR = "invalid_or_unclear"
+    GENERAL_TECHNICAL = "general_technical"
+    GITHUB_PROJECT_ANALYSIS = "github_project_analysis"
+    GENERAL_ENGINEERING = "general_engineering"
+    FOLLOW_UP = "follow_up"
+
+    # Specific GitHub & Specialized Analytics Sub-Intents
     REPOSITORY_INFO = "repository_info"
     REPOSITORY_QUERY = "repository_info"
     PROJECT_INFO = "project_info"

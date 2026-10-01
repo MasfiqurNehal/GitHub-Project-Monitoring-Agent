@@ -62,10 +62,10 @@ class EngineeringChatRepository:
         """
         Fetch all active (non-deleted) engineering conversations for the authenticated user and organization.
         Enforces tenant and user isolation. Ordered by updated_at DESC for ChatGPT-style recency.
+        Returns lightweight summaries without loading message relationships.
         """
         stmt = (
             select(EngineeringConversationModel)
-            .options(selectinload(EngineeringConversationModel.messages))
             .where(
                 and_(
                     EngineeringConversationModel.organization_id == organization_id,

@@ -37,7 +37,7 @@ class ToolExecutionSummary(BaseModel):
 import uuid
 
 class ExecutionTelemetryTrace(BaseModel):
-    """Internal execution telemetry trace safely captured for every Engineering Agent request (Phase 25K & Part 6)."""
+    """Internal execution telemetry trace safely captured for every Engineering Agent request (Phase 26 Part 18)."""
     request_id: Optional[str] = Field(default_factory=lambda: f"req-{uuid.uuid4().hex[:12]}", description="Unique request identifier")
     trace_id: Optional[str] = Field(default_factory=lambda: f"trace-{uuid.uuid4().hex[:16]}", description="Unique trace identifier alias")
     query: Optional[str] = Field(None, description="User query prompt")
@@ -46,6 +46,10 @@ class ExecutionTelemetryTrace(BaseModel):
     llm_provider: str = Field(..., description="LLM provider name")
     llm_model: str = Field(..., description="LLM model name")
     llm_called: bool = Field(True, description="Whether an LLM endpoint was called")
+    router_duration_ms: float = Field(0.0, description="Router execution duration in ms")
+    llm_duration_ms: float = Field(0.0, description="LLM invocation latency in ms")
+    tool_duration_ms: float = Field(0.0, description="Sum or aggregate tool execution duration in ms")
+    total_duration_ms: float = Field(0.0, description="Total request processing latency in ms")
     llm_latency_ms: float = Field(0.0, description="LLM invocation latency in milliseconds")
     tools_selected: List[str] = Field(default_factory=list, description="List of tools selected for execution")
     tools_executed: List[str] = Field(default_factory=list, description="List of tool names executed")

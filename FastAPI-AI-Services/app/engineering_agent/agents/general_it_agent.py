@@ -39,10 +39,75 @@ class GeneralITKnowledgeAgent(BaseSpecialistAgent):
         entities: Optional[ExtractedEntities] = None
     ) -> SpecialistExecutionResult:
         """
-        Synthesize authoritative IT / software engineering knowledge using LLM provider.
+        Synthesize authoritative IT / software engineering knowledge using LLM provider,
+        or handle greetings/casual/invalid queries deterministically for ultra-fast startup.
         """
         t0 = time.time()
-        user_query = state.user_request
+        user_query = state.user_request.strip()
+        norm_query = user_query.lower()
+
+        # Fast deterministic path 1: Greetings ("hello", "hi", "good morning")
+        greeting_pattern = r"^(?:hello|hi|hey|good\s+(?:morning|afternoon|evening|day)|greetings|hi\s+there|hello\s+there|howdy|yo)[!.,\s]*$"
+        import re
+        if re.match(greeting_pattern, norm_query, re.IGNORECASE):
+            greeting_msg = "Hello! 👋 How can I help you today?"
+            return SpecialistExecutionResult(
+                agent_id=self.agent_id,
+                agent_name=self.name,
+                success=True,
+                data={"query": user_query, "explanation": greeting_msg, "source": "Deterministic Fast Router"},
+                metrics=[],
+                actions=[
+                    {"label": "View Repositories", "href": "/repositories"},
+                    {"label": "Explore Projects", "href": "/projects"},
+                ],
+                summary="Responded to greeting.",
+                tools_used=[],
+                duration_ms=(time.time() - t0) * 1000.0
+            )
+
+        # Fast deterministic path 2: Casual questions ("who are you", "what can you do")
+        casual_pattern = r"^(?:how\s+are\s+you|who\s+are\s+you|what\s+can\s+you\s+do|help\s+me|what\s+is\s+your\s+name|tell\s+me\s+a\s+joke|thanks|thank\s+you|nice\s+to\s+meet\s+you)[!.,\s]*$"
+        if re.match(casual_pattern, norm_query, re.IGNORECASE):
+            casual_msg = (
+                "I am your **Engineering AI Agent**.\n\n"
+                "I specialize in analyzing software projects, tracking developer velocity, inspecting pull requests, "
+                "evaluating commit history, and answering technical software engineering queries."
+            )
+            return SpecialistExecutionResult(
+                agent_id=self.agent_id,
+                agent_name=self.name,
+                success=True,
+                data={"query": user_query, "explanation": casual_msg, "source": "Deterministic Fast Router"},
+                metrics=[],
+                actions=[
+                    {"label": "Explore Dashboard", "href": "/dashboard"},
+                    {"label": "View Repositories", "href": "/repositories"}
+                ],
+                summary="Responded to casual inquiry.",
+                tools_used=[],
+                duration_ms=(time.time() - t0) * 1000.0
+            )
+
+        # Fast deterministic path 3: Invalid / Unclear Input ("asdf`!@3")
+        if (
+            re.search(r"[`~!@#$%^&*()_+\-=\[{\]\};:'\",<>/]{2,}", user_query) and
+            not any(w in norm_query.split() for w in ["what", "how", "who", "why", "where", "show", "tell", "list", "get", "view", "is", "are", "about"])
+        ) or (
+            len(user_query) <= 12 and not re.search(r"[aeiouAEIOU]", user_query) and not user_query.replace(" ", "").isdigit()
+        ):
+            unclear_msg = "I’m not sure what you’d like to ask. You can ask me about GitHub repositories, commits, pull requests, developers, project activity, or general technical topics."
+            return SpecialistExecutionResult(
+                agent_id=self.agent_id,
+                agent_name=self.name,
+                success=True,
+                data={"query": user_query, "explanation": unclear_msg, "source": "Deterministic Fast Router"},
+                metrics=[],
+                actions=[{"label": "View Repositories", "href": "/repositories"}],
+                summary="Handled invalid/unclear input.",
+                tools_used=[],
+                duration_ms=(time.time() - t0) * 1000.0
+            )
 
         messages = [
             {"role": "system", "content": GENERAL_IT_SYSTEM_PROMPT},

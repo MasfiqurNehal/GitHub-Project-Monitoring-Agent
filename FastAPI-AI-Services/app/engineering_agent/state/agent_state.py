@@ -61,10 +61,14 @@ class AgentState:
     artifacts: List[Dict[str, Any]] = field(default_factory=list)
     actions: List[Dict[str, Any]] = field(default_factory=list)
     
-    # Lifecycle Timestamps
+    # Lifecycle Timestamps & Timing Telemetry (Phase 26 Part 18)
     start_time: float = field(default_factory=time.time)
     end_time: Optional[float] = None
     error: Optional[str] = None
+    router_duration_ms: float = 0.0
+    llm_duration_ms: float = 0.0
+    tool_duration_ms: float = 0.0
+    total_duration_ms: float = 0.0
 
     def add_reasoning_step(self, thought: str, action: Optional[str] = None) -> None:
         """Record an internal intermediate reasoning step."""
@@ -119,4 +123,7 @@ class AgentState:
     def finalize(self) -> float:
         """Mark execution as completed and calculate duration in ms."""
         self.end_time = time.time()
-        return (self.end_time - self.start_time) * 1000.0
+        self.total_duration_ms = (self.end_time - self.start_time) * 1000.0
+        if not self.tool_duration_ms and self.tool_results:
+            self.tool_duration_ms = sum(t.duration_ms for t in self.tool_results)
+        return self.total_duration_ms

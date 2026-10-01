@@ -34,6 +34,11 @@ class SpecialistAgentRegistry:
 
         # Intent to Specialist Agent mapping
         self._intent_mapping: Dict[IntentCategory, BaseSpecialistAgent] = {
+            IntentCategory.GREETING: general_it_agent,
+            IntentCategory.CASUAL: general_it_agent,
+            IntentCategory.INVALID_OR_UNCLEAR: general_it_agent,
+            IntentCategory.GENERAL_TECHNICAL: general_it_agent,
+            IntentCategory.GENERAL_ENGINEERING: general_it_agent,
             IntentCategory.REPOSITORY_INFO: repository_agent,
             IntentCategory.COMMIT_INFO: commit_agent,
             IntentCategory.PULL_REQUEST_INFO: pull_request_agent,
