@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { useLayout } from '../../providers/layout-provider';
 import { useAuth } from '../../context/AuthContext';
-import { sendEngineeringAgentMessage } from '../../lib/api/ai';
+import { sendChatbotMessage } from '../../lib/api/chatbot';
 import {
   Bot,
   X,
@@ -258,12 +258,12 @@ export default function FloatingChatbot() {
     }
 
     try {
-      // 1. Invoke FastAPI AI Services endpoint (/api/v1/chatbot/chat)
-      const res = await sendEngineeringAgentMessage(activeSessionId, text);
-      const answerContent = res?.data?.content || generateMockResponse(text);
+      // 1. Invoke FastAPI Chatbot endpoint (/api/v1/chatbot/chat)
+      const res = await sendChatbotMessage(text, activeSessionId);
+      const answerContent = res?.data?.answer || generateMockResponse(text);
 
       const botMsg: ChatMessage = {
-        id: res?.data?.id || `bot-${Date.now()}`,
+        id: res?.data?.message_id || `bot-${Date.now()}`,
         sender: 'bot',
         text: answerContent,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -281,13 +281,13 @@ export default function FloatingChatbot() {
           return session;
         })
       );
-    } catch (err) {
-      console.warn('[FloatingChatbot] Live AI endpoint unavailable, using smart local fallback:', err);
-      const responseText = generateMockResponse(text);
+    } catch (err: any) {
+      console.error('[FloatingChatbot] Error processing chat request:', err);
+      const safeUserMessage = "Sorry, I couldn't process that request right now. Please try again.";
       const botMsg: ChatMessage = {
         id: `bot-${Date.now()}`,
         sender: 'bot',
-        text: responseText,
+        text: safeUserMessage,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
@@ -306,6 +306,7 @@ export default function FloatingChatbot() {
     } finally {
       setIsTyping(false);
     }
+
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

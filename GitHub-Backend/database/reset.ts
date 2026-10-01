@@ -7,6 +7,8 @@ async function resetDatabase() {
 
   try {
     await client.query(`
+      DROP TABLE IF EXISTS engineering_messages CASCADE;
+      DROP TABLE IF EXISTS engineering_conversations CASCADE;
       DROP TABLE IF EXISTS chatbot_messages CASCADE;
       DROP TABLE IF EXISTS chatbot_conversations CASCADE;
       DROP TABLE IF EXISTS project_repositories CASCADE;
@@ -27,7 +29,10 @@ async function resetDatabase() {
       DROP TABLE IF EXISTS developers CASCADE;
       DROP TABLE IF EXISTS repositories CASCADE;
       DROP TABLE IF EXISTS projects CASCADE;
+      DROP TABLE IF EXISTS user_login_history CASCADE;
+      DROP TABLE IF EXISTS refresh_tokens CASCADE;
       DROP TABLE IF EXISTS users CASCADE;
+      DROP TABLE IF EXISTS saas_organizations CASCADE;
     `);
 
     console.log('[Database Reset] All tables dropped successfully!');

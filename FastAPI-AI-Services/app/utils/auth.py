@@ -20,6 +20,7 @@ class AuthenticatedUser(BaseModel):
     name: Optional[str] = Field(None, description="User full name")
     role: str = Field("admin", description="User authorization role")
     organization_id: Optional[str] = Field(None, description="SaaS organization tenant ID")
+    token: Optional[str] = Field(None, description="Raw Bearer JWT token")
 
 def decode_jwt_token(token: str) -> Dict[str, Any]:
     """
@@ -72,8 +73,10 @@ def verify_authenticated_user(token: str) -> AuthenticatedUser:
         email=email,
         name=name,
         role=role,
-        organization_id=organization_id
+        organization_id=organization_id,
+        token=token
     )
+
 
 
 async def get_current_user(

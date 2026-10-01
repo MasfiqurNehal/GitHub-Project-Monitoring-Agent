@@ -162,7 +162,31 @@ async def clear_chat_history(
     return {"success": True, "cleared_count": count, "message": f"Cleared {count} conversation records."}
 
 
-# 10. Test provider connectivity
+# 10. Safe Configuration Diagnostic Endpoint (Never prints secret values)
+@chatbot_router.get("/config-status")
+async def get_config_status(
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
+    """
+    Diagnostic report for environment variable status.
+    NEVER exposes raw API keys or secrets.
+    """
+    from app.config import settings
+    return {
+        "success": True,
+        "environment": settings.ENVIRONMENT,
+        "config": {
+            "AI_PROVIDER": "configured" if settings.AI_PROVIDER else "missing",
+            "AI_BASE_URL": "configured" if settings.AI_BASE_URL else "missing",
+            "AI_API_KEY": "configured" if settings.AI_API_KEY else "missing",
+            "AI_MODEL": settings.AI_MODEL if settings.AI_MODEL else "missing",
+            "DATABASE_URL": "configured" if settings.DATABASE_URL else "missing",
+            "JWT_SECRET": "configured" if settings.JWT_SECRET else "missing",
+        }
+    }
+
+
+# 11. Test provider connectivity
 @chatbot_router.post("/test-provider", response_model=TestProviderResponse)
 async def test_ai_provider(
     request: TestProviderRequest = TestProviderRequest(),
@@ -170,8 +194,9 @@ async def test_ai_provider(
 ):
     """Test the configured AI provider with an authenticated test prompt."""
     try:
+        test_prompt = request.prompt or "Reply with exactly: CHATBOT_LLM_OK"
         messages = [
-            {"role": "user", "content": request.prompt or "Hello! Please confirm that the AI provider connection is active."}
+            {"role": "user", "content": test_prompt}
         ]
         result = await ai_provider.generate_completion(messages=messages)
         return TestProviderResponse(
@@ -188,3 +213,4 @@ async def test_ai_provider(
             status_code=exc.status_code,
             detail=f"AI Provider error ({exc.status_code}): {exc.message}"
         )
+

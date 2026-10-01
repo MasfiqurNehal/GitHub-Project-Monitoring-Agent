@@ -5,3 +5,5 @@ export * from './repositories';
 export * from './developers';
 export * from './ai';
 export * from './github';
+export * from './chatbot';
+
