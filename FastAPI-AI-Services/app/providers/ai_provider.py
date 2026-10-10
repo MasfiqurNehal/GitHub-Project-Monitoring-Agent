@@ -200,7 +200,7 @@ class BetopiaAIProvider(OpenAICompatibleProvider):
 
 
 class GeminiAIProvider(BaseAIProvider):
-    """Placeholder adapter for Native Google Gemini API."""
+    """Native adapter for Google Gemini API via REST generateContent."""
 
     async def generate_completion(
         self,
@@ -209,17 +209,99 @@ class GeminiAIProvider(BaseAIProvider):
         max_tokens: Optional[int] = None,
         **kwargs: Any
     ) -> Dict[str, Any]:
-        # Native Gemini REST / SDK adapter placeholder
-        return {
-            "answer": "Gemini native provider adapter placeholder response",
-            "model": self.model or "gemini-1.5-flash",
-            "provider": "gemini",
-            "usage": {},
-            "latency_ms": 0.0
+        base_url = (self.base_url or "https://generativelanguage.googleapis.com").rstrip("/")
+        model_name = self.model or "gemini-1.5-flash"
+        endpoint = f"{base_url}/v1beta/models/{model_name}:generateContent?key={self.api_key}"
+
+        gemini_contents = []
+        system_instruction_text = ""
+
+        for m in messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            if role == "system":
+                system_instruction_text += content + "\n"
+            else:
+                gemini_role = "model" if role in ("assistant", "model") else "user"
+                gemini_contents.append({
+                    "role": gemini_role,
+                    "parts": [{"text": content}]
+                })
+
+        payload: Dict[str, Any] = {
+            "contents": gemini_contents,
+            "generationConfig": {
+                "temperature": temperature
+            }
         }
+        if max_tokens:
+            payload["generationConfig"]["maxOutputTokens"] = max_tokens
+        if system_instruction_text.strip():
+            payload["systemInstruction"] = {
+                "parts": [{"text": system_instruction_text.strip()}]
+            }
+
+        start_time = time.time()
+        logger.info(f"[GeminiAIProvider] Calling Gemini REST API endpoint for model: '{model_name}'")
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                res = await client.post(endpoint, json=payload, headers={"Content-Type": "application/json"})
+
+            elapsed_ms = round((time.time() - start_time) * 1000, 2)
+
+            if res.status_code != 200:
+                logger.error(f"[GeminiAIProvider] Gemini API error ({res.status_code}): {res.text[:200]}")
+                raise AIProviderException(
+                    message=f"Gemini API returned status {res.status_code}: {res.text[:200]}",
+                    status_code=res.status_code,
+                    raw_response=res.text
+                )
+
+            data = res.json()
+            candidates = data.get("candidates", [])
+            answer = ""
+            if candidates:
+                parts = candidates[0].get("content", {}).get("parts", [])
+                answer = "".join([p.get("text", "") for p in parts])
+
+            usage_meta = data.get("usageMetadata", {})
+            return {
+                "answer": answer,
+                "model": model_name,
+                "provider": "gemini",
+                "usage": {
+                    "prompt_tokens": usage_meta.get("promptTokenCount", 0),
+                    "completion_tokens": usage_meta.get("candidatesTokenCount", 0),
+                    "total_tokens": usage_meta.get("totalTokenCount", 0)
+                },
+                "raw_response": data,
+                "latency_ms": elapsed_ms
+            }
+
+        except httpx.TimeoutException as exc:
+            logger.error(f"[GeminiAIProvider] Timeout: {exc}")
+            raise AIProviderException(f"Gemini API request timed out after {self.timeout}s", status_code=504)
+        except httpx.RequestError as exc:
+            logger.error(f"[GeminiAIProvider] Request error: {exc}")
+            raise AIProviderException(f"Gemini API connection failed: {str(exc)}", status_code=502)
 
     async def test_connection(self) -> Dict[str, Any]:
-        return {"status": "ok", "provider": "gemini"}
+        try:
+            res = await self.generate_completion(messages=[{"role": "user", "content": "Ping"}], max_tokens=5)
+            return {
+                "status": "ok",
+                "provider": "gemini",
+                "model": res.get("model"),
+                "latency_ms": res.get("latency_ms")
+            }
+        except Exception as err:
+            return {
+                "status": "error",
+                "provider": "gemini",
+                "error": str(err)
+            }
+
 
 
 class ClaudeAIProvider(BaseAIProvider):

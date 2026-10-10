@@ -17,21 +17,22 @@ class Settings(BaseSettings):
     DATABASE_URL: str = ""
 
     # AI Provider Settings (Chatbot)
-    AI_PROVIDER: str = "betopia"
-    AI_BASE_URL: str = "https://api.betopia.ai/v1"
+    AI_PROVIDER: str = "gemini"
+    AI_BASE_URL: str = "https://generativelanguage.googleapis.com"
     AI_API_KEY: str = ""
-    AI_MODEL: str = "auto"
+    AI_MODEL: str = "gemini-1.5-flash"
     AI_TIMEOUT_SECONDS: float = 30.0
 
     # ============================================================
     # ENGINEERING AGENT LLM CONFIGURATION (Strictly Isolated)
     # ============================================================
-    ENGINEERING_AGENT_LLM_PROVIDER: str = ""
-    ENGINEERING_AGENT_LLM_BASE_URL: str = ""
+    ENGINEERING_AGENT_LLM_PROVIDER: str = "gemini"
+    ENGINEERING_AGENT_LLM_BASE_URL: str = "https://generativelanguage.googleapis.com"
     ENGINEERING_AGENT_LLM_API_KEY: str = ""
-    ENGINEERING_AGENT_LLM_MODEL: str = ""
+    ENGINEERING_AGENT_LLM_MODEL: str = "gemini-1.5-flash"
     ENGINEERING_AGENT_LLM_TIMEOUT: float = 45.0
     ENGINEERING_AGENT_LLM_MAX_RETRIES: int = 2
+
 
     # Security & Auth Settings
     JWT_SECRET: str = "super-secret-jwt-key-github-monitoring-agent"
