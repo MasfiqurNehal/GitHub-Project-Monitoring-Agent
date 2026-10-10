@@ -64,7 +64,7 @@ export function ChatInput({ onSendMessage, isLoading }: ChatInputProps) {
           <span>Press <kbd className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded font-mono text-[9px] text-slate-300">Enter</kbd> to send, <kbd className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded font-mono text-[9px] text-slate-300">Shift+Enter</kbd> for line breaks.</span>
         </div>
 
-        <span className="hidden sm:inline">Read-only agent telemetry interface</span>
+        <span className="hidden sm:inline">AI agent interface</span>
       </div>
     </div>
   );

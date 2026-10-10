@@ -26,10 +26,10 @@ export default function SettingsPage() {
           <div className="bg-slate-900/70 border border-slate-800 p-6 rounded-2xl space-y-4">
             <div className="flex items-center space-x-3 text-blue-400">
               <ShieldCheck className="w-5 h-5" />
-              <h3 className="font-bold text-white text-sm">Read-Only Safety Policy</h3>
+              <h3 className="font-bold text-white text-sm">Security & Data Integrity Policy</h3>
             </div>
             <p className="text-xs text-slate-400 leading-relaxed">
-              This monitoring platform strictly enforces **Read-Only** behavior against GitHub API endpoints. It will never push commits, merge PRs, delete branches, or edit issue text.
+              This monitoring platform strictly enforces secure read-access behavior against GitHub API endpoints. It monitors telemetry without modifying repository source code or history.
             </p>
           </div>
 

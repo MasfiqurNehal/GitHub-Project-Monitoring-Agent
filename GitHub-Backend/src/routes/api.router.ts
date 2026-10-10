@@ -15,13 +15,15 @@ import * as webhookController from '../controllers/webhook.controller.js';
 import * as telemetryController from '../controllers/telemetry.controller.js';
 import * as codeChurnController from '../controllers/codeChurn.controller.js';
 import * as authController from '../controllers/auth.controller.js';
+import * as demoRequestController from '../controllers/demoRequest.controller.js';
 import { requireTenantAuth } from '../middleware/auth.middleware.js';
 
 export const apiRouter = Router();
 
-// Public Authentication & Health Check Endpoints
+// Public Authentication, Demo Request & Health Check Endpoints
 apiRouter.post('/auth/login', authController.login);
 apiRouter.post('/auth/refresh', authController.refreshToken);
+apiRouter.post('/demo-requests', demoRequestController.createDemoRequest);
 
 // GitHub App Installation Setup Callbacks (State Authenticated & Live App Verified)
 apiRouter.get('/github/app/setup', githubConnectionController.handleInstallationCallback);

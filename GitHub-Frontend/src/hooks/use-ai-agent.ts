@@ -38,7 +38,7 @@ export const DRAFT_WELCOME_THREAD: ConversationThread = {
       id: 'welcome-msg',
       role: 'assistant',
       content:
-        'Welcome to the **Engineering AI Agent Console**. I provide deterministic, read-only intelligence and multi-agent analysis across your monitored repositories, pull requests, commits, and developer metrics.\n\nHow can I help you today?',
+        'Welcome to the **Engineering AI Agent Console**. I provide automated multi-agent analysis and intelligence across your monitored repositories, pull requests, commits, and developer metrics.\n\nHow can I help you today?',
       timestamp: new Date().toISOString(),
     },
   ],

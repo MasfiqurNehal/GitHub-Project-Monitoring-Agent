@@ -32,7 +32,7 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated) {
-    return <PageLoader message="Redirecting to login..." subMessage="Please sign in to access executive console" />;
+    return <PageLoader message="Redirecting to login..." subMessage="Please sign in to access the platform console" />;
   }
 
   return (

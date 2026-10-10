@@ -96,9 +96,9 @@ export function PullRequestTabs({ detail }: PullRequestTabsProps) {
               <div className="flex items-center gap-3">
                 <ShieldCheck className="w-5 h-5 text-blue-400" />
                 <div>
-                  <h4 className="font-bold text-white">Read-Only Monitoring Console</h4>
+                  <h4 className="font-bold text-white">Pull Request Intelligence Console</h4>
                   <p className="text-slate-400 text-[11px] mt-0.5">
-                    PR merging and branch actions are executed directly within GitHub. This console provides read-only executive intelligence.
+                    PR merging and branch actions are executed directly within GitHub. This console provides pull request analytics and telemetry.
                   </p>
                 </div>
               </div>

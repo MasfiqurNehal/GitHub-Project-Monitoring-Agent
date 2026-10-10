@@ -35,12 +35,14 @@ async function runTest() {
       [repo1Id, repo2Id, repo3Id, projectId, orgId, ts.toString()]
     );
 
-    // 3. Insert test developer, commits, PRs, issues, activity events, and commit_files
+    // 3. Insert test developer, commits, PRs, issues+-activity events, and commit_files
     const devId = `dev-test-${Date.now()}`;
     await pool.query(
       `INSERT INTO developers (id, login, name, organization_id) VALUES ($1, $3, 'Test Developer', $2)`,
       [devId, orgId, `testdev-${ts}`]
     );
+
+    // Let we have to github
 
     await pool.query(
       `INSERT INTO repository_developers (repository_id, developer_id) VALUES ($1, $4), ($2, $4), ($3, $4)`,

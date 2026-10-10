@@ -28,7 +28,10 @@ import {
 const navigationGroups = [
   {
     name: 'MAIN',
-    items: [{ name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard }],
+    items: [
+      { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+      { name: 'GitHub Connection', href: '/settings/github', icon: Link2 },
+    ],
   },
   {
     name: 'PROJECTS',
@@ -57,7 +60,6 @@ const navigationGroups = [
   {
     name: 'SYSTEM',
     items: [
-      { name: 'GitHub Connection', href: '/settings/github', icon: Link2 },
       { name: 'Settings', href: '/settings', icon: Settings },
     ],
   },
@@ -148,18 +150,10 @@ export default function Sidebar() {
             </div>
           )}
 
-          {/* Grouped Navigation List */}
-          <nav aria-label="Main sidebar navigation" className="p-3 space-y-4">
+          {/* Navigation List */}
+          <nav aria-label="Main sidebar navigation" className="p-3 space-y-1">
             {navigationGroups.map((group) => (
               <div key={group.name} className="space-y-1">
-                {!isSidebarCollapsed ? (
-                  <span className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                    {group.name}
-                  </span>
-                ) : (
-                  <div className="h-px bg-slate-800 my-2" />
-                )}
-
                 {group.items.map((item) => {
                   const isActive =
                     pathname === item.href ||

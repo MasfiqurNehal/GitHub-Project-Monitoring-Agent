@@ -45,7 +45,7 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
       <div className="flex-1 flex flex-col min-w-0 bg-slate-950 text-slate-100 min-h-screen">
         <Header onOpenAIChat={() => setIsAIChatOpen(true)} />
         <main className="flex-1 p-6 max-w-7xl w-full mx-auto flex items-center justify-center">
-          <LoadingState message="Compiling executive report telemetry, project charts, and developer velocity metrics..." />
+          <LoadingState message="Compiling report telemetry, project charts, and developer velocity metrics..." />
         </main>
       </div>
     );
@@ -116,7 +116,7 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
           <div className="flex items-center gap-3">
             <div className="hidden sm:inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Read-Only Executive Report</span>
+              <span>Engineering Report</span>
             </div>
 
             <button

@@ -7,6 +7,11 @@ import { AppShell } from '../components/layout/app-shell';
 export const metadata: Metadata = {
   title: 'GitHub Monitoring Agent | AI Engineering Intelligence',
   description: 'AI-powered Engineering Intelligence & Management Dashboard for GitHub Projects',
+  icons: {
+    icon: '/icon.svg',
+    shortcut: '/icon.svg',
+    apple: '/icon.svg',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

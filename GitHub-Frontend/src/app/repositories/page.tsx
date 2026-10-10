@@ -130,13 +130,13 @@ export default function RepositoriesPage() {
               <GitBranch className="w-6 h-6 text-blue-400" /> Monitored Repositories
             </h1>
             <p className="text-slate-400 text-xs mt-1">
-              Read-only synchronized GitHub codebases across all monitoring project groups.
+              Synchronized GitHub codebases across monitored project groups.
             </p>
           </div>
 
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
             <ShieldCheck className="w-4 h-4" />
-            <span>Enforced Read-Only Mode</span>
+            <span>Protected Read Access</span>
           </div>
         </div>
 

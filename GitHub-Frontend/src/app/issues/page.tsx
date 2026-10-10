@@ -91,13 +91,13 @@ export default function IssuesPage() {
               <CircleDot className="w-6 h-6 text-amber-400" /> Issues Monitoring
             </h1>
             <p className="text-slate-400 text-xs mt-1">
-              Read-only executive monitoring of reported bugs, feature requests, and issue resolution patterns across engineering projects.
+              Centralized tracking of reported bugs, feature requests, and issue resolution patterns across engineering projects.
             </p>
           </div>
 
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold">
             <ShieldCheck className="w-4 h-4" />
-            <span>Read-Only Telemetry (No Writing)</span>
+            <span>Automated Telemetry</span>
           </div>
         </div>
 

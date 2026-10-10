@@ -64,14 +64,14 @@ export default function ReportsPage() {
               <FileText className="w-6 h-6 text-amber-400" /> Engineering Reports
             </h1>
             <p className="text-slate-400 text-xs mt-1">
-              Automated daily, weekly, monthly, and custom engineering activity digests for executive oversight.
+              Automated daily, weekly, monthly, and custom engineering activity digests and analytics.
             </p>
           </div>
 
           <div className="flex items-center gap-3">
             <div className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold">
               <ShieldCheck className="w-4 h-4" />
-              <span>Read-Only Telemetry Engine</span>
+              <span>Telemetry Engine</span>
             </div>
 
             <button

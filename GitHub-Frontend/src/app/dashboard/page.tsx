@@ -9,8 +9,9 @@ import { useProjects } from '../../hooks/use-projects';
 import { useRepositories } from '../../hooks/use-repositories';
 import { useDevelopers } from '../../hooks/use-developers';
 import { useFilters } from '../../hooks/use-filters';
+import { useGithubConnection } from '../../hooks/use-github';
 import { fetchApi } from '../../lib/api/client';
-import { RotateCw } from 'lucide-react';
+import { RotateCw, Link2, Unlink, CheckCircle2 } from 'lucide-react';
 
 // Dashboard components
 import { KpiCards } from '../../components/dashboard/KpiCards';
@@ -45,6 +46,29 @@ function DashboardContent() {
   const { projects } = useProjects();
   const { repositories } = useRepositories();
   const { developers } = useDevelopers();
+  const { accountInfo, connectAccount, disconnectAccount, isConnecting, isDisconnecting } = useGithubConnection();
+
+  const handleConnectGitHub = async () => {
+    try {
+      if (!accountInfo?.isConnected) {
+        await connectAccount();
+      } else {
+        router.push('/settings/github');
+      }
+    } catch (err) {
+      router.push('/settings/github');
+    }
+  };
+
+  const handleDisconnectGitHub = async () => {
+    if (!window.confirm('Are you sure you want to disconnect your GitHub account?')) return;
+    try {
+      await disconnectAccount();
+      await refetch();
+    } catch (err) {
+      console.error('Failed to disconnect GitHub account', err);
+    }
+  };
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -96,17 +120,47 @@ function DashboardContent() {
       <Header onOpenAIChat={() => setAIChatOpen(true)} />
 
       <main className="flex-1 p-6 space-y-6 max-w-7xl w-full mx-auto">
-        {/* Welcome Header */}
+        {/* Welcome Header & GitHub Connection Bar */}
         <div className="bg-gradient-to-r from-blue-950/40 via-slate-900 to-slate-900 p-6 rounded-2xl border border-blue-900/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
               Engineering Intelligence Console
             </h1>
             <p className="text-slate-400 text-xs mt-1">
-              Read-only GitHub project monitoring and AI activity agent for executive CTO oversight.
+              GitHub project monitoring and AI engineering activity intelligence platform.
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {accountInfo?.isConnected ? (
+              <div className="flex items-center gap-2 bg-emerald-950/40 border border-emerald-800/40 px-3 py-1.5 rounded-xl">
+                <span className="flex h-2 w-2 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span className="text-xs font-semibold text-emerald-300">
+                  GitHub Connected {accountInfo.username ? `(@${accountInfo.username})` : ''}
+                </span>
+                <button
+                  onClick={handleDisconnectGitHub}
+                  disabled={isDisconnecting}
+                  className="ml-1 inline-flex items-center gap-1 px-2.5 py-1 bg-rose-600/20 hover:bg-rose-600/40 border border-rose-500/30 text-rose-300 rounded-lg text-[11px] font-medium transition-all cursor-pointer"
+                  title="Disconnect GitHub Account"
+                >
+                  <Unlink className="w-3 h-3" />
+                  <span>{isDisconnecting ? 'Disconnecting...' : 'Disconnect'}</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleConnectGitHub}
+                disabled={isConnecting}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer"
+              >
+                <Link2 className="w-3.5 h-3.5" />
+                <span>{isConnecting ? 'Connecting...' : 'Connect GitHub Account'}</span>
+              </button>
+            )}
+
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
@@ -127,10 +181,44 @@ function DashboardContent() {
 
         {!hasRepositories ? (
           <EmptyState
-            title="No Monitored Repositories Synchronized"
-            description="Your organization has no active GitHub repositories connected. Connect a repository through the GitHub App to begin tracking commits, pull requests, and real-time engineering analytics."
-            actionLabel="Connect Repositories"
-            onAction={() => router.push('/repositories')}
+            icon={accountInfo?.isConnected ? CheckCircle2 : Link2}
+            title={!accountInfo?.isConnected ? "No GitHub Account Connected" : "GitHub Connected (No Monitored Data Yet)"}
+            description={
+              !accountInfo?.isConnected
+                ? "Your organization has no active GitHub account connected. Connect your GitHub account via the GitHub App to begin tracking commits, pull requests, and real-time engineering analytics."
+                : `Your GitHub account ${accountInfo?.username ? `(@${accountInfo.username})` : ''} is connected, but no repository telemetry is currently being monitored. Manage repositories in settings or disconnect your account if needed.`
+            }
+            action={
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                {!accountInfo?.isConnected ? (
+                  <button
+                    onClick={handleConnectGitHub}
+                    disabled={isConnecting}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                  >
+                    <Link2 className="w-4 h-4" />
+                    <span>{isConnecting ? 'Connecting...' : 'Connect GitHub Account'}</span>
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => router.push('/settings/github')}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer"
+                    >
+                      Manage Repositories
+                    </button>
+                    <button
+                      onClick={handleDisconnectGitHub}
+                      disabled={isDisconnecting}
+                      className="px-4 py-2 bg-rose-600/20 hover:bg-rose-600/40 border border-rose-500/30 text-rose-300 rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Unlink className="w-3.5 h-3.5" />
+                      <span>{isDisconnecting ? 'Disconnecting...' : 'Disconnect GitHub Account'}</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            }
           />
         ) : (
           <>

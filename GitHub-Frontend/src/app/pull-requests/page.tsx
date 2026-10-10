@@ -93,13 +93,13 @@ export default function PullRequestsPage() {
               <GitPullRequest className="w-6 h-6 text-amber-400" /> Pull Request Oversight
             </h1>
             <p className="text-slate-400 text-xs mt-1">
-              Read-only oversight of open, merged, and closed pull requests across monitored repositories.
+              Comprehensive tracking of open, merged, and closed pull requests across monitored repositories.
             </p>
           </div>
 
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold">
             <ShieldCheck className="w-4 h-4" />
-            <span>Read-Only Telemetry (No Writing)</span>
+            <span>Automated Telemetry</span>
           </div>
         </div>
 
