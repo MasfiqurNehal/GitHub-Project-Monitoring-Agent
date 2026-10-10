@@ -6,20 +6,20 @@ import asyncio
 from typing import Dict, Any, List, Optional
 import httpx
 
+from app.utils.logger import logger
 from app.engineering_agent.llm.base import (
     BaseAgentLLMProvider,
     LLMCompletionResponse,
     LLMUsage
 )
 from app.engineering_agent.llm.exceptions import (
+    LLMError,
     LLMAuthenticationError,
     LLMRateLimitError,
     LLMTimeoutError,
     LLMProviderUnavailableError,
     LLMResponseParsingError,
-    LLMError
 )
-from app.utils.logger import logger
 
 class GeminiAgentProvider(BaseAgentLLMProvider):
     """
