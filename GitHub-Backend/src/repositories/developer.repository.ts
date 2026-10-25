@@ -23,7 +23,19 @@ export interface DeveloperMetrics {
   changedFiles: number;
 }
 
+interface DevCacheEntry<T> {
+  data: T;
+  expiresAt: number;
+}
+
+const devMetricsCache = new Map<string, DevCacheEntry<any>>();
+const DEV_CACHE_TTL_MS = 60 * 1000; // 60 seconds
+
 export class DeveloperRepository {
+  public static clearCache(): void {
+    devMetricsCache.clear();
+  }
+
   async findAll(organizationId?: string): Promise<DeveloperRow[]> {
     if (organizationId) {
       const res = await pool.query(
@@ -115,6 +127,7 @@ export class DeveloperRepository {
     ];
 
     const res = await pool.query(query, values);
+    devMetricsCache.clear();
     return res.rows[0];
   }
 
@@ -125,6 +138,7 @@ export class DeveloperRepository {
        ON CONFLICT (repository_id, developer_id) DO UPDATE SET last_seen_at = NOW()`,
       [repositoryId, developerId]
     );
+    devMetricsCache.clear();
   }
 
   async getMetricsForDeveloper(
@@ -273,6 +287,12 @@ export class DeveloperRepository {
     page?: number;
     limit?: number;
   }) {
+    const cacheKey = JSON.stringify(options);
+    const cached = devMetricsCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.data;
+    }
+
     const page = Math.max(1, Number(options.page) || 1);
     const limit = Math.max(1, Math.min(100, Number(options.limit) || 20));
     const offset = (page - 1) * limit;
@@ -373,13 +393,18 @@ export class DeveloperRepository {
       });
     }
 
-    return {
+    const response = {
       data: results,
       total,
       page,
       limit,
       totalPages: Math.ceil(total / limit) || 1,
     };
+    devMetricsCache.set(cacheKey, {
+      data: response,
+      expiresAt: Date.now() + DEV_CACHE_TTL_MS,
+    });
+    return response;
   }
 }
 

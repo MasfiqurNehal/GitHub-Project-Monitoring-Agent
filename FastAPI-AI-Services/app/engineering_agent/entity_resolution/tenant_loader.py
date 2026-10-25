@@ -14,7 +14,7 @@ class TenantEntityCache:
     Ensures sub-millisecond entity resolution without redundant network overhead.
     """
 
-    CACHE_TTL_SECONDS = 60.0
+    CACHE_TTL_SECONDS = 300.0
 
     def __init__(self):
         self._cache: Dict[str, Dict[str, Any]] = {}

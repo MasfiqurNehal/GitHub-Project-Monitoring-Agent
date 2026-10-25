@@ -87,7 +87,7 @@ User Question: "${userMessage}"
 
 Provide a concise, professional executive answer in markdown format. Highlight key metrics and findings.`;
 
-        const model = this.ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const model = this.ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
         const response = await model.generateContent(prompt);
         answerText = response.response.text() || 'Unable to generate response.';
       } catch (err: any) {

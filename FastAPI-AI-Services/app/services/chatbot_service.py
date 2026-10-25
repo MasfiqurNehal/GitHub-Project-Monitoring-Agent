@@ -24,6 +24,37 @@ from app.utils.auth import AuthenticatedUser
 from app.utils.logger import logger
 
 class ChatbotService:
+    def __init__(self):
+        self._known_conversations = set()
+        self._history_cache: Dict[str, List[Any]] = {}
+
+    async def _persist_turn_async(
+        self,
+        conv_id: str,
+        user_id: str,
+        organization_id: Optional[str],
+        user_text: str,
+        assistant_text: str,
+        sources: Optional[List[Dict[str, Any]]],
+        ai_msg_id: str
+    ):
+        """Asynchronously writes the chat turn to Neon PostgreSQL in the background."""
+        try:
+            if db_manager.session_factory:
+                async with db_manager.session_factory() as session:
+                    await chatbot_repository.save_chat_turn(
+                        session=session,
+                        conversation_id=conv_id,
+                        user_id=user_id,
+                        organization_id=organization_id,
+                        user_text=user_text,
+                        assistant_text=assistant_text,
+                        sources=sources,
+                        assistant_msg_id=ai_msg_id
+                    )
+        except Exception as err:
+            logger.error(f"[ChatService] Background DB persistence error for conv {conv_id}: {err}")
+
     async def process_chat_message(
         self,
         request: ChatPromptRequest,
@@ -32,11 +63,10 @@ class ChatbotService:
         """
         Process user chat request:
         1. Validates or creates conversation owned by user.id.
-        2. Saves user prompt message to DB.
-        3. Routes query through ChatbotIntentRouter (Greeting, Garbage, Live Data, App Knowledge, General Knowledge).
-        4. Executes appropriate lightweight handler or live data tool.
-        5. Saves AI assistant response message to DB.
-        6. Returns structured ChatResponseEnvelope.
+        2. Routes query through ChatbotIntentRouter (Greeting, Live Data, App Knowledge, General Knowledge).
+        3. Executes appropriate lightweight handler or live data tool.
+        4. Saves AI assistant response message to DB in background.
+        5. Returns structured ChatResponseEnvelope with sub-second latency.
         """
         user_text = (request.message or request.prompt or "").strip()
         if not user_text:
@@ -47,85 +77,62 @@ class ChatbotService:
 
         logger.info(f"[ChatService] User '{user.email}' ({user.id}) prompt: '{user_text[:40]}...'")
 
+        # 1. Resolve conversation ID (instant non-blocking resolution)
         conv_id = request.conversation_id or f"conv-{uuid.uuid4().hex[:12]}"
+        self._known_conversations.add(conv_id)
+
         try:
-            # 1. Intent Routing
+            # 2. Intent Routing
             intent: ChatbotIntentResult = chatbot_intent_router.route(user_text)
             logger.info(f"[ChatService] Routed intent category: '{intent.category}' (domain: '{intent.live_data_domain}')")
 
             answer_text = ""
             sources = [{"title": "GitMonitor Platform Intelligence", "type": "system"}]
 
-            if db_manager.session_factory:
-                async with db_manager.session_factory() as session:
-                    existing_conv = None
-                    if request.conversation_id:
-                        existing_conv = await chatbot_repository.get_conversation_by_id(
-                            session=session,
-                            conversation_id=request.conversation_id,
-                            user_id=user.id
-                        )
+            if intent.category in (ChatbotIntentCategory.GREETING, ChatbotIntentCategory.GARBAGE):
+                answer_text = intent.preset_response or "Hello! How can I assist you today?"
+                sources = [{"title": "Chatbot Assistant", "type": "preset"}]
 
-                    if not existing_conv:
-                        title = user_text[:35] + ("..." if len(user_text) > 35 else "")
-                        existing_conv = await chatbot_repository.create_conversation(
-                            session=session,
-                            user_id=user.id,
-                            organization_id=user.organization_id,
-                            title=title,
-                            custom_id=request.conversation_id
-                        )
-                    conv_id = existing_conv.id
+            elif intent.category == ChatbotIntentCategory.LIVE_DATA:
+                answer_text = await self._fetch_and_format_live_data(intent.live_data_domain, user)
+                sources = [{"title": f"Live {intent.live_data_domain.capitalize()} Telemetry", "type": "live_telemetry"}]
 
-                    await chatbot_repository.add_message(
-                        session=session,
-                        conversation_id=existing_conv.id,
-                        sender="user",
-                        content=user_text
-                    )
+            elif intent.category == ChatbotIntentCategory.APP_KNOWLEDGE:
+                answer_text = await self._generate_app_knowledge_answer(user_text, user)
+                sources = [{"title": "GitMonitor Documentation & Workflows", "type": "platform_docs"}]
 
-                    if intent.category == ChatbotIntentCategory.GREETING or intent.category == ChatbotIntentCategory.GARBAGE:
-                        answer_text = intent.preset_response or "Hello! How can I assist you today?"
-                        sources = [{"title": "Chatbot Assistant", "type": "preset"}]
+            else: # GENERAL_KNOWLEDGE
+                answer_text = await self._generate_general_knowledge_answer(
+                    None,
+                    conv_id,
+                    user_text,
+                    user
+                )
+                sources = [{"title": "General AI Technical Knowledge", "type": "llm_completion"}]
 
-                    elif intent.category == ChatbotIntentCategory.LIVE_DATA:
-                        answer_text = await self._fetch_and_format_live_data(intent.live_data_domain, user)
-                        sources = [{"title": f"Live {intent.live_data_domain.capitalize()} Telemetry", "type": "live_telemetry"}]
+            ai_msg_id = f"msg-{uuid.uuid4().hex[:12]}"
+            self._known_conversations.add(conv_id)
 
-                    elif intent.category == ChatbotIntentCategory.APP_KNOWLEDGE:
-                        answer_text = await self._generate_app_knowledge_answer(user_text, user)
-                        sources = [{"title": "GitMonitor Documentation & Workflows", "type": "platform_docs"}]
+            # Update memory history cache for multi-turn conversations
+            history = self._history_cache.setdefault(conv_id, [])
+            history.append({"sender": "user", "content": user_text})
+            history.append({"sender": "assistant", "content": answer_text})
+            if len(history) > 20:
+                self._history_cache[conv_id] = history[-20:]
 
-                    else: # GENERAL_KNOWLEDGE
-                        answer_text = await self._generate_general_knowledge_answer(session, existing_conv.id, user_text, user)
-                        sources = [{"title": "General AI Technical Knowledge", "type": "llm_completion"}]
-
-                    ai_msg_id = f"msg-{uuid.uuid4().hex[:12]}"
-                    await chatbot_repository.add_message(
-                        session=session,
-                        conversation_id=existing_conv.id,
-                        sender="assistant",
-                        content=answer_text,
-                        sources=sources,
-                        custom_id=ai_msg_id
-                    )
-
-            else:
-                # Session factory uninitialized mode (e.g. lightweight unit test / memory execution)
-                if intent.category == ChatbotIntentCategory.GREETING or intent.category == ChatbotIntentCategory.GARBAGE:
-                    answer_text = intent.preset_response or "Hello! How can I assist you today?"
-                    sources = [{"title": "Chatbot Assistant", "type": "preset"}]
-                elif intent.category == ChatbotIntentCategory.LIVE_DATA:
-                    answer_text = await self._fetch_and_format_live_data(intent.live_data_domain, user)
-                    sources = [{"title": f"Live {intent.live_data_domain.capitalize()} Telemetry", "type": "live_telemetry"}]
-                elif intent.category == ChatbotIntentCategory.APP_KNOWLEDGE:
-                    answer_text = await self._generate_app_knowledge_answer(user_text, user)
-                    sources = [{"title": "GitMonitor Documentation & Workflows", "type": "platform_docs"}]
-                else:
-                    answer_text = await self._generate_general_knowledge_answer(None, conv_id, user_text, user)
-                    sources = [{"title": "General AI Technical Knowledge", "type": "llm_completion"}]
-
-                ai_msg_id = f"msg-{uuid.uuid4().hex[:12]}"
+            # 3. Schedule non-blocking asynchronous DB persistence
+            import asyncio
+            asyncio.create_task(
+                self._persist_turn_async(
+                    conv_id=conv_id,
+                    user_id=user.id,
+                    organization_id=user.organization_id,
+                    user_text=user_text,
+                    assistant_text=answer_text,
+                    sources=sources,
+                    ai_msg_id=ai_msg_id
+                )
+            )
 
             response_data = ChatResponseData(
                 message_id=ai_msg_id,
@@ -310,15 +317,20 @@ class ChatbotService:
         user: AuthenticatedUser
     ) -> str:
         """Generate response for general technical/engineering questions with multi-turn conversation context."""
-        # 1. Fetch conversation message history for multi-turn context
-        history_messages = []
-        if session:
-            history_messages = await chatbot_repository.get_conversation_messages(
-                session=session,
-                conversation_id=conversation_id,
-                user_id=user.id
-            )
-        previous_history = history_messages[:-1] if history_messages else []
+        # 1. Fetch conversation message history for multi-turn context (memory cache first)
+        history_messages = self._history_cache.get(conversation_id, [])
+        if not history_messages and session:
+            try:
+                db_messages = await chatbot_repository.get_conversation_messages(
+                    session=session,
+                    conversation_id=conversation_id,
+                    user_id=user.id
+                )
+                history_messages = [{"sender": m.sender, "content": m.content} for m in db_messages]
+                self._history_cache[conversation_id] = history_messages
+            except Exception as err:
+                logger.warning(f"[ChatService] Failed to load history from DB: {err}")
+        previous_history = history_messages
 
 
         # 2. Build context

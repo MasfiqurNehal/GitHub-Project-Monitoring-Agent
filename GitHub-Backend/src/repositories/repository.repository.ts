@@ -28,8 +28,26 @@ export interface RepositoryRow {
   updated_at: Date;
 }
 
+interface CacheEntry<T> {
+  data: T;
+  expiresAt: number;
+}
+
+const repositoryCache = new Map<string, CacheEntry<RepositoryRow[]>>();
+const REPO_CACHE_TTL_MS = 60 * 1000; // 60 seconds
+
 export class RepositoryRepository {
+  public static clearCache(): void {
+    repositoryCache.clear();
+  }
+
   async findAll(organizationId?: string): Promise<RepositoryRow[]> {
+    const cacheKey = organizationId || '__all__';
+    const cached = repositoryCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.data;
+    }
+
     const orgFilter = organizationId
       ? `WHERE r.organization_id = $1 OR r.project_id IN (SELECT id FROM projects WHERE organization_id = $1) OR r.id IN (SELECT repository_id FROM project_repositories WHERE organization_id = $1 OR project_id IN (SELECT id FROM projects WHERE organization_id = $1))`
       : '';
@@ -53,6 +71,10 @@ export class RepositoryRepository {
       ORDER BY r.created_at DESC
     `;
     const res = await pool.query(query, params);
+    repositoryCache.set(cacheKey, {
+      data: res.rows,
+      expiresAt: Date.now() + REPO_CACHE_TTL_MS,
+    });
     return res.rows;
   }
 
@@ -192,6 +214,7 @@ export class RepositoryRepository {
     ];
 
     const res = await pool.query(query, values);
+    repositoryCache.clear();
     return res.rows[0];
   }
 
@@ -219,6 +242,7 @@ export class RepositoryRepository {
        WHERE id = $6`,
       [status, lastSyncedAt || null, effectiveCompleted, effectiveStarted, syncError || null, id]
     );
+    repositoryCache.clear();
   }
 
   async delete(id: string, organizationId?: string): Promise<boolean> {
@@ -229,6 +253,7 @@ export class RepositoryRepository {
       params.push(organizationId);
     }
     const res = await pool.query(query, params);
+    repositoryCache.clear();
     return (res.rowCount || 0) > 0;
   }
 }

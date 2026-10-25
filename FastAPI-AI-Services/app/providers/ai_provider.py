@@ -210,7 +210,14 @@ class GeminiAIProvider(BaseAIProvider):
         **kwargs: Any
     ) -> Dict[str, Any]:
         base_url = (self.base_url or "https://generativelanguage.googleapis.com").rstrip("/")
-        model_name = self.model or "gemini-1.5-flash"
+        raw_model = self.model or "gemini-2.5-flash"
+        if "1.5-flash" in raw_model or raw_model == "default":
+            model_name = "gemini-2.5-flash"
+        elif "1.5-pro" in raw_model:
+            model_name = "gemini-2.5-pro"
+        else:
+            model_name = raw_model
+
         endpoint = f"{base_url}/v1beta/models/{model_name}:generateContent?key={self.api_key}"
 
         gemini_contents = []
@@ -247,6 +254,17 @@ class GeminiAIProvider(BaseAIProvider):
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 res = await client.post(endpoint, json=payload, headers={"Content-Type": "application/json"})
+
+                if res.status_code in (404, 429) and model_name != "gemini-2.5-flash-lite":
+                    fallback_model = "gemini-2.5-flash-lite"
+                    logger.warning(f"[GeminiAIProvider] Model '{model_name}' returned HTTP {res.status_code}. Automatically failing over to high-speed '{fallback_model}'...")
+                    model_name = fallback_model
+                    endpoint = f"{base_url}/v1beta/models/{model_name}:generateContent?key={self.api_key}"
+                    res = await client.post(endpoint, json=payload, headers={"Content-Type": "application/json"})
+                    if res.status_code == 429:
+                        import asyncio
+                        await asyncio.sleep(1.0)
+                        res = await client.post(endpoint, json=payload, headers={"Content-Type": "application/json"})
 
             elapsed_ms = round((time.time() - start_time) * 1000, 2)
 

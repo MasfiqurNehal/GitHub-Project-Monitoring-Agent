@@ -30,6 +30,7 @@ I can analyze activity across your monitored projects, repositories, and develop
   ]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingStage, setLoadingStage] = useState('Resolving repository context...');
   const [conversationId] = useState(() => `conv-${Date.now()}`);
 
   useEffect(() => {
@@ -59,6 +60,15 @@ I can analyze activity across your monitored projects, repositories, and develop
     setMessages((prev) => [...prev, userMsg]);
     setInputMessage('');
     setIsLoading(true);
+    setLoadingStage('Resolving repository context...');
+
+    const stageTimer1 = setTimeout(() => {
+      setLoadingStage('Querying telemetry tools & developer activity...');
+    }, 1200);
+
+    const stageTimer2 = setTimeout(() => {
+      setLoadingStage('Synthesizing engineering intelligence...');
+    }, 2800);
 
     try {
       const res = await sendEngineeringAgentMessage(conversationId, text);
@@ -79,6 +89,8 @@ I can analyze activity across your monitored projects, repositories, and develop
         },
       ]);
     } finally {
+      clearTimeout(stageTimer1);
+      clearTimeout(stageTimer2);
       setIsLoading(false);
     }
   };
@@ -155,9 +167,14 @@ I can analyze activity across your monitored projects, repositories, and develop
           ))}
 
           {isLoading && (
-            <div className="flex items-center space-x-3 text-slate-400 text-xs py-2">
-              <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
-              <span>Analyzing GitHub data facts...</span>
+            <div className="flex items-center space-x-2.5 text-slate-300 text-xs py-2">
+              <div className="w-6 h-6 rounded-full bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+              </div>
+              <div className="bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700/60 flex items-center space-x-2">
+                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
+                <span className="text-[11px] font-medium text-slate-300">{loadingStage}</span>
+              </div>
             </div>
           )}
         </div>

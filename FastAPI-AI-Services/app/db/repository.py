@@ -25,17 +25,19 @@ class ChatbotRepository:
     ) -> ConversationModel:
         """Create a new conversation record owned by user_id."""
         conv_id = custom_id or f"conv-{uuid.uuid4().hex[:12]}"
+        now = datetime.now(timezone.utc)
         conversation = ConversationModel(
             id=conv_id,
             user_id=user_id,
             organization_id=organization_id,
             title=title,
             is_pinned=False,
-            is_deleted=False
+            is_deleted=False,
+            created_at=now,
+            updated_at=now
         )
         session.add(conversation)
         await session.commit()
-        await session.refresh(conversation)
         logger.info(f"[DB] Created conversation '{conv_id}' for user '{user_id}'")
         return conversation
 
@@ -72,22 +74,86 @@ class ChatbotRepository:
         self,
         session: AsyncSession,
         conversation_id: str,
-        user_id: str
+        user_id: str,
+        include_messages: bool = False
     ) -> Optional[ConversationModel]:
         """Fetch a specific conversation by ID, strictly verifying user ownership."""
-        stmt = (
-            select(ConversationModel)
-            .options(selectinload(ConversationModel.messages))
-            .where(
-                and_(
-                    ConversationModel.id == conversation_id,
-                    ConversationModel.user_id == user_id,
-                    ConversationModel.is_deleted == False
-                )
+        stmt = select(ConversationModel).where(
+            and_(
+                ConversationModel.id == conversation_id,
+                ConversationModel.user_id == user_id,
+                ConversationModel.is_deleted == False
             )
         )
+        if include_messages:
+            stmt = stmt.options(selectinload(ConversationModel.messages))
+
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def save_chat_turn(
+        self,
+        session: AsyncSession,
+        conversation_id: str,
+        user_id: str,
+        organization_id: Optional[str],
+        user_text: str,
+        assistant_text: str,
+        sources: Optional[List[Dict[str, Any]]] = None,
+        metrics: Optional[List[Dict[str, Any]]] = None,
+        assistant_msg_id: Optional[str] = None,
+        is_new_conversation: bool = False,
+        conversation_title: Optional[str] = None
+    ) -> tuple[Optional[ConversationModel], MessageModel, MessageModel]:
+        """
+        Persist a complete chat turn (user message + assistant message + conversation header)
+        in a single atomic database commit, eliminating redundant roundtrips over internet TLS.
+        """
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        now = datetime.now(timezone.utc)
+
+        conv_stmt = (
+            pg_insert(ConversationModel)
+            .values(
+                id=conversation_id,
+                user_id=user_id,
+                organization_id=organization_id,
+                title=conversation_title or (user_text[:35] + ("..." if len(user_text) > 35 else "")),
+                is_pinned=False,
+                is_deleted=False,
+                created_at=now,
+                updated_at=now
+            )
+            .on_conflict_do_update(
+                index_elements=[ConversationModel.id],
+                set_={"updated_at": now}
+            )
+        )
+        await session.execute(conv_stmt)
+
+        user_msg = MessageModel(
+            id=f"msg-{uuid.uuid4().hex[:12]}",
+            conversation_id=conversation_id,
+            sender="user",
+            content=user_text,
+            created_at=now
+        )
+        session.add(user_msg)
+
+        bot_msg_id = assistant_msg_id or f"msg-{uuid.uuid4().hex[:12]}"
+        assistant_msg = MessageModel(
+            id=bot_msg_id,
+            conversation_id=conversation_id,
+            sender="assistant",
+            content=assistant_text,
+            metrics_json=metrics,
+            sources_json=sources,
+            created_at=now
+        )
+        session.add(assistant_msg)
+
+        await session.commit()
+        return conv, user_msg, assistant_msg
 
     async def add_message(
         self,
@@ -121,7 +187,6 @@ class ChatbotRepository:
         )
 
         await session.commit()
-        await session.refresh(message)
         logger.info(f"[DB] Added message '{msg_id}' to conversation '{conversation_id}' ({sender})")
         return message
 

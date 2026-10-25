@@ -44,8 +44,12 @@ services:
     environment:
       - PORT=8000
       - DATABASE_URL=postgresql://postgres:postgres_password@postgres:5432/github_monitoring
+      - AI_MODEL=gemini-2.5-flash
+      - ENGINEERING_AGENT_LLM_MODEL=gemini-2.5-flash
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AI_API_KEY=${GEMINI_API_KEY:-}
+      - ENGINEERING_AGENT_LLM_API_KEY=${GEMINI_API_KEY:-}
     ports:
       - "8000:8000"
     depends_on:

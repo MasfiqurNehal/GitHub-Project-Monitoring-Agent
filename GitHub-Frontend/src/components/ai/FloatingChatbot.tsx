@@ -24,6 +24,8 @@ import {
   Users,
   Zap,
   CornerDownLeft,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -31,6 +33,7 @@ interface ChatMessage {
   sender: 'user' | 'bot';
   text: string;
   timestamp: string;
+  sources?: Array<{ title: string; type: string; url?: string }>;
 }
 
 interface ChatSession {
@@ -76,7 +79,17 @@ export default function FloatingChatbot() {
   
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [thinkingStage, setThinkingStage] = useState<string>('Analyzing inquiry...');
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  
+  const handleCopyText = (msgId: string, text: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setCopiedMessageId(msgId);
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    }
+  };
   
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -252,6 +265,15 @@ export default function FloatingChatbot() {
     updateCurrentSessionMessages(updatedMessages, customTitle);
     setInputText('');
     setIsTyping(true);
+    setThinkingStage('Analyzing inquiry...');
+
+    const stageTimer1 = setTimeout(() => {
+      setThinkingStage('Querying telemetry & knowledge...');
+    }, 1000);
+
+    const stageTimer2 = setTimeout(() => {
+      setThinkingStage('Generating comprehensive response...');
+    }, 2500);
 
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -267,6 +289,7 @@ export default function FloatingChatbot() {
         sender: 'bot',
         text: answerContent,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        sources: res?.data?.sources,
       };
 
       setSessions((prevSessions) =>
@@ -304,6 +327,8 @@ export default function FloatingChatbot() {
         })
       );
     } finally {
+      clearTimeout(stageTimer1);
+      clearTimeout(stageTimer2);
       setIsTyping(false);
     }
 
@@ -533,32 +558,68 @@ export default function FloatingChatbot() {
                         className={`p-3 rounded-2xl text-xs leading-relaxed ${
                           msg.sender === 'user'
                             ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-none shadow-md'
-                            : 'bg-slate-800/90 text-slate-200 border border-slate-700/60 rounded-tl-none'
+                            : 'bg-slate-800/90 text-slate-200 border border-slate-700/60 rounded-tl-none shadow-sm'
                         }`}
                       >
                         <div>{renderFormattedText(msg.text)}</div>
+
+                        {/* Telemetry / Knowledge Source Badges */}
+                        {msg.sender === 'bot' && msg.sources && msg.sources.length > 0 && (
+                          <div className="mt-2.5 pt-2 border-t border-slate-700/40 flex flex-wrap gap-1">
+                            {msg.sources.map((s, idx) => (
+                              <span
+                                key={idx}
+                                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-950/70 text-blue-300 border border-blue-800/40"
+                              >
+                                <span>⚡</span>
+                                <span>{s.title}</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <p
-                        className={`text-[9px] text-slate-500 px-1 ${
-                          msg.sender === 'user' ? 'text-right' : 'text-left'
-                        }`}
-                      >
-                        {msg.timestamp}
-                      </p>
+
+                      <div className={`flex items-center px-1 text-[9px] text-slate-500 ${msg.sender === 'user' ? 'justify-end' : 'justify-between'}`}>
+                        <span>{msg.timestamp}</span>
+                        {msg.sender === 'bot' && (
+                          <button
+                            type="button"
+                            onClick={() => handleCopyText(msg.id, msg.text)}
+                            className="inline-flex items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors ml-2 py-0.5 px-1 rounded hover:bg-slate-800"
+                            title="Copy response"
+                          >
+                            {copiedMessageId === msg.id ? (
+                              <>
+                                <Check className="w-2.5 h-2.5 text-emerald-400" />
+                                <span className="text-emerald-400 font-medium">Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-2.5 h-2.5" />
+                                <span>Copy</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
 
                 {isTyping && (
-                  <div className="flex items-center space-x-2.5 text-slate-400 text-xs py-1">
-                    <div className="w-7 h-7 rounded-full bg-slate-800 text-blue-400 border border-slate-700/60 flex items-center justify-center shrink-0">
-                      <Bot className="w-3.5 h-3.5 animate-bounce" />
+                  <div className="flex items-center space-x-2.5 text-slate-400 text-xs py-1 animate-fadeIn">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-blue-600/30 to-indigo-600/30 text-blue-400 border border-blue-500/40 flex items-center justify-center shrink-0 shadow-sm">
+                      <Bot className="w-3.5 h-3.5 animate-pulse text-blue-400" />
                     </div>
-                    <div className="bg-slate-800/80 px-3.5 py-2.5 rounded-xl border border-slate-700/50 flex items-center space-x-2">
-                      <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
-                      <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse delay-150" />
-                      <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse delay-300" />
-                      <span className="text-[11px] text-slate-400 ml-1">GitMonitor AI is thinking...</span>
+                    <div className="bg-slate-800/90 px-3.5 py-2.5 rounded-2xl rounded-tl-none border border-slate-700/60 flex items-center space-x-2 shadow-md">
+                      <div className="flex items-center space-x-1">
+                        <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                        <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                        <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" />
+                      </div>
+                      <span className="text-[11px] font-medium text-slate-300 ml-1.5">
+                        {thinkingStage}
+                      </span>
                     </div>
                   </div>
                 )}

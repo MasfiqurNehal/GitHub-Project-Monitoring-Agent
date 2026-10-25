@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     AI_PROVIDER: str = "gemini"
     AI_BASE_URL: str = "https://generativelanguage.googleapis.com"
     AI_API_KEY: str = ""
-    AI_MODEL: str = "gemini-1.5-flash"
+    AI_MODEL: str = "gemini-2.5-flash"
     AI_TIMEOUT_SECONDS: float = 30.0
 
     # ============================================================
@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     ENGINEERING_AGENT_LLM_PROVIDER: str = "gemini"
     ENGINEERING_AGENT_LLM_BASE_URL: str = "https://generativelanguage.googleapis.com"
     ENGINEERING_AGENT_LLM_API_KEY: str = ""
-    ENGINEERING_AGENT_LLM_MODEL: str = "gemini-1.5-flash"
+    ENGINEERING_AGENT_LLM_MODEL: str = "gemini-2.5-flash"
     ENGINEERING_AGENT_LLM_TIMEOUT: float = 45.0
     ENGINEERING_AGENT_LLM_MAX_RETRIES: int = 2
 

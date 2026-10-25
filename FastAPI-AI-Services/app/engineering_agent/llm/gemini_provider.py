@@ -38,7 +38,15 @@ class GeminiAgentProvider(BaseAgentLLMProvider):
         **kwargs: Any
     ) -> LLMCompletionResponse:
         base_url = self.base_url or "https://generativelanguage.googleapis.com"
-        model_name = self.model or "gemini-1.5-flash"
+        raw_model = self.model or "gemini-2.5-flash"
+        # Map deprecated 1.5 versions or default aliases to 2.5
+        if "1.5-flash" in raw_model or raw_model == "default":
+            model_name = "gemini-2.5-flash"
+        elif "1.5-pro" in raw_model:
+            model_name = "gemini-2.5-pro"
+        else:
+            model_name = raw_model
+
         endpoint = f"{base_url.rstrip('/')}/v1beta/models/{model_name}:generateContent?key={self.api_key}"
 
         # Convert standard OpenAI message format to Gemini contents
@@ -126,6 +134,11 @@ class GeminiAgentProvider(BaseAgentLLMProvider):
                             await asyncio.sleep(1.0 * attempts)
                             continue
                         raise LLMProviderUnavailableError(f"Gemini API service error (HTTP {res.status_code}).", raw_response=res.text)
+                    elif res.status_code == 404 and model_name != "gemini-2.5-flash":
+                        logger.warning(f"[GeminiAgentProvider] Model '{model_name}' returned 404. Falling back to 'gemini-2.5-flash'...")
+                        model_name = "gemini-2.5-flash"
+                        endpoint = f"{base_url.rstrip('/')}/v1beta/models/{model_name}:generateContent?key={self.api_key}"
+                        continue
                     else:
                         raise LLMError(f"Gemini API error (HTTP {res.status_code}): {res.text[:200]}", status_code=res.status_code)
 

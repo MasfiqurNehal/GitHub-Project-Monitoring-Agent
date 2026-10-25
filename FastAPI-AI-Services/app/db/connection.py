@@ -44,9 +44,13 @@ class DatabaseManager:
         self.engine = create_async_engine(
             self.async_db_url,
             echo=False,
-            pool_pre_ping=True,
+            pool_pre_ping=False,
             pool_size=10,
-            max_overflow=20
+            max_overflow=20,
+            connect_args={
+                "statement_cache_size": 0,
+                "prepared_statement_cache_size": 0,
+            }
         )
         self.session_factory = async_sessionmaker(
             bind=self.engine,

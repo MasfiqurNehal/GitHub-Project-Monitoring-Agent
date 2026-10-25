@@ -47,7 +47,6 @@ class EngineeringChatRepository:
         )
         session.add(conversation)
         await session.commit()
-        await session.refresh(conversation)
         logger.info(f"[EngineeringDB] Created conversation '{conv_id}' for user '{user_id}' (org '{organization_id}')")
         return conversation
 
@@ -271,7 +270,6 @@ class EngineeringChatRepository:
         )
 
         await session.commit()
-        await session.refresh(message)
         logger.info(f"[EngineeringDB] Added message '{msg_id}' to conversation '{conversation_id}' ({sender})")
         return message
 
