@@ -378,6 +378,18 @@ class ToolRegistry:
             )
         )
 
+        # list_projects
+        self.register(
+            ReadOnlyTool(
+                name="list_projects",
+                description="Fetch all monitored projects registered within the authenticated tenant.",
+                input_model=BaseModel,
+                handler=lambda inp, auth_token, tenant_id: express_api_client.list_projects(
+                    auth_token=auth_token, tenant_id=tenant_id
+                )
+            )
+        )
+
         # 14. get_project
         self.register(
             ReadOnlyTool(

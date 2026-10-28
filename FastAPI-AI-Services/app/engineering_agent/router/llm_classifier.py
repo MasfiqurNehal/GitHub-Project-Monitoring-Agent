@@ -18,17 +18,20 @@ INTENT_CLASSIFIER_PROMPT = """You are an intent classification subsystem for a G
 Analyze the user's prompt and classify it into EXACTLY ONE of the following intent categories:
 
 CATEGORIES:
-1. repository_info - Status, languages, metadata of a repository.
-2. commit_info - Commits, commit history, authors, diffs.
-3. developer_info - Developer velocity, contributions, commits/PRs per author.
-4. pull_request_info - PR reviews, turnaround time, open/merged PRs.
-5. issue_info - Issues, bug tickets, resolution time.
-6. code_impact - Code churn, additions, deletions, top modified files.
-7. project_info - Project health, connected repositories.
-8. dashboard_analytics - High-level metrics, executive KPIs, overall system health.
-9. cross_repository_analytics - Comparing or benchmarking multiple repositories.
-10. general_engineering_qa - Software engineering concepts, architecture, Git theory.
-11. unsupported_non_it - Unrelated non-IT questions (cooking, weather, sports, dating).
+1. greeting - Casual greetings and welcomes ("hi", "hii", "hello", "hey", "good morning").
+2. casual - Conversational or bot identity questions ("who are you", "what can you do", "help", "thanks").
+3. repository_info - Status, languages, metadata of a repository.
+4. commit_info - Commits, commit history, authors, diffs.
+5. developer_info - Developer velocity, contributions, commits/PRs per author.
+6. pull_request_info - PR reviews, turnaround time, open/merged PRs.
+7. issue_info - Issues, bug tickets, resolution time.
+8. code_impact - Code churn, additions, deletions, top modified files.
+9. project_info - Project health, connected repositories.
+10. dashboard_analytics - High-level metrics, executive KPIs, overall system health.
+11. cross_repository_analytics - Comparing or benchmarking multiple repositories.
+12. general_engineering_qa - Software engineering concepts, architecture, Git theory.
+13. unsupported_non_it - Unrelated non-IT questions (cooking, weather, sports, dating).
+14. invalid_or_unclear - Unintelligible text, gibberish, keyboard mashing, nonsense ("asdf ;lkjh zxcv", "asdfaw", "!@#$").
 
 Respond ONLY with valid JSON in this exact structure:
 {
@@ -49,6 +52,7 @@ class LLMIntentClassifier:
     async def classify(self, prompt: str) -> Optional[IntentClassificationResult]:
         """Classify user intent via the configured Engineering Agent LLM provider."""
         try:
+            import re
             provider = agent_llm_factory.get_provider()
             messages = [
                 {"role": "system", "content": INTENT_CLASSIFIER_PROMPT},
@@ -60,14 +64,10 @@ class LLMIntentClassifier:
             latency_ms = (time.time() - t0) * 1000.0
 
             content = resp.content.strip()
-            # Clean possible markdown code fences
-            if content.startswith("```json"):
-                content = content[7:]
-            if content.startswith("```"):
-                content = content[3:]
-            if content.endswith("```"):
-                content = content[:-3]
-            content = content.strip()
+            # Clean possible markdown code fences or surrounding text
+            json_match = re.search(r"\{.*\}", content, re.DOTALL)
+            if json_match:
+                content = json_match.group(0)
 
             parsed = json.loads(content)
             raw_intent = parsed.get("intent", "general_engineering_qa").lower().strip()
@@ -79,7 +79,10 @@ class LLMIntentClassifier:
                     break
 
             confidence = float(parsed.get("confidence", 0.85))
-            requires_clarification = bool(parsed.get("requires_clarification", False)) or confidence < 0.45
+            if matched_intent in (IntentCategory.GREETING, IntentCategory.CASUAL, IntentCategory.INVALID_OR_UNCLEAR):
+                requires_clarification = False
+            else:
+                requires_clarification = bool(parsed.get("requires_clarification", False)) or confidence < 0.45
 
             entities = ExtractedEntities(
                 repository_name=parsed.get("repository_name"),

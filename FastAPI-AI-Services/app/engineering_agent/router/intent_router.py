@@ -21,6 +21,9 @@ class EngineeringIntentRouter:
     """
 
     SUGGESTED_CLARIFICATION_OPTIONS = {
+        IntentCategory.GREETING: ["Explore Dashboard", "View Repositories", "Developer Velocity", "Ask Architecture QA"],
+        IntentCategory.CASUAL: ["Explore Dashboard", "View Repositories", "Developer Velocity", "Ask Architecture QA"],
+        IntentCategory.INVALID_OR_UNCLEAR: ["Explore Dashboard", "View Repositories", "Developer Velocity", "Ask Architecture QA"],
         IntentCategory.REPOSITORY_INFO: ["Show repository overview", "Inspect recent commits", "View repository languages"],
         IntentCategory.DEVELOPER_INFO: ["View developer velocity", "See commits by author", "Show PR review leaderboard"],
         IntentCategory.COMMIT_INFO: ["List recent commits", "Analyze code churn", "Inspect commit authors"],
@@ -119,7 +122,12 @@ class EngineeringIntentRouter:
 
         # Step 3: If LLM is unavailable and deterministic had partial match
         fallback_intent = det_intent or IntentCategory.GENERAL_ENGINEERING_QA
-        is_low_confidence = confidence < 0.45
+        is_exempt_from_clarification = fallback_intent in (
+            IntentCategory.GREETING,
+            IntentCategory.CASUAL,
+            IntentCategory.INVALID_OR_UNCLEAR
+        )
+        is_low_confidence = (confidence < 0.45) and not is_exempt_from_clarification
 
         clarification_text = None
         if is_low_confidence:
@@ -130,16 +138,16 @@ class EngineeringIntentRouter:
 
         return IntentClassificationResult(
             intent=fallback_intent,
-            confidence=confidence,
+            confidence=1.0 if is_exempt_from_clarification else confidence,
             entities=entities,
             requires_clarification=is_low_confidence,
             clarification_prompt=clarification_text,
-            suggested_options=[
+            suggested_options=self.SUGGESTED_CLARIFICATION_OPTIONS.get(fallback_intent, [
                 "Analyze developer velocity",
                 "Inspect repository commits",
                 "View open pull requests",
                 "Generate engineering summary"
-            ],
+            ]),
             routing_strategy="fallback"
         )
 

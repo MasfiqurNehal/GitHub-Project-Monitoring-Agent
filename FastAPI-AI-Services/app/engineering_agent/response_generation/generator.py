@@ -226,7 +226,7 @@ class ResponseGenerator:
         # 0. Handle General IT & Software Engineering Knowledge (Category B)
         if (
             selected_agent in ("General IT & Software Engineering Specialist", "general_it_agent") or
-            state.get("detected_intent") == "general_engineering_qa" or
+            state.get("detected_intent") in ("general_engineering_qa", "greeting", "casual", "invalid_or_unclear", "general_technical", "general_engineering") or
             "explanation" in telemetry
         ):
             explanation_text = telemetry.get("explanation") or "Technical engineering synthesis complete."

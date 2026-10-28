@@ -487,12 +487,18 @@ def route_after_intent(state: GraphState) -> str:
         return "security_reject"
     if state.get("detected_intent") == IntentCategory.UNSUPPORTED_NON_IT.value:
         return "guardrail"
+
+    intent = state.get("detected_intent")
+
+    # Greetings, casual conversations, and unclear inputs route directly to general_it_knowledge
+    if intent in (IntentCategory.GREETING.value, IntentCategory.CASUAL.value, IntentCategory.INVALID_OR_UNCLEAR.value):
+        return "general_it_knowledge"
+
     if state.get("requires_clarification"):
         return "clarification"
     if state.get("is_multi_agent_pipeline"):
         return "multi_agent"
 
-    intent = state.get("detected_intent")
     if intent in (IntentCategory.REPOSITORY_INFO.value, IntentCategory.REPOSITORY_QUERY.value):
         return "repository"
     elif intent in (IntentCategory.COMMIT_INFO.value, IntentCategory.COMMIT_QUERY.value, IntentCategory.CODE_IMPACT.value, IntentCategory.ENGINEERING_ANALYSIS.value):
@@ -505,7 +511,12 @@ def route_after_intent(state: GraphState) -> str:
         return "developer"
     elif intent in (IntentCategory.PROJECT_INFO.value, IntentCategory.PROJECT_QUERY.value):
         return "project"
-    elif intent in (IntentCategory.GENERAL_ENGINEERING_QA.value, IntentCategory.GENERAL_TECHNICAL_QA.value):
+    elif intent in (
+        IntentCategory.GENERAL_ENGINEERING_QA.value,
+        IntentCategory.GENERAL_TECHNICAL_QA.value,
+        IntentCategory.GENERAL_TECHNICAL.value,
+        IntentCategory.GENERAL_ENGINEERING.value
+    ):
         return "general_it_knowledge"
     else:
         return "analytics"

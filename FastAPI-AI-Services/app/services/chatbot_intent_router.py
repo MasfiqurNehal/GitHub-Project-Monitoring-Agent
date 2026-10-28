@@ -30,19 +30,63 @@ class ChatbotIntentResult:
         self.preset_response = preset_response
 
 class ChatbotIntentRouter:
-    # Casual Greetings
-    GREETING_WORDS = {
-        "hello", "hi", "hey", "good morning", "good afternoon", "good evening",
-        "greetings", "thanks", "thank you", "bye", "goodbye", "ping"
-    }
+    GREETING_PATTERN = r"^(?:h+[eiaou]+[yia]*|h+i+|h+e+y+|h+e+l+l*o+|h+o+l+a+|good\s+(?:morning|afternoon|evening|day|night)|greetings|hi\s+there|hello\s+there|hey\s+there|howdy|yo|sup|wassup|what'?s\s+up|thanks|thank\s+you|thx|ty|bye|goodbye|ping)[!.,\s]*$"
 
-    # Invalid / Garbage Inputs
-    GARBAGE_PATTERNS = [
-        r"^[a-zA-Z]{1,3}$",  # e.g., 'sdf', 'asd', 'df'
-        r"^[^a-zA-Z0-9\s]+$",  # e.g., '!@#$', '...'
-        r"^[bcdfghjklmnpqrstvwxyz]{4,}$",  # consonants gibberish e.g., 'qwerty'
-        r"^[0-9]+$",  # pure numbers without context e.g., '123'
-    ]
+    @staticmethod
+    def is_unknown_or_gibberish(raw: str, norm: str) -> bool:
+        """Accurately detect random keyboard mashing, symbol noise, and unrecognizable gibberish."""
+        raw_trimmed = raw.strip()
+        if not raw_trimmed:
+            return True
+
+        words = re.findall(r"[a-z0-9]+", norm)
+        if not words:
+            return True
+
+        common_words = {
+            "what", "how", "who", "why", "where", "when", "which", "can", "could", "would", "should",
+            "show", "tell", "list", "get", "view", "is", "are", "about", "explain", "describe", "definition",
+            "repo", "repos", "repository", "repositories", "project", "projects", "developer", "developers",
+            "contributor", "contributors", "commit", "commits", "pr", "prs", "pull", "issue", "issues",
+            "code", "churn", "branch", "git", "github", "docker", "redis", "api", "help", "hi", "hello"
+        }
+        if any(w in common_words for w in words):
+            return False
+
+        if all(w.isdigit() for w in words):
+            return True
+
+        if re.search(r"(.)\1{3,}", raw_trimmed):
+            return True
+
+        if re.search(r"([a-z]{2,4})\1{2,}", norm):
+            return True
+
+        keyboard_walks = [
+            "asdf", "fdsa", "jkl;", "lkjh", "hjkl", "zxcv", "vcxz",
+            "qwerty", "qwer", "rewq", "poiu", "uiop", "mnbv", "xcvb"
+        ]
+        for kw in keyboard_walks:
+            if kw in norm:
+                return True
+
+        safe_abbrs = {"prs", "pr", "src", "pkg", "cmd", "cfg", "mgr", "sync", "async", "cpu", "gpu", "ssh", "ssl", "tls", "jwt", "sql", "sdk", "npm", "cli", "vram", "ci", "cd"}
+        for w in words:
+            if w in safe_abbrs or w.isdigit():
+                continue
+            if re.search(r"[bcdfghjklmnpqrstvwxyz]{4,}", w):
+                return True
+            if len(w) >= 3 and not re.search(r"[aeiouy]", w):
+                return True
+
+        if len(words) == 1 and len(words[0]) <= 8:
+            if words[0] not in safe_abbrs:
+                vowels = len(re.findall(r"[aeiouy]", words[0]))
+                consonants = len(words[0]) - vowels
+                if vowels == 0 or consonants >= 4:
+                    return True
+
+        return False
 
     # Live Data Domain Matchers
     LIVE_REPO_PATTERNS = [
@@ -52,6 +96,8 @@ class ChatbotIntentRouter:
         r"connected repos",
         r"monitored repos",
         r"which repositories",
+        r"(?:tell\s+me\s+about|about|inspect|stats\s+for)\s+.*?(?:repository|repo)\b",
+        r".*?\s+(?:repository|repo)\b",
     ]
 
     LIVE_PROJECT_PATTERNS = [
@@ -101,31 +147,22 @@ class ChatbotIntentRouter:
         r"what can this (system|platform|bot) monitor",
         r"how do i generate reports",
         r"what are webhooks",
+        r"(?:do\s+you\s+)?tell\s+me\s+about\s+(?:the\s+)?(?:github\s+project\s+monitoring\s+agent|gitmonitor|this\s+platform|this\s+agent)",
+        r"what\s+is\s+(?:the\s+)?(?:github\s+project\s+monitoring\s+agent|gitmonitor)",
+        r"what\s+can\s+(?:you|this\s+agent|gitmonitor)\s+do",
     ]
 
     def route(self, prompt: str) -> ChatbotIntentResult:
         raw = prompt.strip()
         lower = raw.lower()
 
-        # Check exact greeting words first
-        if lower in self.GREETING_WORDS:
+        # Check greetings first using robust regex
+        if re.match(self.GREETING_PATTERN, lower):
             return ChatbotIntentResult(
                 category=ChatbotIntentCategory.GREETING,
                 preset_response=(
-                    "Hello! 👋 I am your **GitMonitor AI Assistant**.\n\n"
-                    "I can help you explore repository activity, developer velocity, commit trends, "
-                    "or answer software engineering questions. How can I assist you today?"
-                )
-            )
-
-        # Check for single-word greetings embedded (e.g. "hi there")
-        words = lower.split()
-        if len(words) <= 2 and words[0] in self.GREETING_WORDS:
-            return ChatbotIntentResult(
-                category=ChatbotIntentCategory.GREETING,
-                preset_response=(
-                    "Hello! 👋 I am your **GitMonitor AI Assistant**.\n\n"
-                    "I can help you explore repository activity, developer velocity, commit trends, "
+                    "### Hello! 👋 Welcome to GitMonitor AI Assistant\n\n"
+                    "I can help you monitor repositories, inspect developer velocity, track commit & PR trends, "
                     "or answer software engineering questions. How can I assist you today?"
                 )
             )
@@ -180,25 +217,21 @@ class ChatbotIntentRouter:
                     category=ChatbotIntentCategory.APP_KNOWLEDGE
                 )
 
-        # Garbage check: short gibberish like "sdf", "!@#$", "qwerty", "asdf123"
-        if len(lower) <= 3 and lower not in self.GREETING_WORDS:
+        # Garbage / Unrecognized Input check
+        if self.is_unknown_or_gibberish(raw, lower):
             return ChatbotIntentResult(
                 category=ChatbotIntentCategory.GARBAGE,
                 preset_response=(
-                    "I’m not sure what you’re asking yet. You can ask me about repositories, projects, "
-                    "developers, commits, pull requests, issues, or how the GitHub Monitoring platform works."
+                    "### ❓ Unrecognized Input\n\n"
+                    "I couldn't quite understand your message. It looks like random characters or an unrecognized query.\n\n"
+                    "**I'm here to help you monitor and analyze your GitHub projects:**\n"
+                    "- 📁 **Repositories**: View connected codebases, branches, and code activity\n"
+                    "- 👥 **Developers**: Track team contributions, commit velocity, and PR reviews\n"
+                    "- 🔀 **Pull Requests & Issues**: Check open PRs, review turnaround, and bug reports\n"
+                    "- 💡 **Engineering Advice**: Ask about Git workflows, Docker, CI/CD, and architecture\n\n"
+                    "*Feel free to try asking a question like \"Show active repositories\" or \"Who made the most commits?\"*"
                 )
             )
-
-        for pat in self.GARBAGE_PATTERNS:
-            if re.match(pat, lower):
-                return ChatbotIntentResult(
-                    category=ChatbotIntentCategory.GARBAGE,
-                    preset_response=(
-                        "I’m not sure what you’re asking yet. You can ask me about repositories, projects, "
-                        "developers, commits, pull requests, issues, or how the GitHub Monitoring platform works."
-                    )
-                )
 
         # Default: General Software Engineering / Technical query for LLM
         return ChatbotIntentResult(
