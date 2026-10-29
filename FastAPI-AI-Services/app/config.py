@@ -20,6 +20,17 @@ class Settings(BaseSettings):
         "https://github-project-monitoring-agent.onrender.com",
     ]
 
+    @field_validator("BACKEND_URL", mode="before")
+    @classmethod
+    def assemble_backend_url(cls, v: Any) -> str:
+        default_url = "https://github-project-monitoring-agent.onrender.com/api" if (os.getenv("RENDER") or os.getenv("ENVIRONMENT") == "production") else "http://localhost:5001/api"
+        if not v or not isinstance(v, str) or not v.strip():
+            return default_url
+        clean_url = v.strip().rstrip("/")
+        if not clean_url.endswith("/api"):
+            clean_url = f"{clean_url}/api"
+        return clean_url
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Any) -> List[str]:

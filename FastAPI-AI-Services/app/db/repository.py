@@ -153,7 +153,7 @@ class ChatbotRepository:
         session.add(assistant_msg)
 
         await session.commit()
-        return conv, user_msg, assistant_msg
+        return None, user_msg, assistant_msg
 
     async def add_message(
         self,
