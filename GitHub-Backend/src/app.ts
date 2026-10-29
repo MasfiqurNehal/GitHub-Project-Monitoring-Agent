@@ -7,10 +7,60 @@ import { logger } from './utils/logger.js';
 export const app = express();
 
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+// Resilient CORS Configuration supporting sanitized URLs, comma-separated lists, and Vercel domains
+const configuredOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
+  .split(',')
+  .map((url) => url.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+
+const allowedOrigins = [
+  ...configuredOrigins,
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:5173',
+  'https://git-hub-project-monitoring-agent.vercel.app',
+  'https://github-project-monitoring-agent.vercel.app',
+];
+
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    // Allow non-browser requests (e.g. mobile apps, curl, server-to-server, Render health checks)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    const cleanOrigin = origin.trim().replace(/\/+$/, '');
+
+    // Allow explicitly listed origins or any Vercel deployment (*.vercel.app) or localhost
+    const isAllowed =
+      allowedOrigins.includes(cleanOrigin) ||
+      cleanOrigin.endsWith('.vercel.app') ||
+      cleanOrigin.includes('localhost') ||
+      cleanOrigin.includes('127.0.0.1');
+
+    if (isAllowed) {
+      return callback(null, true);
+    }
+
+    logger.warn('CORS', `Blocked request from unauthorized origin: ${origin}`);
+    return callback(null, false);
+  },
   credentials: true,
-}));
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'X-GitHub-Event',
+    'X-GitHub-Delivery',
+    'X-Hub-Signature-256',
+  ],
+  maxAge: 86400,
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions) as any);
 app.use(express.json({
   limit: '50mb',
   verify: (req: any, _res, buf) => {
@@ -37,8 +87,9 @@ import { tenantAuthMiddleware } from './middleware/auth.middleware.js';
 // Mount Tenant Auth & Data Isolation Middleware
 app.use(tenantAuthMiddleware as any);
 
-// Mount API Router
+// Mount API Router under both /api and root for resilient client routing
 app.use('/api', apiRouter);
+app.use('/', apiRouter);
 
 // Root Endpoint
 app.get('/', (req: Request, res: Response) => {

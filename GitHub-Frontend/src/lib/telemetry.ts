@@ -1,4 +1,5 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+const rawBaseUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api').trim().replace(/\/+$/, '');
+const API_BASE_URL = rawBaseUrl.endsWith('/api') ? rawBaseUrl : `${rawBaseUrl}/api`;
 
 export function sendTelemetryLog(action: string, category = 'UI_CLICK', details?: any, level: 'INFO' | 'WARN' | 'ERROR' = 'INFO') {
   try {
