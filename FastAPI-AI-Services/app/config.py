@@ -1,18 +1,55 @@
 import os
-from typing import List
+from typing import List, Union, Any
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     APP_NAME: str = "GitHub Project Monitoring FastAPI AI Microservice"
     ENVIRONMENT: str = "development"
     PORT: int = 8000
-    BACKEND_URL: str = "http://localhost:5001/api"
+    BACKEND_URL: str = "https://github-project-monitoring-agent.onrender.com/api" if (os.getenv("RENDER") or os.getenv("ENVIRONMENT") == "production") else "http://localhost:5001/api"
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
+        "http://localhost:3001",
         "http://localhost:5001",
+        "http://localhost:5173",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5001",
+        "https://git-hub-project-monitoring-agent.vercel.app",
+        "https://github-project-monitoring-agent.vercel.app",
+        "https://github-project-monitoring-agent.onrender.com",
     ]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Any) -> List[str]:
+        default_origins = [
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://localhost:5001",
+            "http://localhost:5173",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5001",
+            "https://git-hub-project-monitoring-agent.vercel.app",
+            "https://github-project-monitoring-agent.vercel.app",
+            "https://github-project-monitoring-agent.onrender.com",
+        ]
+        if not v:
+            return default_origins
+        if isinstance(v, str):
+            if v.strip().startswith("[") and v.strip().endswith("]"):
+                import json
+                try:
+                    parsed = json.loads(v)
+                    if isinstance(parsed, list):
+                        return list(set(default_origins + [str(i).strip().rstrip("/") for i in parsed if str(i).strip()]))
+                except Exception:
+                    pass
+            origins = [item.strip().rstrip("/") for item in v.split(",") if item.strip()]
+            return list(set(default_origins + origins))
+        elif isinstance(v, (list, tuple, set)):
+            return list(set(default_origins + [str(item).strip().rstrip("/") for item in v if str(item).strip()]))
+        return default_origins
     LOG_LEVEL: str = "INFO"
     DATABASE_URL: str = ""
 
