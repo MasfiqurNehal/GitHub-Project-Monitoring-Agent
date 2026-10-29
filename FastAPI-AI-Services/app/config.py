@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     PORT: int = 8000
     BACKEND_URL: str = "https://github-project-monitoring-agent.onrender.com/api" if (os.getenv("RENDER") or os.getenv("ENVIRONMENT") == "production") else "http://localhost:5001/api"
+    FRONTEND_URL: str = "https://gitmonitor.masfiqurnehal.com"
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://localhost:3001",
@@ -15,6 +16,7 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5001",
+        "https://gitmonitor.masfiqurnehal.com",
         "https://git-hub-project-monitoring-agent.vercel.app",
         "https://github-project-monitoring-agent.vercel.app",
         "https://github-project-monitoring-agent.onrender.com",
@@ -41,26 +43,35 @@ class Settings(BaseSettings):
             "http://localhost:5173",
             "http://127.0.0.1:3000",
             "http://127.0.0.1:5001",
+            "https://gitmonitor.masfiqurnehal.com",
             "https://git-hub-project-monitoring-agent.vercel.app",
             "https://github-project-monitoring-agent.vercel.app",
             "https://github-project-monitoring-agent.onrender.com",
         ]
+        # Also parse origins from FRONTEND_URL if present in the environment
+        env_frontend_url = os.getenv("FRONTEND_URL", "").strip()
+        extra_origins = []
+        if env_frontend_url:
+            extra_origins = [item.strip().rstrip("/") for item in env_frontend_url.split(",") if item.strip()]
+
+        combined_defaults = list(set(default_origins + extra_origins))
+
         if not v:
-            return default_origins
+            return combined_defaults
         if isinstance(v, str):
             if v.strip().startswith("[") and v.strip().endswith("]"):
                 import json
                 try:
                     parsed = json.loads(v)
                     if isinstance(parsed, list):
-                        return list(set(default_origins + [str(i).strip().rstrip("/") for i in parsed if str(i).strip()]))
+                        return list(set(combined_defaults + [str(i).strip().rstrip("/") for i in parsed if str(i).strip()]))
                 except Exception:
                     pass
             origins = [item.strip().rstrip("/") for item in v.split(",") if item.strip()]
-            return list(set(default_origins + origins))
+            return list(set(combined_defaults + origins))
         elif isinstance(v, (list, tuple, set)):
-            return list(set(default_origins + [str(item).strip().rstrip("/") for item in v if str(item).strip()]))
-        return default_origins
+            return list(set(combined_defaults + [str(item).strip().rstrip("/") for item in v if str(item).strip()]))
+        return combined_defaults
     LOG_LEVEL: str = "INFO"
     DATABASE_URL: str = ""
 

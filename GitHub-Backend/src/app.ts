@@ -18,8 +18,10 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:5173',
+  'https://gitmonitor.masfiqurnehal.com',
   'https://git-hub-project-monitoring-agent.vercel.app',
   'https://github-project-monitoring-agent.vercel.app',
+  'https://github-project-monitoring-agent.onrender.com',
 ];
 
 const corsOptions: cors.CorsOptions = {
@@ -31,10 +33,11 @@ const corsOptions: cors.CorsOptions = {
 
     const cleanOrigin = origin.trim().replace(/\/+$/, '');
 
-    // Allow explicitly listed origins or any Vercel deployment (*.vercel.app) or localhost
+    // Allow explicitly listed origins or any Vercel/masfiqurnehal deployment or localhost
     const isAllowed =
       allowedOrigins.includes(cleanOrigin) ||
       cleanOrigin.endsWith('.vercel.app') ||
+      cleanOrigin.endsWith('.masfiqurnehal.com') ||
       cleanOrigin.includes('localhost') ||
       cleanOrigin.includes('127.0.0.1');
 

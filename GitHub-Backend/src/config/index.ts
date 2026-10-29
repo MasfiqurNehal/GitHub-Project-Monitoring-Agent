@@ -77,7 +77,7 @@ export const config = {
   githubToken: process.env.GITHUB_TOKEN || '',
   jwtSecret: process.env.JWT_SECRET || 'super-secret-key',
   encryptionKey: process.env.ENCRYPTION_KEY || '',
-  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
+  frontendUrl: (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim().replace(/\/+$/, ''),
   backendUrl: process.env.BACKEND_URL || 'http://localhost:5001',
   fastapiUrl: process.env.FASTAPI_URL || 'http://localhost:8000',
   geminiApiKey: process.env.GEMINI_API_KEY || '',
